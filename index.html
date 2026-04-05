@@ -23,11 +23,6 @@
       border-radius: 10px;
       text-align: left;
     }
-    .chart {
-      font-size: 22px;
-      letter-spacing: 3px;
-      margin-top: 5px;
-    }
     .footer {
       margin-top: 20px;
       padding: 15px;
@@ -117,21 +112,10 @@ function weatherSummary(avgCloud, avgRad) {
   return "☁️ Cloudy. Low solar expected.";
 }
 
-// Convert values to mini bar chart
-function generateBars(values) {
-  const bars = ["▁","▂","▃","▄","▅","▆","▇","█"];
-  let max = Math.max(...values, 0.01);
-
-  return values.map(v => {
-    let index = Math.floor((v / max) * (bars.length - 1));
-    return bars[index];
-  }).join("");
-}
-
 async function runAI() {
 
   let res = await fetch(
-    "https://api.open-meteo.com/v1/forecast?latitude=52.627&longitude=1.331&hourly=cloudcover,shortwave_radiation&forecast_days=3&timezone=auto"
+    "https://api.open-meteo.com/v1/forecast?latitude=52.627&longitude=1.331&hourly=cloudcover,shortwave_radiation,temperature_2m&forecast_days=3&timezone=auto"
   );
 
   let data = await res.json();
@@ -144,7 +128,6 @@ async function runAI() {
     let scores = [];
     let clouds = [];
     let rads = [];
-    let hourlyProfile = [];
 
     for (let h = d * 24; h < d * 24 + 24; h++) {
 
@@ -161,10 +144,7 @@ async function runAI() {
           data.hourly.shortwave_radiation[h]
         );
 
-        let finalScore = base * sunFactor;
-
-        scores.push(finalScore);
-        hourlyProfile.push(finalScore);
+        scores.push(base * sunFactor);
         clouds.push(data.hourly.cloudcover[h]);
         rads.push(data.hourly.shortwave_radiation[h]);
       }
@@ -176,16 +156,11 @@ async function runAI() {
     let avgCloud = clouds.reduce((a,b)=>a+b,0) / clouds.length || 0;
     let avgRad = rads.reduce((a,b)=>a+b,0) / rads.length || 0;
 
-    let chart = generateBars(hourlyProfile);
-
     output += `
       <div class="card">
         <b>Day ${d===0?"Today":d===1?"Tomorrow":"Day +2"}</b><br><br>
 
         🌤️ ${weatherSummary(avgCloud, avgRad)}<br><br>
-
-        ☀️ Solar Profile (10–15h)<br>
-        <div class="chart">${chart}</div><br>
 
         ⚡ Solar Score: ${(avg*100).toFixed(0)}%<br><br>
 
