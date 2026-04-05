@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Solar SOC AI Pro (Sun Elevation)</title>
+  <title>Solar SOC AI Pro (Season Aware)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body {
@@ -36,7 +36,7 @@
 
 <body>
 
-<h2>⚡ Solar SOC AI Pro (Sun Elevation)</h2>
+<h2>⚡ Solar SOC AI Pro (Season Aware)</h2>
 
 <div class="card">
 📍 <b>Location:</b><br>
@@ -59,11 +59,23 @@ NR7 0WZ (Norwich, UK)<br>
 </div>
 
 <script>
-function soc(score) {
-  if (score > 0.85) return "65%";
-  if (score > 0.65) return "75%";
-  if (score > 0.45) return "85%";
-  return "95%";
+
+// -----------------------------
+// SOC Logic (Season Aware)
+// -----------------------------
+function recommendedSOC(avgScore, maxElevation) {
+
+  // Seasonal factor from max sun elevation
+  let seasonalFactor = maxElevation / 60;
+  seasonalFactor = Math.min(1, Math.max(0, seasonalFactor));
+
+  // Blend weather + season
+  let adjustedScore = (avgScore * 0.7) + (seasonalFactor * 0.3);
+
+  if (adjustedScore > 0.75) return "60–70%";
+  if (adjustedScore > 0.55) return "70–80%";
+  if (adjustedScore > 0.35) return "80–90%";
+  return "90–100%";
 }
 
 function explain(score) {
@@ -73,7 +85,9 @@ function explain(score) {
   return "Low solar. Prioritise higher SOC to avoid import.";
 }
 
+// -----------------------------
 // Solar scoring model
+// -----------------------------
 function hourlySolarScore(cloud, radiation) {
   let cloudFactor = 1 - (cloud / 100);
   let radiationFactor = radiation / 1000;
@@ -82,18 +96,17 @@ function hourlySolarScore(cloud, radiation) {
   return Math.min(1, Math.max(0, score));
 }
 
-// 🌞 Sun elevation calculation
+// -----------------------------
+// Sun elevation (hourly)
+// -----------------------------
 function sunElevation(date, lat, lon) {
   const rad = Math.PI / 180;
 
   let day = Math.floor((date - new Date(date.getFullYear(), 0, 0)) / 86400000);
-
   let decl = 23.45 * Math.sin(rad * (360 * (284 + day) / 365));
 
   let hour = date.getHours() + date.getMinutes() / 60;
-
   let solarTime = hour + (lon / 15);
-
   let hourAngle = 15 * (solarTime - 12);
 
   let elevation = Math.asin(
@@ -104,7 +117,26 @@ function sunElevation(date, lat, lon) {
   return Math.max(0, elevation);
 }
 
+// -----------------------------
+// Max sun elevation for the day (seasonal signal)
+// -----------------------------
+function maxSunElevationForDay(date, lat, lon) {
+  let maxElev = 0;
+
+  for (let hour = 0; hour < 24; hour++) {
+    let d = new Date(date);
+    d.setHours(hour, 0, 0, 0);
+
+    let elev = sunElevation(d, lat, lon);
+    if (elev > maxElev) maxElev = elev;
+  }
+
+  return maxElev;
+}
+
+// -----------------------------
 // Weather summary
+// -----------------------------
 function weatherSummary(avgCloud, avgRad, avgTemp) {
   if (avgCloud < 20 && avgRad > 600) {
     return "☀️ Clear skies with strong solar radiation. Excellent generation expected.";
@@ -115,12 +147,12 @@ function weatherSummary(avgCloud, avgRad, avgTemp) {
   if (avgCloud < 70) {
     return "⛅ Mixed cloud cover. Moderate solar generation with variability.";
   }
-  if (avgCloud >= 70) {
-    return "☁️ Heavy cloud cover. Low solar generation expected.";
-  }
-  return "🌥️ Variable conditions.";
+  return "☁️ Heavy cloud cover. Low solar generation expected.";
 }
 
+// -----------------------------
+// Strategy
+// -----------------------------
 function strategy(scores) {
   let avg = scores.reduce((a,b)=>a+b,0)/scores.length;
 
@@ -129,6 +161,9 @@ function strategy(scores) {
   return "⚠️ Weak solar → Higher SOC to avoid grid import";
 }
 
+// -----------------------------
+// Main function
+// -----------------------------
 async function runAI() {
   try {
 
@@ -182,11 +217,14 @@ async function runAI() {
       let avgScore = scores.reduce((a,b)=>a+b,0) / scores.length;
       if (isNaN(avgScore)) avgScore = 0;
 
-      // SAFE averages
       let avgCloud = cloudVals.length ? cloudVals.reduce((a,b)=>a+b,0) / cloudVals.length : 0;
       let avgRad = radVals.length ? radVals.reduce((a,b)=>a+b,0) / radVals.length : 0;
       let avgTemp = tempVals.length ? tempVals.reduce((a,b)=>a+b,0) / tempVals.length : 0;
       let avgElevation = elevations.length ? elevations.reduce((a,b)=>a+b,0) / elevations.length : 0;
+
+      // Seasonal max elevation
+      let dateObj = new Date(times[dayStart]);
+      let maxElevation = maxSunElevationForDay(dateObj, 52.627, 1.331);
 
       dayScores.push(avgScore);
 
@@ -199,13 +237,14 @@ async function runAI() {
           🌤️ Weather Summary: ${weatherSummary(avgCloud, avgRad, avgTemp)}<br><br>
 
           ⚡ Solar Score: ${percent}%<br>
-          ☀️ Avg Sun Elevation: ${avgElevation.toFixed(1)}°<br><br>
+          ☀️ Avg Sun Elevation: ${avgElevation.toFixed(1)}°<br>
+          📈 Max Sun Elevation (seasonal): ${maxElevation.toFixed(1)}°<br><br>
 
           ☁️ Cloud impact: ${(1 - avgCloud / 100).toFixed(2)}<br>
           ☀️ Radiation impact: ${(avgRad / 1000).toFixed(2)}<br>
           🌡️ Temperature: ${avgTemp.toFixed(1)}°C<br><br>
 
-          🔋 Recommended SOC: ${soc(avgScore)}<br><br>
+          🔋 Recommended SOC: ${recommendedSOC(avgScore, maxElevation)}<br><br>
 
           🧠 ${explain(avgScore)}
         </div>
