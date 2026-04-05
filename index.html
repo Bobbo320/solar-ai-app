@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Solar SOC AI</title>
+  <title>Solar SOC AI Pro</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body {
@@ -27,9 +27,9 @@
 
 <body>
 
-<h2>⚡ Solar SOC AI</h2>
+<h2>⚡ Solar SOC AI Pro</h2>
 
-<button onclick="runAI()">Get Tomorrow's Plan</button>
+<button onclick="runAI()">Analyse Tomorrow</button>
 
 <div class="card" id="output">Press the button</div>
 
@@ -38,16 +38,28 @@ function weatherText(code) {
   if (code === 0) return "☀️ Clear sky";
   if ([1,2].includes(code)) return "🌤️ Partly cloudy";
   if (code === 3) return "☁️ Overcast";
-  if ([45,48].includes(code)) return "🌫️ Fog";
   if ([51,61,63].includes(code)) return "🌧️ Rain";
-  return "🌥️ Mixed conditions";
+  return "🌥️ Mixed";
 }
 
-function scoreExplanation(score) {
-  if (score > 85) return "🔥 Excellent solar expected. Battery will fill early and maximise export.";
-  if (score > 65) return "👍 Good solar. Likely full charge with some export.";
-  if (score > 45) return "⚖️ Moderate solar. May not fully charge battery.";
-  return "⚠️ Low solar. Prioritise higher overnight charge to avoid grid import.";
+function clippingRisk(score) {
+  if (score > 85) return "🔥 HIGH";
+  if (score > 65) return "⚠️ MEDIUM";
+  return "✅ LOW";
+}
+
+function batteryPrediction(score) {
+  if (score > 85) return "Battery likely full by late morning";
+  if (score > 65) return "Battery likely full early afternoon";
+  if (score > 45) return "Battery may not fully charge";
+  return "Battery unlikely to fill";
+}
+
+function socRecommendation(score) {
+  if (score > 85) return "60–70%";
+  if (score > 65) return "70–80%";
+  if (score > 45) return "80–90%";
+  return "90–100%";
 }
 
 async function runAI() {
@@ -69,25 +81,27 @@ async function runAI() {
 
     solarScore = Math.min(1, solarScore);
 
-    let soc = solarScore > 0.85 ? "60–70%" :
-              solarScore > 0.65 ? "70–80%" :
-              solarScore > 0.45 ? "80–90%" : "90–100%";
-
     let scorePercent = (solarScore * 100).toFixed(0);
 
     document.getElementById("output").innerHTML = `
-      🌤️ <b>Tomorrow's Weather:</b><br>
-      ${weatherText(code)}<br>
-      🌡️ ${temp}°C<br><br>
+      🌤️ <b>Tomorrow:</b><br>
+      ${weatherText(code)} | ${temp}°C<br><br>
 
-      🔋 <b>Recommended SOC:</b> ${soc}<br><br>
+      ⚡ <b>Solar Score:</b> ${scorePercent}%<br><br>
 
-      ⚡ <b>Solar Score:</b> ${scorePercent}%<br>
-      <small>${scoreExplanation(scorePercent)}</small>
+      🔋 <b>Recommended SOC:</b> ${socRecommendation(scorePercent)}<br><br>
+
+      🔄 <b>Battery:</b><br>
+      ${batteryPrediction(scorePercent)}<br><br>
+
+      ⚠️ <b>Clipping Risk:</b> ${clippingRisk(scorePercent)}<br><br>
+
+      💡 <b>Strategy:</b><br>
+      Start lower SOC to maximise export if risk is high
     `;
 
   } catch (err) {
-    document.getElementById("output").innerHTML = "Error loading weather data";
+    document.getElementById("output").innerHTML = "Error loading data";
   }
 }
 </script>
