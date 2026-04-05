@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Solar SOC AI Pro (Season-Aware)</title>
+  <title>Solar SOC AI Pro (Sun Elevation)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body {
@@ -36,7 +36,7 @@
 
 <body>
 
-<h2>⚡ Solar SOC AI Pro (Season-Aware)</h2>
+<h2>⚡ Solar SOC AI Pro (Sun Elevation)</h2>
 
 <div class="card">
 📍 <b>Location:</b><br>
@@ -71,20 +71,6 @@ function explain(score) {
   return "Low solar. Prioritise higher SOC to avoid import.";
 }
 
-// Seasonal factor (day-of-year based)
-function seasonalFactor() {
-  let now = new Date();
-  let start = new Date(now.getFullYear(), 0, 0);
-  let diff = now - start;
-  let oneDay = 1000 * 60 * 60 * 24;
-  let dayOfYear = Math.floor(diff / oneDay);
-
-  let angle = (2 * Math.PI * (dayOfYear - 172)) / 365;
-
-  // Range ~0.6 (winter) to 1.0 (summer)
-  return 0.8 + 0.2 * Math.cos(angle);
-}
-
 // Solar scoring model
 function hourlySolarScore(cloud, radiation) {
   let cloudFactor = 1 - (cloud / 100);
@@ -92,6 +78,28 @@ function hourlySolarScore(cloud, radiation) {
 
   let score = (cloudFactor * 0.6) + (radiationFactor * 0.4);
   return Math.min(1, Math.max(0, score));
+}
+
+// 🌞 Sun elevation calculation
+function sunElevation(date, lat, lon) {
+  const rad = Math.PI / 180;
+
+  let day = Math.floor((date - new Date(date.getFullYear(), 0, 0)) / 86400000);
+
+  let decl = 23.45 * Math.sin(rad * (360 * (284 + day) / 365));
+
+  let hour = date.getHours() + date.getMinutes() / 60;
+
+  let solarTime = hour + (lon / 15);
+
+  let hourAngle = 15 * (solarTime - 12);
+
+  let elevation = Math.asin(
+    Math.sin(lat * rad) * Math.sin(decl * rad) +
+    Math.cos(lat * rad) * Math.cos(decl * rad) * Math.cos(hourAngle * rad)
+  ) / rad;
+
+  return Math.max(0, elevation);
 }
 
 // Weather summary
@@ -143,30 +151,36 @@ async function runAI() {
       let cloudVals = [];
       let radVals = [];
       let tempVals = [];
+      let elevations = [];
 
       for (let h = dayStart; h < dayStart + 24; h++) {
 
-        let hour = new Date(times[h]).getHours();
+        let date = new Date(times[h]);
+        let hour = date.getHours();
 
         if (hour >= 10 && hour <= 15) {
-          scores.push(hourlySolarScore(cloud[h], radiation[h]));
+
+          let elevation = sunElevation(date, 52.627, 1.331);
+          let sunFactor = Math.sin(elevation * Math.PI / 180);
+
+          let baseScore = hourlySolarScore(cloud[h], radiation[h]);
+          let adjustedScore = baseScore * sunFactor;
+
+          scores.push(adjustedScore);
           cloudVals.push(cloud[h]);
           radVals.push(radiation[h]);
           tempVals.push(temp[h]);
+          elevations.push(elevation);
         }
       }
 
       let avgScore = scores.reduce((a,b)=>a+b,0) / scores.length;
       if (isNaN(avgScore)) avgScore = 0;
 
-      // Apply seasonal adjustment
-      let season = seasonalFactor();
-      avgScore = avgScore * season;
-      avgScore = Math.min(1, avgScore);
-
       let avgCloud = cloudVals.reduce((a,b)=>a+b,0) / cloudVals.length;
       let avgRad = radVals.reduce((a,b)=>a+b,0) / radVals.length;
       let avgTemp = tempVals.reduce((a,b)=>a+b,0) / tempVals.length;
+      let avgElevation = elevations.reduce((a,b)=>a+b,0) / elevations.length;
 
       dayScores.push(avgScore);
 
@@ -179,7 +193,7 @@ async function runAI() {
           🌤️ Weather Summary: ${weatherSummary(avgCloud, avgRad, avgTemp)}<br><br>
 
           ⚡ Solar Score: ${percent}%<br>
-          🌍 Seasonal Factor: ${season.toFixed(2)}<br><br>
+          ☀️ Avg Sun Elevation: ${avgElevation.toFixed(1)}°<br><br>
 
           ☁️ Cloud impact: ${(1 - avgCloud / 100).toFixed(2)}<br>
           ☀️ Radiation impact: ${(avgRad / 1000).toFixed(2)}<br>
