@@ -87,10 +87,10 @@ function calcSolarScore(code, temp) {
 }
 
 function soc(score) {
-  if (score > 0.85) return "60–70%";
-  if (score > 0.65) return "70–80%";
-  if (score > 0.45) return "80–90%";
-  return "90–100%";
+  if (score > 0.85) return "65%";
+  if (score > 0.65) return "75%";
+  if (score > 0.45) return "85%";
+  return "95%";
 }
 
 function strategy(scores) {
