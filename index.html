@@ -46,6 +46,8 @@ NR7 0WZ (Norwich, UK)<br>
 
 <button onclick="runAI()">Plan Next 3 Days</button>
 
+<p id="loading"></p>
+
 <div id="output"></div>
 
 <div class="footer">
@@ -129,6 +131,9 @@ function strategy(scores) {
 
 async function runAI() {
   try {
+
+    document.getElementById("loading").innerText = "Loading forecast...";
+
     let res = await fetch(
       "https://api.open-meteo.com/v1/forecast?latitude=52.627&longitude=1.331&hourly=cloudcover,temperature_2m,shortwave_radiation&forecast_days=3&timezone=auto"
     );
@@ -177,10 +182,11 @@ async function runAI() {
       let avgScore = scores.reduce((a,b)=>a+b,0) / scores.length;
       if (isNaN(avgScore)) avgScore = 0;
 
-      let avgCloud = cloudVals.reduce((a,b)=>a+b,0) / cloudVals.length;
-      let avgRad = radVals.reduce((a,b)=>a+b,0) / radVals.length;
-      let avgTemp = tempVals.reduce((a,b)=>a+b,0) / tempVals.length;
-      let avgElevation = elevations.reduce((a,b)=>a+b,0) / elevations.length;
+      // SAFE averages
+      let avgCloud = cloudVals.length ? cloudVals.reduce((a,b)=>a+b,0) / cloudVals.length : 0;
+      let avgRad = radVals.length ? radVals.reduce((a,b)=>a+b,0) / radVals.length : 0;
+      let avgTemp = tempVals.length ? tempVals.reduce((a,b)=>a+b,0) / tempVals.length : 0;
+      let avgElevation = elevations.length ? elevations.reduce((a,b)=>a+b,0) / elevations.length : 0;
 
       dayScores.push(avgScore);
 
@@ -214,9 +220,11 @@ async function runAI() {
     `;
 
     document.getElementById("output").innerHTML = output;
+    document.getElementById("loading").innerText = "";
 
   } catch (err) {
     document.getElementById("output").innerHTML = "Error loading data";
+    document.getElementById("loading").innerText = "";
   }
 }
 </script>
