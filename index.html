@@ -61,7 +61,18 @@ NR7 0WZ (Norwich, UK)<br>
 <script>
 
 // -----------------------------
-// SOC Logic (Single Value + Season Aware)
+// SOC Colour Mapping
+// -----------------------------
+function socColor(socValue) {
+  let soc = parseInt(socValue);
+
+  if (soc >= 70) return "limegreen";
+  if (soc >= 40) return "orange";
+  return "red";
+}
+
+// -----------------------------
+// SOC Logic
 // -----------------------------
 function recommendedSOC(avgScore, maxElevation) {
 
@@ -70,10 +81,8 @@ function recommendedSOC(avgScore, maxElevation) {
 
   let adjustedScore = (avgScore * 0.7) + (seasonalFactor * 0.3);
 
-  // Convert to single SOC percentage
   let soc = 100 - (adjustedScore * 50);
 
-  // Clamp realistic inverter range
   soc = Math.min(95, Math.max(20, soc));
 
   return Math.round(soc) + "%";
@@ -98,7 +107,7 @@ function hourlySolarScore(cloud, radiation) {
 }
 
 // -----------------------------
-// Sun elevation (hourly)
+// Sun elevation
 // -----------------------------
 function sunElevation(date, lat, lon) {
   const rad = Math.PI / 180;
@@ -119,7 +128,7 @@ function sunElevation(date, lat, lon) {
 }
 
 // -----------------------------
-// Max sun elevation for the day (seasonal signal)
+// Max sun elevation
 // -----------------------------
 function maxSunElevationForDay(date, lat, lon) {
   let maxElev = 0;
@@ -229,10 +238,15 @@ async function runAI() {
       dayScores.push(avgScore);
 
       let percent = (avgScore * 100).toFixed(0);
+      let socValue = recommendedSOC(avgScore, maxElevation);
 
       output += `
         <div class="card">
-          <b>Day ${d === 0 ? "Today" : d === 1 ? "Tomorrow" : "Day +2"}</b><br><br>
+          <b>Day ${
+            d === 0 ? "Today" :
+            d === 1 ? '<span style="color:red">Tomorrow</span>' :
+            "Day +2"
+          }</b><br><br>
 
           🌤️ Weather Summary: ${weatherSummary(avgCloud, avgRad, avgTemp)}<br><br>
 
@@ -244,7 +258,11 @@ async function runAI() {
           ☀️ Radiation impact: ${(avgRad / 1000).toFixed(2)}<br>
           🌡️ Temperature: ${avgTemp.toFixed(1)}°C<br><br>
 
-          🔋 Recommended SOC: ${recommendedSOC(avgScore, maxElevation)}<br><br>
+          🔋 Recommended SOC:
+          <span style="color:${socColor(socValue)}; font-weight:bold;">
+            ${socValue}
+          </span>
+          <br><br>
 
           🧠 ${explain(avgScore)}
         </div>
