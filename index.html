@@ -107,6 +107,24 @@ function hourlySolarScore(cloud, radiation) {
 }
 
 // -----------------------------
+// Weather penalty (NEW)
+// -----------------------------
+function weatherPenalty(code, precip) {
+  let penalty = 1;
+
+  if (code >= 51 && code <= 67) penalty *= 0.7; // rain/drizzle
+  if (code >= 80 && code <= 82) penalty *= 0.6; // showers
+  if (code >= 71 && code <= 77) penalty *= 0.5; // snow
+  if (code >= 45 && code <= 48) penalty *= 0.6; // fog
+  if (code >= 95) penalty *= 0.5; // storms
+
+  if (precip > 0.5) penalty *= 0.8;
+  if (precip > 2) penalty *= 0.6;
+
+  return Math.max(0.3, Math.min(1, penalty));
+}
+
+// -----------------------------
 // Sun elevation
 // -----------------------------
 function sunElevation(date, lat, lon) {
@@ -180,7 +198,7 @@ async function runAI() {
     document.getElementById("loading").innerText = "Loading forecast...";
 
     let res = await fetch(
-      "https://api.open-meteo.com/v1/forecast?latitude=52.627&longitude=1.331&hourly=cloudcover,temperature_2m,shortwave_radiation&forecast_days=3&timezone=auto"
+      "https://api.open-meteo.com/v1/forecast?latitude=52.627&longitude=1.331&hourly=cloudcover,temperature_2m,shortwave_radiation,precipitation,weathercode&forecast_days=3&timezone=auto"
     );
 
     let data = await res.json();
@@ -189,6 +207,8 @@ async function runAI() {
     let cloud = data.hourly.cloudcover;
     let radiation = data.hourly.shortwave_radiation;
     let temp = data.hourly.temperature_2m;
+    let precipitation = data.hourly.precipitation;
+    let weathercode = data.hourly.weathercode;
 
     let output = "";
     let dayScores = [];
@@ -214,7 +234,11 @@ async function runAI() {
           let sunFactor = Math.sin(elevation * Math.PI / 180);
 
           let baseScore = hourlySolarScore(cloud[h], radiation[h]);
-          let adjustedScore = baseScore * sunFactor;
+          let sunAdjusted = baseScore * sunFactor;
+
+          let penalty = weatherPenalty(weathercode[h], precipitation[h]);
+
+          let adjustedScore = sunAdjusted * penalty;
 
           scores.push(adjustedScore);
           cloudVals.push(cloud[h]);
@@ -260,10 +284,7 @@ async function runAI() {
           🌡️ Temperature: ${avgTemp.toFixed(1)}°C<br><br>
 
           🔋 Recommended SOC:
-          <span style="
-            color:${isTomorrow ? 'red' : socColor(socValue)};
-            font-weight:bold;
-          ">
+          <span style="color:${isTomorrow ? 'red' : socColor(socValue)}; font-weight:bold;">
             ${socValue}
           </span>
           <br><br>
