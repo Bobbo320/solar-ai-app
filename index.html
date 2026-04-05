@@ -23,6 +23,10 @@
       border-radius: 10px;
       text-align: left;
     }
+    input {
+      padding: 8px;
+      width: 160px;
+    }
     .footer {
       margin-top: 20px;
       padding: 15px;
@@ -44,6 +48,14 @@ NR7 0WZ (Norwich, UK)<br>
 <small>Lat: 52.627 | Lon: 1.331</small>
 </div>
 
+<!-- ✅ PV INPUT SECTION -->
+<div class="card">
+  <b>📥 Add Today’s PV Data</b><br><br>
+  <input id="pvInput" type="number" placeholder="Enter PV kWh">
+  <br><br>
+  <button onclick="savePV()">Save PV</button>
+</div>
+
 <button onclick="runAI()">Plan Next 3 Days</button>
 
 <p id="loading"></p>
@@ -62,22 +74,44 @@ NR7 0WZ (Norwich, UK)<br>
 
 //
 // -----------------------------
-// HISTORIC PV DATA
+// PV STORAGE
 // -----------------------------
 //
-const pvHistory = [
-  { date: "2026-04-01", kwh: 17.3 },
-  { date: "2026-04-02", kwh: 23.7 },
-  { date: "2026-04-03", kwh: 9.3 },
-  { date: "2026-04-04", kwh: 26.7 },
-  { date: "2026-04-05", kwh: 26.0 }
-];
+function getPVHistory() {
+  let data = localStorage.getItem("pvHistory");
+  return data ? JSON.parse(data) : [];
+}
+
+function savePV() {
+  let pv = parseFloat(document.getElementById("pvInput").value);
+  if (isNaN(pv)) return alert("Enter a valid number");
+
+  let history = getPVHistory();
+
+  history.push({
+    date: new Date().toISOString().split("T")[0],
+    kwh: pv
+  });
+
+  localStorage.setItem("pvHistory", JSON.stringify(history));
+
+  alert("PV saved!");
+}
 
 //
-// Calibration factor (derived from your data)
-// ~20.6 average PV / ~0.5 avg score ≈ 41
+// Dynamic calibration factor
 //
-const calibrationFactor = 41;
+function getDynamicCalibrationFactor() {
+  let history = getPVHistory();
+
+  if (history.length === 0) return 52; // fallback (~26 / 0.5)
+
+  let avgPV = history.reduce((a,b)=>a + b.kwh, 0) / history.length;
+
+  let baselineScore = 0.5;
+
+  return avgPV / baselineScore;
+}
 
 //
 // -----------------------------
@@ -174,15 +208,15 @@ function maxSunElevationForDay(date, lat, lon) {
 // -----------------------------
 function weatherSummary(avgCloud, avgRad, avgTemp) {
   if (avgCloud < 20 && avgRad > 600) {
-    return "☀️ Clear skies with strong solar radiation. Excellent generation expected.";
+    return "☀️ Clear skies with strong solar radiation.";
   }
   if (avgCloud < 40 && avgRad > 400) {
-    return "🌤️ Mostly sunny with some cloud. Good solar generation.";
+    return "🌤️ Mostly sunny with some cloud.";
   }
   if (avgCloud < 70) {
-    return "⛅ Mixed cloud cover. Moderate solar generation with variability.";
+    return "⛅ Mixed cloud cover.";
   }
-  return "☁️ Heavy cloud cover. Low solar generation expected.";
+  return "☁️ Heavy cloud cover.";
 }
 
 //
@@ -192,14 +226,14 @@ function weatherSummary(avgCloud, avgRad, avgTemp) {
 function strategy(scores) {
   let avg = scores.reduce((a,b)=>a+b,0)/scores.length;
 
-  if (avg > 0.8) return "☀️ Strong solar period → Lower SOC to maximise export";
-  if (avg > 0.6) return "⚖️ Mixed conditions → Balanced SOC strategy";
-  return "⚠️ Weak solar → Higher SOC to avoid grid import";
+  if (avg > 0.8) return "☀️ Strong solar → Lower SOC";
+  if (avg > 0.6) return "⚖️ Mixed → Balanced SOC";
+  return "⚠️ Weak solar → Higher SOC";
 }
 
 //
 // -----------------------------
-// Main function
+// MAIN
 // -----------------------------
 async function runAI() {
   try {
@@ -207,7 +241,7 @@ async function runAI() {
     document.getElementById("loading").innerText = "Loading forecast...";
 
     let res = await fetch(
-      "https://api.open-meteo.com/v1/forecast?latitude=52.627&longitude=1.331&hourly=cloudcover,temperature_2m,shortwave_radiation,precipitation,weathercode&forecast_days=3&timezone=auto"
+      "https://api.open-meteo.com/v1/forecast?latitude=52.627&longitude=1.331&hourly=cloudcover,temperature_2m,shortwave_radiation&forecast_days=3&timezone=auto"
     );
 
     let data = await res.json();
@@ -216,6 +250,8 @@ async function runAI() {
     let cloud = data.hourly.cloudcover;
     let radiation = data.hourly.shortwave_radiation;
     let temp = data.hourly.temperature_2m;
+
+    let calibrationFactor = getDynamicCalibrationFactor();
 
     let output = "";
     let dayScores = [];
@@ -254,20 +290,20 @@ async function runAI() {
       let avgScore = scores.reduce((a,b)=>a+b,0) / scores.length;
       if (isNaN(avgScore)) avgScore = 0;
 
-      let avgCloud = cloudVals.length ? cloudVals.reduce((a,b)=>a+b,0) / cloudVals.length : 0;
-      let avgRad = radVals.length ? radVals.reduce((a,b)=>a+b,0) / radVals.length : 0;
-      let avgTemp = tempVals.length ? tempVals.reduce((a,b)=>a+b,0) / tempVals.length : 0;
-      let avgElevation = elevations.length ? elevations.reduce((a,b)=>a+b,0) / elevations.length : 0;
+      let avgCloud = cloudVals.reduce((a,b)=>a+b,0) / cloudVals.length;
+      let avgRad = radVals.reduce((a,b)=>a+b,0) / radVals.length;
+      let avgTemp = tempVals.reduce((a,b)=>a+b,0) / tempVals.length;
+      let avgElevation = elevations.reduce((a,b)=>a+b,0) / elevations.length;
 
       let dateObj = new Date(times[dayStart]);
       let maxElevation = maxSunElevationForDay(dateObj, 52.627, 1.331);
 
-      dayScores.push(avgScore);
-
       let percent = (avgScore * 100).toFixed(0);
 
-      // ✅ Estimated PV using calibration factor
+      // ✅ Dynamic PV prediction
       let predictedPV = (avgScore * calibrationFactor).toFixed(1);
+
+      dayScores.push(avgScore);
 
       output += `
         <div class="card">
@@ -277,23 +313,18 @@ async function runAI() {
             "Day +2"
           }</b><br><br>
 
-          🌤️ Weather Summary: ${weatherSummary(avgCloud, avgRad, avgTemp)}<br><br>
+          🌤️ ${weatherSummary(avgCloud, avgRad, avgTemp)}<br><br>
 
           ⚡ Solar Score: ${percent}%<br>
-          🔋 Estimated PV Generation: ${predictedPV} kWh<br><br>
+          🔋 Estimated PV: ${predictedPV} kWh<br><br>
 
-          ☀️ Avg Sun Elevation: ${avgElevation.toFixed(1)}°<br>
-          📈 Max Sun Elevation (seasonal): ${maxElevation.toFixed(1)}°<br><br>
-
-          ☁️ Cloud impact: ${(1 - avgCloud / 100).toFixed(2)}<br>
-          ☀️ Radiation impact: ${(avgRad / 1000).toFixed(2)}<br>
-          🌡️ Temperature: ${avgTemp.toFixed(1)}°C<br><br>
+          ☀️ Sun Elevation: ${avgElevation.toFixed(1)}°<br>
+          📈 Max Elevation: ${maxElevation.toFixed(1)}°<br><br>
 
           🔋 Recommended SOC:
           <span style="color:${socColor(recommendedSOC(avgScore, maxElevation))}; font-weight:bold;">
             ${recommendedSOC(avgScore, maxElevation)}
-          </span>
-          <br><br>
+          </span><br><br>
 
           🧠 ${explain(avgScore)}
         </div>
@@ -302,7 +333,7 @@ async function runAI() {
 
     output += `
       <div class="card">
-        <b>📊 3-Day Strategy</b><br><br>
+        <b>📊 Strategy</b><br><br>
         ${strategy(dayScores)}
       </div>
     `;
