@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Solar SOC AI Pro - 3 Day</title>
+  <title>Solar SOC AI Pro (Hourly)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body {
@@ -36,14 +36,14 @@
 
 <body>
 
-<h2>⚡ Solar SOC AI Pro (3-Day)</h2>
-  
+<h2>⚡ Solar SOC AI Pro (Hourly)</h2>
+
 <div class="card">
-  📍 <b>Location:</b><br>
-  NR7 0WZ (Norwich, UK)<br>
-  <small>Lat: 52.627 | Lon: 1.331</small>
+📍 <b>Location:</b><br>
+NR7 0WZ (Norwich, UK)<br>
+<small>Lat: 52.627 | Lon: 1.331</small>
 </div>
-  
+
 <button onclick="runAI()">Plan Next 3 Days</button>
 
 <div id="output"></div>
@@ -52,46 +52,12 @@
   <b>📊 What Solar Score Means:</b><br><br>
 
   🔥 <b>85–100%</b> → Excellent solar<br>
-  • Clear skies, strong generation<br>
-  • Battery likely fills early<br>
-  • High export potential<br><br>
-
   👍 <b>65–85%</b> → Good solar<br>
-  • Partial cloud but solid production<br>
-  • Battery usually fills<br>
-  • Some export expected<br><br>
-
   ⚖️ <b>45–65%</b> → Moderate solar<br>
-  • Mixed or overcast conditions<br>
-  • Battery may not fully charge<br><br>
-
   ⚠️ <b>&lt;45%</b> → Low solar<br>
-  • Weak generation (cloud/rain)<br>
-  • Prioritise higher SOC to avoid grid import<br>
 </div>
 
 <script>
-function weatherText(code) {
-  if (code === 0) return "☀️ Clear";
-  if ([1,2].includes(code)) return "🌤️ Partly cloudy";
-  if (code === 3) return "☁️ Overcast";
-  if ([51,61,63].includes(code)) return "🌧️ Rain";
-  return "🌥️ Mixed";
-}
-
-function calcSolarScore(code, temp) {
-  let score = 0;
-
-  if (code === 0) score = 1.0;
-  else if ([1,2].includes(code)) score = 0.8;
-  else if (code === 3) score = 0.6;
-  else score = 0.3;
-
-  if (temp >= 10 && temp <= 20) score += 0.05;
-
-  return Math.min(1, score);
-}
-
 function soc(score) {
   if (score > 0.85) return "65%";
   if (score > 0.65) return "75%";
@@ -107,47 +73,75 @@ function strategy(scores) {
   return "⚠️ Weak solar period → Keep SOC higher to avoid grid import";
 }
 
+// Hourly solar scoring model
+function hourlySolarScore(cloud, radiation) {
+  let cloudFactor = 1 - (cloud / 100);
+  let radiationFactor = radiation / 1000;
+
+  let score = (cloudFactor * 0.6) + (radiationFactor * 0.4);
+  return Math.min(1, Math.max(0, score));
+}
+
 async function runAI() {
   try {
-let res = await fetch("https://api.open-meteo.com/v1/forecast?latitude=52.627&longitude=1.331&daily=weathercode,temperature_2m_max&timezone=auto");
+    let res = await fetch(
+      "https://api.open-meteo.com/v1/forecast?latitude=52.627&longitude=1.331&hourly=cloudcover,temperature_2m,shortwave_radiation&forecast_days=3&timezone=auto"
+    );
+
     let data = await res.json();
 
-    let html = "";
-    let scores = [];
+    let times = data.hourly.time;
+    let cloud = data.hourly.cloudcover;
+    let radiation = data.hourly.shortwave_radiation;
+    let temp = data.hourly.temperature_2m;
 
-    for (let i = 0; i < 3; i++) {
-      let code = data.daily.weathercode[i];
-      let temp = data.daily.temperature_2m_max[i];
+    let output = "";
+    let dayScores = [];
 
-      let score = calcSolarScore(code, temp);
-      scores.push(score);
+    for (let d = 0; d < 3; d++) {
 
-      let scorePercent = (score * 100).toFixed(0);
+      let dayStart = d * 24;
+      let scores = [];
 
-      html += `
+      for (let h = dayStart; h < dayStart + 24; h++) {
+
+        let hour = new Date(times[h]).getHours();
+
+        // Focus on midday solar window
+        if (hour >= 10 && hour <= 15) {
+          let score = hourlySolarScore(cloud[h], radiation[h]);
+          scores.push(score);
+        }
+      }
+
+      let avgScore = scores.reduce((a,b)=>a+b,0) / scores.length;
+      if (isNaN(avgScore)) avgScore = 0;
+
+      dayScores.push(avgScore);
+
+      let percent = (avgScore * 100).toFixed(0);
+
+      output += `
         <div class="card">
-          <b>Day ${i === 0 ? "Today" : i === 1 ? "Tomorrow" : "Day +2"}</b><br><br>
+          <b>Day ${d === 0 ? "Today" : d === 1 ? "Tomorrow" : "Day +2"}</b><br><br>
 
-          🌤️ Weather: ${weatherText(code)}<br>
-          🌡️ Temp: ${temp}°C<br><br>
-
-          ⚡ Solar Score: ${scorePercent}%<br>
-          🔋 SOC: ${soc(score)}<br>
+          ⚡ Solar Score: ${percent}%<br>
+          🔋 Recommended SOC: ${soc(avgScore)}<br>
         </div>
       `;
     }
 
-    html += `
+    output += `
       <div class="card">
         <b>📊 3-Day Strategy</b><br><br>
-        ${strategy(scores)}
+        ${strategy(dayScores)}
       </div>
     `;
 
-    document.getElementById("output").innerHTML = html;
+    document.getElementById("output").innerHTML = output;
 
   } catch (err) {
-    document.getElementById("output").innerHTML = "Error loading data";
+    document.getElementById("output").innerHTML = "Error loading weather data";
   }
 }
 </script>
