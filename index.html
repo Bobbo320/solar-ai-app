@@ -61,28 +61,29 @@ NR7 0WZ (Norwich, UK)<br>
 <script>
 
 // -----------------------------
-// SOC Logic (Season Aware)
+// SOC Logic (Single Value + Season Aware)
 // -----------------------------
 function recommendedSOC(avgScore, maxElevation) {
 
-  // Seasonal factor from max sun elevation
   let seasonalFactor = maxElevation / 60;
   seasonalFactor = Math.min(1, Math.max(0, seasonalFactor));
 
-  // Blend weather + season
   let adjustedScore = (avgScore * 0.7) + (seasonalFactor * 0.3);
 
-  if (adjustedScore > 0.75) return "60–70%";
-  if (adjustedScore > 0.55) return "70–80%";
-  if (adjustedScore > 0.35) return "80–90%";
-  return "90–100%";
+  // Convert to single SOC percentage
+  let soc = 100 - (adjustedScore * 50);
+
+  // Clamp realistic inverter range
+  soc = Math.min(95, Math.max(20, soc));
+
+  return Math.round(soc) + "%";
 }
 
 function explain(score) {
   if (score > 0.85) return "Excellent solar conditions. Strong export likely.";
   if (score > 0.65) return "Good solar with some cloud. Battery should charge well.";
   if (score > 0.45) return "Moderate solar. Partial battery charge expected.";
-  return "Low solar. Prioritise higher SOC to avoid import.";
+  return "Low solar. Prioritise higher SOC to avoid grid import.";
 }
 
 // -----------------------------
@@ -222,7 +223,6 @@ async function runAI() {
       let avgTemp = tempVals.length ? tempVals.reduce((a,b)=>a+b,0) / tempVals.length : 0;
       let avgElevation = elevations.length ? elevations.reduce((a,b)=>a+b,0) / elevations.length : 0;
 
-      // Seasonal max elevation
       let dateObj = new Date(times[dayStart]);
       let maxElevation = maxSunElevationForDay(dateObj, 52.627, 1.331);
 
