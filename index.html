@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Solar SOC AI Pro (Hourly + Weather)</title>
+  <title>Solar SOC AI Pro (Detailed)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body {
@@ -36,7 +36,7 @@
 
 <body>
 
-<h2>⚡ Solar SOC AI Pro (Hourly)</h2>
+<h2>⚡ Solar SOC AI Pro (Detailed)</h2>
 
 <div class="card">
 📍 <b>Location:</b><br>
@@ -49,12 +49,12 @@ NR7 0WZ (Norwich, UK)<br>
 <div id="output"></div>
 
 <div class="footer">
-  <b>📊 What Solar Score Means:</b><br><br>
+  <b>📊 Solar Score Meaning:</b><br><br>
 
-  🔥 <b>85–100%</b> → Excellent solar<br>
-  👍 <b>65–85%</b> → Good solar<br>
-  ⚖️ <b>45–65%</b> → Moderate solar<br>
-  ⚠️ <b>&lt;45%</b> → Low solar<br>
+  🔥 85–100% → Excellent<br>
+  👍 65–85% → Good<br>
+  ⚖️ 45–65% → Moderate<br>
+  ⚠️ &lt;45% → Low solar<br>
 </div>
 
 <script>
@@ -65,29 +65,20 @@ function soc(score) {
   return "95%";
 }
 
-function strategy(scores) {
-  let avg = scores.reduce((a,b)=>a+b,0)/scores.length;
-
-  if (avg > 0.8) return "☀️ Strong solar period → Keep SOC lower to maximise export";
-  if (avg > 0.6) return "⚖️ Mixed conditions → Balance SOC across days";
-  return "⚠️ Weak solar period → Keep SOC higher to avoid grid import";
+function explain(score) {
+  if (score > 0.85) return "Excellent solar conditions. Battery will likely fill early with strong export.";
+  if (score > 0.65) return "Good solar with some cloud. Expect solid battery charging.";
+  if (score > 0.45) return "Moderate solar. Battery may not fully charge.";
+  return "Low solar. Prioritise higher SOC to avoid grid import.";
 }
 
-// Hourly solar scoring
+// Hourly solar score
 function hourlySolarScore(cloud, radiation) {
   let cloudFactor = 1 - (cloud / 100);
   let radiationFactor = radiation / 1000;
 
   let score = (cloudFactor * 0.6) + (radiationFactor * 0.4);
   return Math.min(1, Math.max(0, score));
-}
-
-// Weather classification from cloud cover
-function weatherFromCloud(avgCloud) {
-  if (avgCloud < 20) return "☀️ Clear";
-  if (avgCloud < 40) return "🌤️ Partly cloudy";
-  if (avgCloud < 70) return "☁️ Overcast";
-  return "🌧️ Cloudy";
 }
 
 async function runAI() {
@@ -111,26 +102,28 @@ async function runAI() {
       let dayStart = d * 24;
 
       let scores = [];
-      let temps = [];
-      let clouds = [];
+      let cloudVals = [];
+      let radVals = [];
+      let tempVals = [];
 
       for (let h = dayStart; h < dayStart + 24; h++) {
 
         let hour = new Date(times[h]).getHours();
 
         if (hour >= 10 && hour <= 15) {
-          let score = hourlySolarScore(cloud[h], radiation[h]);
-          scores.push(score);
-          clouds.push(cloud[h]);
-          temps.push(temp[h]);
+          scores.push(hourlySolarScore(cloud[h], radiation[h]));
+          cloudVals.push(cloud[h]);
+          radVals.push(radiation[h]);
+          tempVals.push(temp[h]);
         }
       }
 
       let avgScore = scores.reduce((a,b)=>a+b,0) / scores.length;
       if (isNaN(avgScore)) avgScore = 0;
 
-      let avgCloud = clouds.reduce((a,b)=>a+b,0) / clouds.length;
-      let avgTemp = temps.reduce((a,b)=>a+b,0) / temps.length;
+      let avgCloud = cloudVals.reduce((a,b)=>a+b,0) / cloudVals.length;
+      let avgRad = radVals.reduce((a,b)=>a+b,0) / radVals.length;
+      let avgTemp = tempVals.reduce((a,b)=>a+b,0) / tempVals.length;
 
       dayScores.push(avgScore);
 
@@ -140,19 +133,25 @@ async function runAI() {
         <div class="card">
           <b>Day ${d === 0 ? "Today" : d === 1 ? "Tomorrow" : "Day +2"}</b><br><br>
 
-          🌤️ Weather: ${weatherFromCloud(avgCloud)}<br>
-          🌡️ Avg Temp (midday): ${avgTemp.toFixed(1)}°C<br><br>
+          ⚡ <b>Solar Score:</b> ${percent}%<br><br>
 
-          ⚡ Solar Score: ${percent}%<br>
-          🔋 Recommended SOC: ${soc(avgScore)}<br>
+          ☁️ Cloud impact: ${(1 - avgCloud / 100).toFixed(2)}<br>
+          ☀️ Radiation impact: ${(avgRad / 1000).toFixed(2)}<br>
+          🌡️ Temperature: ${avgTemp.toFixed(1)}°C<br><br>
+
+          🔋 Recommended SOC: ${soc(avgScore)}<br><br>
+
+          🧠 ${explain(avgScore)}
         </div>
       `;
     }
 
+    let avg = dayScores.reduce((a,b)=>a+b,0)/dayScores.length;
+
     output += `
       <div class="card">
         <b>📊 3-Day Strategy</b><br><br>
-        ${strategy(dayScores)}
+        ${avg > 0.7 ? "☀️ Favour export — lower SOC" : "⚖️ Balance SOC across days"}
       </div>
     `;
 
