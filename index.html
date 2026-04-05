@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Solar SOC AI Pro (Full)</title>
+  <title>Solar SOC AI Pro (Season-Aware)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body {
@@ -36,7 +36,7 @@
 
 <body>
 
-<h2>⚡ Solar SOC AI Pro</h2>
+<h2>⚡ Solar SOC AI Pro (Season-Aware)</h2>
 
 <div class="card">
 📍 <b>Location:</b><br>
@@ -71,6 +71,20 @@ function explain(score) {
   return "Low solar. Prioritise higher SOC to avoid import.";
 }
 
+// Seasonal factor (day-of-year based)
+function seasonalFactor() {
+  let now = new Date();
+  let start = new Date(now.getFullYear(), 0, 0);
+  let diff = now - start;
+  let oneDay = 1000 * 60 * 60 * 24;
+  let dayOfYear = Math.floor(diff / oneDay);
+
+  let angle = (2 * Math.PI * (dayOfYear - 172)) / 365;
+
+  // Range ~0.6 (winter) to 1.0 (summer)
+  return 0.8 + 0.2 * Math.cos(angle);
+}
+
 // Solar scoring model
 function hourlySolarScore(cloud, radiation) {
   let cloudFactor = 1 - (cloud / 100);
@@ -80,26 +94,21 @@ function hourlySolarScore(cloud, radiation) {
   return Math.min(1, Math.max(0, score));
 }
 
-// Weather summary logic
+// Weather summary
 function weatherSummary(avgCloud, avgRad, avgTemp) {
-
   if (avgCloud < 20 && avgRad > 600) {
     return "☀️ Clear skies with strong solar radiation. Excellent generation expected.";
   }
-
   if (avgCloud < 40 && avgRad > 400) {
     return "🌤️ Mostly sunny with some cloud. Good solar generation.";
   }
-
   if (avgCloud < 70) {
     return "⛅ Mixed cloud cover. Moderate solar generation with variability.";
   }
-
   if (avgCloud >= 70) {
     return "☁️ Heavy cloud cover. Low solar generation expected.";
   }
-
-  return "🌥️ Variable conditions. Uncertain solar output.";
+  return "🌥️ Variable conditions.";
 }
 
 function strategy(scores) {
@@ -150,6 +159,11 @@ async function runAI() {
       let avgScore = scores.reduce((a,b)=>a+b,0) / scores.length;
       if (isNaN(avgScore)) avgScore = 0;
 
+      // Apply seasonal adjustment
+      let season = seasonalFactor();
+      avgScore = avgScore * season;
+      avgScore = Math.min(1, avgScore);
+
       let avgCloud = cloudVals.reduce((a,b)=>a+b,0) / cloudVals.length;
       let avgRad = radVals.reduce((a,b)=>a+b,0) / radVals.length;
       let avgTemp = tempVals.reduce((a,b)=>a+b,0) / tempVals.length;
@@ -164,7 +178,8 @@ async function runAI() {
 
           🌤️ Weather Summary: ${weatherSummary(avgCloud, avgRad, avgTemp)}<br><br>
 
-          ⚡ Solar Score: ${percent}%<br><br>
+          ⚡ Solar Score: ${percent}%<br>
+          🌍 Seasonal Factor: ${season.toFixed(2)}<br><br>
 
           ☁️ Cloud impact: ${(1 - avgCloud / 100).toFixed(2)}<br>
           ☀️ Radiation impact: ${(avgRad / 1000).toFixed(2)}<br>
@@ -176,8 +191,6 @@ async function runAI() {
         </div>
       `;
     }
-
-    let avg = dayScores.reduce((a,b)=>a+b,0)/dayScores.length;
 
     output += `
       <div class="card">
