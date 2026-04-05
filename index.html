@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Solar SOC AI Pro</title>
+  <title>Solar SOC AI Pro - 3 Day</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body {
@@ -17,49 +17,58 @@
       font-size: 16px;
     }
     .card {
-      margin-top: 20px;
+      margin-top: 15px;
       padding: 15px;
       background: #1e293b;
       border-radius: 10px;
+      text-align: left;
     }
   </style>
 </head>
 
 <body>
 
-<h2>⚡ Solar SOC AI Pro</h2>
+<h2>⚡ Solar SOC AI Pro (3-Day)</h2>
 
-<button onclick="runAI()">Analyse Tomorrow</button>
+<button onclick="runAI()">Plan Next 3 Days</button>
 
-<div class="card" id="output">Press the button</div>
+<div id="output"></div>
 
 <script>
 function weatherText(code) {
-  if (code === 0) return "☀️ Clear sky";
+  if (code === 0) return "☀️ Clear";
   if ([1,2].includes(code)) return "🌤️ Partly cloudy";
   if (code === 3) return "☁️ Overcast";
   if ([51,61,63].includes(code)) return "🌧️ Rain";
   return "🌥️ Mixed";
 }
 
-function clippingRisk(score) {
-  if (score > 85) return "🔥 HIGH";
-  if (score > 65) return "⚠️ MEDIUM";
-  return "✅ LOW";
+function calcSolarScore(code, temp) {
+  let score = 0;
+
+  if (code === 0) score = 1.0;
+  else if ([1,2].includes(code)) score = 0.8;
+  else if (code === 3) score = 0.6;
+  else score = 0.3;
+
+  if (temp >= 10 && temp <= 20) score += 0.05;
+
+  return Math.min(1, score);
 }
 
-function batteryPrediction(score) {
-  if (score > 85) return "Battery likely full by late morning";
-  if (score > 65) return "Battery likely full early afternoon";
-  if (score > 45) return "Battery may not fully charge";
-  return "Battery unlikely to fill";
-}
-
-function socRecommendation(score) {
-  if (score > 85) return "60–70%";
-  if (score > 65) return "70–80%";
-  if (score > 45) return "80–90%";
+function soc(score) {
+  if (score > 0.85) return "60–70%";
+  if (score > 0.65) return "70–80%";
+  if (score > 0.45) return "80–90%";
   return "90–100%";
+}
+
+function strategy(scores) {
+  let avg = scores.reduce((a,b)=>a+b,0)/scores.length;
+
+  if (avg > 0.8) return "☀️ Strong solar period → Keep SOC lower to maximise export";
+  if (avg > 0.6) return "⚖️ Mixed conditions → Balance SOC across days";
+  return "⚠️ Weak solar period → Keep SOC higher to avoid grid import";
 }
 
 async function runAI() {
@@ -67,38 +76,39 @@ async function runAI() {
     let res = await fetch("https://api.open-meteo.com/v1/forecast?latitude=52.63&longitude=1.30&daily=weathercode,temperature_2m_max&timezone=auto");
     let data = await res.json();
 
-    let code = data.daily.weathercode[1];
-    let temp = data.daily.temperature_2m_max[1];
+    let html = "";
+    let scores = [];
 
-    let solarScore = 0;
+    for (let i = 0; i < 3; i++) {
+      let code = data.daily.weathercode[i];
+      let temp = data.daily.temperature_2m_max[i];
 
-    if (code === 0) solarScore = 1.0;
-    else if ([1,2].includes(code)) solarScore = 0.8;
-    else if (code === 3) solarScore = 0.6;
-    else solarScore = 0.3;
+      let score = calcSolarScore(code, temp);
+      scores.push(score);
 
-    if (temp >= 10 && temp <= 20) solarScore += 0.05;
+      let scorePercent = (score * 100).toFixed(0);
 
-    solarScore = Math.min(1, solarScore);
+      html += `
+        <div class="card">
+          <b>Day ${i === 0 ? "Today" : i === 1 ? "Tomorrow" : "Day +2"}</b><br><br>
 
-    let scorePercent = (solarScore * 100).toFixed(0);
+          🌤️ Weather: ${weatherText(code)}<br>
+          🌡️ Temp: ${temp}°C<br><br>
 
-    document.getElementById("output").innerHTML = `
-      🌤️ <b>Tomorrow:</b><br>
-      ${weatherText(code)} | ${temp}°C<br><br>
+          ⚡ Solar Score: ${scorePercent}%<br>
+          🔋 SOC: ${soc(score)}<br>
+        </div>
+      `;
+    }
 
-      ⚡ <b>Solar Score:</b> ${scorePercent}%<br><br>
-
-      🔋 <b>Recommended SOC:</b> ${socRecommendation(scorePercent)}<br><br>
-
-      🔄 <b>Battery:</b><br>
-      ${batteryPrediction(scorePercent)}<br><br>
-
-      ⚠️ <b>Clipping Risk:</b> ${clippingRisk(scorePercent)}<br><br>
-
-      💡 <b>Strategy:</b><br>
-      Start lower SOC to maximise export if risk is high
+    html += `
+      <div class="card">
+        <b>📊 3-Day Strategy</b><br><br>
+        ${strategy(scores)}
+      </div>
     `;
+
+    document.getElementById("output").innerHTML = html;
 
   } catch (err) {
     document.getElementById("output").innerHTML = "Error loading data";
