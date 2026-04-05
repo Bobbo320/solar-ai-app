@@ -31,28 +31,6 @@
       text-align: left;
       font-size: 14px;
     }
-
-    /* 🔴 Pulse animation for tomorrow SOC */
-    .pulse-red {
-      color: red;
-      font-weight: bold;
-      animation: pulse 1.2s infinite;
-    }
-
-    @keyframes pulse {
-      0% {
-        opacity: 1;
-        transform: scale(1);
-      }
-      50% {
-        opacity: 0.6;
-        transform: scale(1.08);
-      }
-      100% {
-        opacity: 1;
-        transform: scale(1);
-      }
-    }
   </style>
 </head>
 
@@ -282,7 +260,10 @@ async function runAI() {
           🌡️ Temperature: ${avgTemp.toFixed(1)}°C<br><br>
 
           🔋 Recommended SOC:
-          <span class="${isTomorrow ? 'pulse-red' : ''}" style="color:${socColor(socValue)};">
+          <span style="
+            color:${isTomorrow ? 'red' : socColor(socValue)};
+            font-weight:bold;
+          ">
             ${socValue}
           </span>
           <br><br>
