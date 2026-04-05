@@ -103,7 +103,7 @@ function strategy(scores) {
 
 async function runAI() {
   try {
-    let res = await fetch("https://api.open-meteo.com/v1/forecast?latitude=52.63&longitude=1.30&daily=weathercode,temperature_2m_max&timezone=auto");
+let res = await fetch("https://api.open-meteo.com/v1/forecast?latitude=52.627&longitude=1.331&daily=weathercode,temperature_2m_max&timezone=auto");
     let data = await res.json();
 
     let html = "";
