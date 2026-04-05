@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Solar SOC AI Pro (Hourly)</title>
+  <title>Solar SOC AI Pro (Hourly + Weather)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body {
@@ -73,13 +73,21 @@ function strategy(scores) {
   return "⚠️ Weak solar period → Keep SOC higher to avoid grid import";
 }
 
-// Hourly solar scoring model
+// Hourly solar scoring
 function hourlySolarScore(cloud, radiation) {
   let cloudFactor = 1 - (cloud / 100);
   let radiationFactor = radiation / 1000;
 
   let score = (cloudFactor * 0.6) + (radiationFactor * 0.4);
   return Math.min(1, Math.max(0, score));
+}
+
+// Weather classification from cloud cover
+function weatherFromCloud(avgCloud) {
+  if (avgCloud < 20) return "☀️ Clear";
+  if (avgCloud < 40) return "🌤️ Partly cloudy";
+  if (avgCloud < 70) return "☁️ Overcast";
+  return "🌧️ Cloudy";
 }
 
 async function runAI() {
@@ -101,21 +109,28 @@ async function runAI() {
     for (let d = 0; d < 3; d++) {
 
       let dayStart = d * 24;
+
       let scores = [];
+      let temps = [];
+      let clouds = [];
 
       for (let h = dayStart; h < dayStart + 24; h++) {
 
         let hour = new Date(times[h]).getHours();
 
-        // Focus on midday solar window
         if (hour >= 10 && hour <= 15) {
           let score = hourlySolarScore(cloud[h], radiation[h]);
           scores.push(score);
+          clouds.push(cloud[h]);
+          temps.push(temp[h]);
         }
       }
 
       let avgScore = scores.reduce((a,b)=>a+b,0) / scores.length;
       if (isNaN(avgScore)) avgScore = 0;
+
+      let avgCloud = clouds.reduce((a,b)=>a+b,0) / clouds.length;
+      let avgTemp = temps.reduce((a,b)=>a+b,0) / temps.length;
 
       dayScores.push(avgScore);
 
@@ -124,6 +139,9 @@ async function runAI() {
       output += `
         <div class="card">
           <b>Day ${d === 0 ? "Today" : d === 1 ? "Tomorrow" : "Day +2"}</b><br><br>
+
+          🌤️ Weather: ${weatherFromCloud(avgCloud)}<br>
+          🌡️ Avg Temp (midday): ${avgTemp.toFixed(1)}°C<br><br>
 
           ⚡ Solar Score: ${percent}%<br>
           🔋 Recommended SOC: ${soc(avgScore)}<br>
@@ -141,7 +159,7 @@ async function runAI() {
     document.getElementById("output").innerHTML = output;
 
   } catch (err) {
-    document.getElementById("output").innerHTML = "Error loading weather data";
+    document.getElementById("output").innerHTML = "Error loading data";
   }
 }
 </script>
