@@ -23,6 +23,14 @@
       border-radius: 10px;
       text-align: left;
     }
+    .footer {
+      margin-top: 20px;
+      padding: 15px;
+      background: #020617;
+      border-radius: 10px;
+      text-align: left;
+      font-size: 14px;
+    }
   </style>
 </head>
 
@@ -33,6 +41,28 @@
 <button onclick="runAI()">Plan Next 3 Days</button>
 
 <div id="output"></div>
+
+<div class="footer">
+  <b>📊 What Solar Score Means:</b><br><br>
+
+  🔥 <b>85–100%</b> → Excellent solar<br>
+  • Clear skies, strong generation<br>
+  • Battery likely fills early<br>
+  • High export potential<br><br>
+
+  👍 <b>65–85%</b> → Good solar<br>
+  • Partial cloud but solid production<br>
+  • Battery usually fills<br>
+  • Some export expected<br><br>
+
+  ⚖️ <b>45–65%</b> → Moderate solar<br>
+  • Mixed or overcast conditions<br>
+  • Battery may not fully charge<br><br>
+
+  ⚠️ <b>&lt;45%</b> → Low solar<br>
+  • Weak generation (cloud/rain)<br>
+  • Prioritise higher SOC to avoid grid import<br>
+</div>
 
 <script>
 function weatherText(code) {
