@@ -45,12 +45,12 @@
     }
 
     .tomorrow-soc {
-      font-size: 30px;
+      font-size: 32px;
       font-weight: bold;
       color: red;
       background: #220000;
-      padding: 10px;
-      border-radius: 8px;
+      padding: 12px;
+      border-radius: 10px;
       display: inline-block;
     }
   </style>
@@ -72,8 +72,8 @@
   <p id="loading"></p>
 
   <div class="card">
-    <h3>🌤️ 3-Day Weather</h3>
-    <div id="weatherOutput">Loading...</div>
+    <h3>🌤️ Weather</h3>
+    <div id="weatherOutput"></div>
   </div>
 
   <div id="output"></div>
@@ -84,16 +84,25 @@
 <div id="settings" class="tab">
 
   <div class="card">
-    <h3>Settings</h3>
+    <h3>System Settings</h3>
 
     <input id="postcode" placeholder="Postcode"><br>
     <input id="inverter" placeholder="Inverter kW"><br>
     <input id="battery" placeholder="Battery kWh"><br>
     <input id="pvSize" placeholder="PV kWp"><br>
-    <input id="direction" placeholder="Direction (degrees)"><br>
+    <input id="direction" placeholder="Panel Direction (degrees)"><br>
     <input id="elevation" placeholder="Elevation (m)"><br>
 
     <button onclick="saveSettings()">Save Settings</button>
+  </div>
+
+  <div class="card">
+    <h3>Manual PV Input</h3>
+
+    <input type="date" id="pvDate"><br>
+    <input type="number" id="pvKwh" placeholder="kWh"><br>
+
+    <button onclick="addPV()">Add PV</button>
   </div>
 
 </div>
@@ -157,38 +166,114 @@ function getHistory(){
   return JSON.parse(localStorage.getItem("pvHistory")) || [];
 }
 
+function saveHistory(h){
+  localStorage.setItem("pvHistory", JSON.stringify(h));
+}
+
+function addPV(){
+  let date = document.getElementById("pvDate").value;
+  let kwh = parseFloat(document.getElementById("pvKwh").value);
+
+  if(!date || isNaN(kwh)){
+    alert("Invalid input");
+    return;
+  }
+
+  let h = getHistory();
+  h.push({date, kwh});
+  saveHistory(h);
+
+  alert("Saved");
+  renderHistory();
+  updateCalibration();
+}
+
+// ---------------- CALIBRATION ----------------
+function updateCalibration(){
+
+  let history = getHistory();
+  let monthly = {};
+
+  history.forEach(e=>{
+    let m = new Date(e.date).getMonth();
+    if(!monthly[m]) monthly[m]=[];
+    monthly[m].push(e.kwh);
+  });
+
+  let calibration = {};
+
+  Object.keys(monthly).forEach(m=>{
+    let arr = monthly[m];
+    let avg = arr.reduce((a,b)=>a+b,0)/arr.length;
+    calibration[m] = avg / 20;
+  });
+
+  localStorage.setItem("calibration", JSON.stringify(calibration));
+}
+
 function getCalibration(month){
   let c = JSON.parse(localStorage.getItem("calibration")) || {};
   return c[month] || 1;
 }
 
+// ---------------- SOLAR POSITION ----------------
+function toRad(d){ return d*Math.PI/180; }
+function toDeg(r){ return r*180/Math.PI; }
+
+function solarPosition(date, lat, lon){
+
+  let n = Math.floor((date - new Date(date.getFullYear(),0,0))/86400000);
+
+  let decl = 23.45 * Math.sin(toRad(360*(284+n)/365));
+
+  let hour = date.getHours() + date.getMinutes()/60;
+  let solarTime = hour + (lon/15);
+  let hourAngle = 15*(solarTime-12);
+
+  let elevation = Math.asin(
+    Math.sin(toRad(lat))*Math.sin(toRad(decl)) +
+    Math.cos(toRad(lat))*Math.cos(toRad(decl))*Math.cos(toRad(hourAngle))
+  );
+
+  let azimuth = Math.atan2(
+    Math.sin(toRad(hourAngle)),
+    Math.cos(toRad(hourAngle))*Math.sin(toRad(lat)) -
+    Math.tan(toRad(decl))*Math.cos(toRad(lat))
+  );
+
+  return {
+    elevation: toDeg(elevation),
+    azimuth: (toDeg(azimuth)+180)%360
+  };
+}
+
+function angleEfficiency(sunAz, panelAz){
+
+  let diff = Math.abs(sunAz - panelAz);
+  if(diff>180) diff = 360-diff;
+
+  return Math.max(0, Math.cos(toRad(diff)));
+}
+
 // ---------------- WEATHER ----------------
 async function getWeather(){
-  let res = await fetch(
-    "https://api.open-meteo.com/v1/forecast?latitude=52.627&longitude=1.331&hourly=cloudcover,shortwave_radiation,precipitation&forecast_days=3&timezone=auto"
-  );
+  let res = await fetch("https://api.open-meteo.com/v1/forecast?latitude=52.627&longitude=1.331&hourly=cloudcover,shortwave_radiation,precipitation&forecast_days=3&timezone=auto");
   return await res.json();
 }
 
 function renderWeather(data){
 
-  let cloud = data.hourly.cloudcover;
-  let rad = data.hourly.shortwave_radiation;
-  let precip = data.hourly.precipitation;
-
   let out="";
 
   for(let d=0; d<3; d++){
 
-    let start = d*24;
-
     let c=0,r=0,p=0,sun=0;
 
-    for(let h=start; h<start+24; h++){
-      c+=cloud[h];
-      r+=rad[h];
-      p+=precip[h];
-      if(rad[h]>300) sun++;
+    for(let h=d*24; h<d*24+24; h++){
+      c+=data.hourly.cloudcover[h];
+      r+=data.hourly.shortwave_radiation[h];
+      p+=data.hourly.precipitation[h];
+      if(r>300) sun++;
     }
 
     c/=24; r/=24;
@@ -210,23 +295,32 @@ function predictPV(hourly, dayIndex, settings, cal){
 
   let pvSize = parseFloat(settings.pvSize);
   let inverter = parseFloat(settings.inverter);
+  let lat = 52.627;
+  let lon = 1.331;
 
-  let start = dayIndex * 24;
-  let total = 0;
+  let start = dayIndex*24;
+  let total=0;
 
   for(let h=start; h<start+24; h++){
+
+    let date = new Date(hourly.time[h]);
 
     let cloud = hourly.cloudcover[h];
     let rad = hourly.shortwave_radiation[h];
 
-    let potential = (rad/1000)*pvSize;
+    let sun = solarPosition(date, lat, lon);
+
+    let elevFactor = Math.max(0, Math.sin(toRad(sun.elevation)));
+    let azFactor = angleEfficiency(sun.azimuth, parseFloat(settings.direction));
     let cloudFactor = 1 - (cloud/100);
 
-    let raw = potential * cloudFactor;
+    let potential = (rad/1000)*pvSize;
+
+    let raw = potential * cloudFactor * elevFactor * azFactor;
 
     let clipped = Math.min(raw, inverter);
 
-    total += clipped / 4;
+    total += clipped/4;
   }
 
   return total * cal;
@@ -235,25 +329,18 @@ function predictPV(hourly, dayIndex, settings, cal){
 // ---------------- SOC MODEL ----------------
 function calculateSOC(weather, cal, settings){
 
-  let radFactor = weather.rad/1000;
-  let cloudFactor = 1 - (weather.cloud/100);
-  let sunFactor = weather.sun/12;
+  let score =
+    (weather.rad/1000)*0.5 +
+    (1-weather.cloud/100)*0.3 +
+    (weather.sun/12)*0.2;
 
-  let score = (radFactor*0.5)+(cloudFactor*0.3)+(sunFactor*0.2);
+  score *= cal;
 
-  let calibrated = score * cal;
+  let soc = 80 - (score*60);
 
-  let pv = parseFloat(settings.pvSize);
-  let inverter = parseFloat(settings.inverter);
-
-  let clipping = pv/inverter;
-
-  let soc = 80 - (calibrated*60);
-
-  if(calibrated < 0.4) soc += 10;
+  if(score < 0.4) soc += 10;
   if(weather.sun < 4) soc += 10;
-  if(calibrated > 0.7) soc -= 10;
-  if(clipping > 1.2) soc -= 5;
+  if(score > 0.7) soc -= 10;
 
   return Math.max(20, Math.min(90, Math.round(soc)));
 }
@@ -274,7 +361,7 @@ async function runAI(){
 
   for(let d=0; d<3; d++){
 
-    let start = d*24;
+    let start=d*24;
 
     let c=0,r=0,sun=0;
 
@@ -318,12 +405,46 @@ async function runAI(){
   document.getElementById("loading").innerText="";
 }
 
-// ---------------- INIT ----------------
-window.addEventListener("load",()=>{
-  loadSettings();
-});
+// ---------------- HISTORY UI ----------------
+function renderHistory(){
 
+  let h = getHistory();
+  let el = document.getElementById("historyTable");
+
+  if(!h.length){
+    el.innerHTML="No history";
+    return;
+  }
+
+  let html="<table><tr><th>Date</th><th>kWh</th></tr>";
+
+  h.forEach(d=>{
+    html+=`<tr><td>${d.date}</td><td>${d.kwh}</td></tr>`;
+  });
+
+  html+="</table>";
+  el.innerHTML=html;
+}
+
+function renderCalibration(){
+
+  let c = JSON.parse(localStorage.getItem("calibration")) || {};
+  let el = document.getElementById("calibrationTable");
+
+  let html="<table><tr><th>Month</th><th>Factor</th></tr>";
+
+  Object.keys(c).forEach(m=>{
+    html+=`<tr><td>${m}</td><td>${c[m].toFixed(2)}</td></tr>`;
+  });
+
+  html+="</table>";
+
+  el.innerHTML=html;
+}
+
+// ---------------- TAB SWITCH ----------------
 function showTab(tab){
+
   document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
   document.getElementById(tab).classList.add("active");
 
@@ -337,34 +458,10 @@ function showTab(tab){
   }
 }
 
-function renderHistory(){
-  let h = getHistory();
-  let el = document.getElementById("historyTable");
-
-  if(!h.length){ el.innerHTML="No history"; return; }
-
-  let html="<table><tr><th>Date</th><th>kWh</th></tr>";
-
-  h.forEach(d=>{
-    html+=`<tr><td>${d.date}</td><td>${d.kwh}</td></tr>`;
-  });
-
-  html+="</table>";
-  el.innerHTML=html;
-}
-
-function renderCalibration(){
-  let c = JSON.parse(localStorage.getItem("calibration")) || {};
-  let el = document.getElementById("calibrationTable");
-
-  let html="<table><tr><th>Month</th><th>Factor</th></tr>";
-
-  Object.keys(c).forEach(m=>{
-    html+=`<tr><td>${m}</td><td>${c[m].toFixed(2)}</td></tr>`;
-  });
-
-  html+="</table>";
-  el.innerHTML=html;
+// ---------------- INIT ----------------
+window.onload=function(){
+  loadSettings();
+  updateCalibration();
 }
 
 </script>
