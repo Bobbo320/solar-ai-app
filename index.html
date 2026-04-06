@@ -71,7 +71,7 @@
 
 <!-- MAIN -->
 <div id="main" class="tab active">
-  <div class="card">📍 System Running Locally</div>
+  <div class="card">📍 System Active</div>
 
   <button onclick="runAI()">Plan Next 3 Days</button>
   <button onclick="testSystem()">Test System</button>
@@ -153,9 +153,23 @@ function saveSettings() {
   alert("Saved");
 }
 
-// ---------------- LOAD SETTINGS ----------------
+// ---------------- PREFILL SETTINGS ----------------
 function loadSettingsUI() {
-  let s = JSON.parse(localStorage.getItem("settings")) || {};
+  let s = JSON.parse(localStorage.getItem("settings"));
+
+  if (!s) {
+    s = {
+      postcode: "NR7 0WZ",
+      inverter: "5",
+      battery: "10.64",
+      pvSize: "6.5",
+      direction: "170",
+      elevation: "30"
+    };
+
+    localStorage.setItem("settings", JSON.stringify(s));
+    log("Default settings applied");
+  }
 
   document.getElementById("postcode").value = s.postcode || "";
   document.getElementById("inverter").value = s.inverter || "";
@@ -196,7 +210,7 @@ async function getWeather() {
   return await res.json();
 }
 
-// ---------------- SOC MODEL ----------------
+// ---------------- SOC MODEL (CLIPPING AWARE) ----------------
 function calculateSOC(avgScore, pvSize, inverterSize) {
 
   pvSize = parseFloat(pvSize || 0);
@@ -204,9 +218,7 @@ function calculateSOC(avgScore, pvSize, inverterSize) {
 
   let clippingRatio = pvSize / inverterSize;
 
-  let seasonalFactor = 1; // simplified
-
-  let solarPotential = avgScore * seasonalFactor;
+  let solarPotential = avgScore;
 
   let clippingAdjustment = Math.min(1.5, Math.max(0.5, 1 / clippingRatio));
 
@@ -229,16 +241,8 @@ async function runAI() {
     let data = await getWeather();
     log("Weather loaded");
 
-    if (!data || !data.hourly) {
-      log("Weather missing");
-      return;
-    }
-
     let cloud = data.hourly.cloudcover;
     let rad = data.hourly.shortwave_radiation;
-    let precip = data.hourly.precipitation;
-    let humidity = data.hourly.relativehumidity_2m;
-    let wind = data.hourly.windspeed_10m;
 
     let settings = JSON.parse(localStorage.getItem("settings")) || {};
 
@@ -266,15 +270,13 @@ async function runAI() {
           🌥️ Cloud: ${avgCloud.toFixed(1)}%<br>
           ☀️ Radiation: ${avgRad.toFixed(0)} W/m²<br><br>
 
-          🔋 Recommended SOC: <b>${soc}%</b>
+          🔋 Recommended SOC: <b style="font-size:20px">${soc}%</b>
         </div>
       `;
     }
 
     document.getElementById("output").innerHTML = output;
     document.getElementById("loading").innerText = "";
-
-    log("Render complete");
 
   } catch (err) {
     log("ERROR: " + err.message);
@@ -337,7 +339,7 @@ function renderCalibration() {
   let el = document.getElementById("calibrationTable");
   if (!el) return;
 
-  el.innerHTML = "Calibration stored in localStorage (calibrationMap)";
+  el.innerHTML = "Calibration stored in localStorage";
 }
 
 // ---------------- TEST ----------------
@@ -359,12 +361,14 @@ function showTab(tab) {
 
   if (tab === "history") {
     renderHistory();
+    renderPVHistory();
     renderCalibration();
   }
 }
 
 // ---------------- INIT ----------------
 window.addEventListener("load", () => {
+  loadSettingsUI();
   renderPVHistory();
   renderHistory();
 });
