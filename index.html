@@ -61,6 +61,20 @@ async function getWeather() {
   return await res.json();
 }
 
+// -------------------- Temperature Efficiency --------------------
+function temperatureEfficiency(temp) {
+  const nominalTemp = 25;
+  const coef = -0.004; // -0.4% per °C
+
+  let delta = temp - nominalTemp;
+  let efficiencyFactor = 1 + (delta * coef);
+
+  if (efficiencyFactor < 0.8) efficiencyFactor = 0.8;
+  if (efficiencyFactor > 1.05) efficiencyFactor = 1.05;
+
+  return efficiencyFactor;
+}
+
 // -------------------- Solar Score --------------------
 function hourlySolarScore(cloud, radiation) {
   let cloudFactor = 1 - (cloud / 100);
@@ -79,9 +93,14 @@ function calculateSunshineHours(radiationArray, startIndex) {
 }
 
 // -------------------- PV Estimate --------------------
-function estimatePV(avgScore, sunshineHours) {
-  let raw = system.pvSize * sunshineHours * avgScore * efficiency;
+function estimatePV(avgScore, sunshineHours, middayTemp) {
+
+  let tempFactor = temperatureEfficiency(middayTemp);
+
+  let raw = system.pvSize * sunshineHours * avgScore * efficiency * tempFactor;
+
   let inverterLimit = system.inverter * sunshineHours;
+
   return Math.min(raw, inverterLimit);
 }
 
@@ -107,7 +126,7 @@ function weatherSummary(cloud, rad, temp, humidity, wind, precip) {
   return `
     🌤️ Cloud: ${cloud.toFixed(0)}%<br>
     ☀️ Radiation: ${rad.toFixed(0)} W/m²<br>
-    🌡️ Temp: ${temp.toFixed(1)}°C<br>
+    🌡️ Temp (midday): ${temp.toFixed(1)}°C<br>
     💧 Humidity: ${humidity.toFixed(0)}%<br>
     🌬️ Wind: ${wind.toFixed(1)} km/h<br>
     🌧️ Precip: ${precip.toFixed(2)} mm
@@ -149,7 +168,12 @@ async function runAI() {
     let avgScore = scores.reduce((a,b)=>a+b,0) / scores.length;
 
     let sunshineHours = calculateSunshineHours(radiation, start);
-    let pv = estimatePV(avgScore, sunshineHours);
+
+    // Midday values
+    let middayTemp = temp[start + 12];
+
+    let pv = estimatePV(avgScore, sunshineHours, middayTemp);
+
     let soc = recommendedSOC(pv);
 
     // Labels
@@ -158,7 +182,6 @@ async function runAI() {
     if (d === 1) dayLabel = "Tomorrow";
     if (d === 2) dayLabel = "Day 3";
 
-    // Highlight tomorrow SOC
     let socStyle = (d === 1)
       ? "style='color:red; font-weight:bold; font-size:20px;'"
       : "";
@@ -170,10 +193,10 @@ async function runAI() {
         ${weatherSummary(
           avgCloud,
           avgRad,
-          temp[start],
-          humidity[start],
-          wind[start],
-          precip[start]
+          middayTemp,
+          humidity[start + 12],
+          wind[start + 12],
+          precip[start + 12]
         )}
 
         <br><b>🌞 Sunshine Hours:</b> ${sunshineHours}
