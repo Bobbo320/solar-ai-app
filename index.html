@@ -118,7 +118,7 @@ function toggleSettings() {
 // -------------------- WEATHER --------------------
 async function getWeather() {
   let res = await fetch(
-    "https://api.open-meteo.com/v1/forecast?latitude=52.627&longitude=1.331&hourly=cloudcover,temperature_2m,shortwave_radiation,relativehumidity_2m,windspeed_10m,precipitation&forecast_days=3&timezone=auto"
+    "https://api.open-meteo.com/v1/forecast?latitude=52.627&longitude=1.331&hourly=cloudcover,temperature_2m,shortwave_radiation,relativehumidity_2m,precipitation&forecast_days=3&timezone=auto"
   );
   return await res.json();
 }
@@ -145,33 +145,36 @@ function hourlySolarScore(cloud, radiation) {
   return Math.min(1, Math.max(0, score));
 }
 
-// -------------------- SUN HOURS --------------------
-function calculateSunshineHours(rad, start) {
+// -------------------- SUNSHINE HOURS --------------------
+function calculateSunshineHours(radiationArray, startIndex) {
   let hours = 0;
-  for (let i = start; i < start + 24; i++) {
-    if (rad[i] > 120) hours++;
+  for (let i = startIndex; i < startIndex + 24; i++) {
+    if (radiationArray[i] > 120) hours++;
   }
   return hours;
 }
 
-// -------------------- WEIGHTED CLOUD --------------------
-function weightedCloudAverage(cloudArray, start) {
-  let total = 0;
-  let weightSum = 0;
+// -------------------- CLOUD WEIGHTING --------------------
+function weightedCloudAverage(cloudArray, startIndex) {
 
+  let weights = [];
   for (let i = 0; i < 24; i++) {
-    let hour = start + i;
-
-    let weight = (i >= 10 && i <= 16) ? 2 : 1; // midday weighting
-
-    total += cloudArray[hour] * weight;
-    weightSum += weight;
+    let hourWeight = Math.exp(-Math.pow((i - 12) / 6, 2));
+    weights.push(hourWeight);
   }
 
-  return total / weightSum;
+  let weightedSum = 0;
+  let weightTotal = 0;
+
+  for (let i = 0; i < 24; i++) {
+    weightedSum += cloudArray[startIndex + i] * weights[i];
+    weightTotal += weights[i];
+  }
+
+  return weightedSum / weightTotal;
 }
 
-// -------------------- PV MODEL --------------------
+// -------------------- PV ESTIMATE --------------------
 function estimatePV(avgScore, sunshineHours, middayTemp, settings) {
 
   let tempFactor = temperatureEfficiency(middayTemp);
@@ -183,8 +186,8 @@ function estimatePV(avgScore, sunshineHours, middayTemp, settings) {
   return Math.min(raw, inverterLimit);
 }
 
-// -------------------- SOC --------------------
-function calculateSOC(predictedPV, settings) {
+// -------------------- SOC MODEL --------------------
+function recommendedSOC(predictedPV, settings) {
 
   let shortfall = Math.max(0, settings.dailyLoad - predictedPV);
   let required = shortfall * 1.2;
@@ -197,31 +200,58 @@ function calculateSOC(predictedPV, settings) {
   return Math.round(soc);
 }
 
-// -------------------- RUN --------------------
+// -------------------- WEATHER DISPLAY --------------------
+function weatherSummary(cloud, rad, temp, humidity, precip) {
+  return `
+    🌤️ Cloud: ${cloud.toFixed(0)}%<br>
+    ☀️ Radiation: ${rad.toFixed(0)} W/m²<br>
+    🌡️ Temp (midday): ${temp.toFixed(1)}°C<br>
+    💧 Humidity: ${humidity.toFixed(0)}%<br>
+    🌧️ Precip: ${precip.toFixed(2)} mm
+  `;
+}
+
+// -------------------- MAIN --------------------
 async function runAI() {
 
   let settings = getSettings();
 
+  document.getElementById("loading").innerText = "Loading...";
+
   let data = await getWeather();
 
   let cloud = data.hourly.cloudcover;
+  let radiation = data.hourly.shortwave_radiation;
   let temp = data.hourly.temperature_2m;
-  let rad = data.hourly.shortwave_radiation;
+  let humidity = data.hourly.relativehumidity_2m;
+  let precip = data.hourly.precipitation;
 
-  let output = "";
+  let outputHTML = "";
 
   for (let d = 0; d < 3; d++) {
 
     let start = d * 24;
 
-    let avgCloud = weightedCloudAverage(cloud, start);
-    let sunshineHours = calculateSunshineHours(rad, start);
+    let weightedCloud = weightedCloudAverage(cloud, start);
+
+    let dailyRad = 0;
+    let scores = [];
+
+    for (let i = start; i < start + 24; i++) {
+      dailyRad += radiation[i];
+      scores.push(hourlySolarScore(cloud[i], radiation[i]));
+    }
+
+    let avgRad = dailyRad / 24;
+    let avgScore = scores.reduce((a,b)=>a+b,0) / scores.length;
+
+    let sunshineHours = calculateSunshineHours(radiation, start);
+
     let middayTemp = temp[start + 12];
 
-    let score = hourlySolarScore(avgCloud, rad[start + 12]);
+    let pv = estimatePV(avgScore, sunshineHours, middayTemp, settings);
 
-    let pv = estimatePV(score, sunshineHours, middayTemp, settings);
-    let soc = calculateSOC(pv, settings);
+    let soc = recommendedSOC(pv, settings);
 
     let label = d === 0 ? "Today" : d === 1 ? "Tomorrow" : "The day after tomorrow";
 
@@ -229,20 +259,27 @@ async function runAI() {
       ? "style='color:red; font-weight:bold; font-size:20px;'"
       : "";
 
-    output += `
+    outputHTML += `
       <div class="card">
         <h3>${label}</h3>
-        🌤️ Cloud: ${avgCloud.toFixed(0)}%<br>
-        🌡️ Temp (midday): ${middayTemp.toFixed(1)}°C<br>
-        ☀️ Sunshine Hours: ${sunshineHours}<br>
-        ⚡ PV Estimate: ${pv.toFixed(2)} kWh<br>
-        <br>
-        <span ${socStyle}>🔋 Recommended SOC: ${soc}%</span>
+
+        ${weatherSummary(
+          weightedCloud,
+          avgRad,
+          middayTemp,
+          humidity[start + 12],
+          precip[start + 12]
+        )}
+
+        <br><b>🌞 Sunshine Hours:</b> ${sunshineHours}
+        <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
+        <br><span ${socStyle}>🔋 Recommended SOC: ${soc}%</span>
       </div>
     `;
   }
 
-  document.getElementById("output").innerHTML = output;
+  document.getElementById("output").innerHTML = outputHTML;
+  document.getElementById("loading").innerText = "";
 }
 
 </script>
