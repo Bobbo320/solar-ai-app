@@ -157,7 +157,6 @@ function getOrientationFactor(o) {
   return 1;
 }
 
-// -------------------- NEW: ORIENTATION USING SUN SPLIT --------------------
 function applyOrientationToSun(morning, afternoon, orientation) {
 
   if (orientation === "south") {
@@ -300,10 +299,8 @@ async function runAI(){
 
     let avgScore=scores.reduce((a,b)=>a+b)/scores.length;
 
-    // 🔆 Sunshine split
     let split = sunshineSplit(rad,start);
 
-    // ✅ Apply orientation weighting using split
     let sun = applyOrientationToSun(
       split.morning,
       split.afternoon,
@@ -323,9 +320,7 @@ async function runAI(){
         <h3>${label}</h3>
         ${weatherSummary(wc,avgRad,midTemp,hum[start+12],precip[start+12])}
 
-        <br><b>🌞 Sunshine Hours:</b> ${split.morning + split.afternoon}
-        <br>🌅 Morning: ${split.morning}h
-        <br>🌇 Afternoon: ${split.afternoon}h
+        <br><b>🔆 Usable Solar Window:</b> ${split.morning + split.afternoon} hours
 
         <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
         <br><span ${style}>🔋 Recommended SOC: ${soc}%</span>
