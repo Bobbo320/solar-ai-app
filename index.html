@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Solar SOC AI Pro (Smart Learning)</title>
+  <title>Solar SOC AI Pro (Full Weather + Learning)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -30,38 +30,34 @@
     }
 
     .highlight {
-      font-size: 20px;
+      font-size: 22px;
       font-weight: bold;
       background: #7f1d1d;
-      padding: 8px;
-      border-radius: 6px;
+      padding: 10px;
+      border-radius: 8px;
       display: inline-block;
     }
 
-    .footer {
-      margin-top: 20px;
-      padding: 15px;
-      background: #020617;
-      border-radius: 10px;
-      text-align: left;
-      font-size: 14px;
+    input {
+      padding: 6px;
+      margin: 4px;
+      width: 90%;
     }
+
   </style>
 </head>
 
 <body>
 
-<h2>⚡ Solar SOC AI Pro (Smart Learning)</h2>
+<h2>⚡ Solar SOC AI Pro</h2>
 
-<div class="card">
-📍 NR7 0WZ (Norwich)<br>
-☀️ PV: 6.5 kWp | 🔋 Battery: 10.64 kWh
-</div>
+<div class="card" id="systemInfo"></div>
 
 <button onclick="runAI()">Plan Next 3 Days</button>
+<button onclick="toggleSettings()">⚙️ Settings</button>
 <button onclick="toggleHistory()">📊 PV History</button>
 
-<br>
+<br><br>
 
 <input type="date" id="pvDate">
 <input type="number" id="pvInput" placeholder="Enter PV kWh">
@@ -71,17 +67,33 @@
 
 <div id="output"></div>
 
-<div id="historyPanel" class="card" style="display:none;">
-  <b>📊 PV History</b><br><br>
-  <canvas id="pvChart"></canvas><br>
-  <div id="historyContent"></div>
+<!-- SETTINGS -->
+<div id="settingsPanel" class="card" style="display:none;">
+  <b>⚙️ Settings</b><br><br>
+
+  Postcode:<br>
+  <input id="set_postcode"><br>
+
+  PV Size (kWp):<br>
+  <input id="set_pvsize" type="number"><br>
+
+  Battery (kWh):<br>
+  <input id="set_battery" type="number"><br>
+
+  Inverter (kW):<br>
+  <input id="set_inverter" type="number"><br>
+
+  Direction (°):<br>
+  <input id="set_direction" type="number"><br>
+
+  <button onclick="saveSettings()">Save</button>
 </div>
 
-<div class="footer">
-  🔥 85–100% Excellent<br>
-  👍 65–85% Good<br>
-  ⚖️ 45–65% Moderate<br>
-  ⚠️ &lt;45% Low solar
+<!-- HISTORY -->
+<div id="historyPanel" class="card" style="display:none;">
+  <b>📊 PV History</b><br><br>
+  <canvas id="pvChart"></canvas>
+  <div id="historyContent"></div>
 </div>
 
 <script>
@@ -89,18 +101,11 @@
 // ---------------- SETTINGS ----------------
 function defaultSettings() {
   return {
+    postcode: "NR7 0WZ",
     pvsize: 6.5,
     battery: 10.64,
     inverter: 5,
-    direction: 170,
-
-    pvHistorySeed: [
-      { date: "2026-04-05", kwh: 26 },
-      { date: "2026-04-04", kwh: 26.7 },
-      { date: "2026-04-03", kwh: 9.3 },
-      { date: "2026-04-02", kwh: 23.7 },
-      { date: "2026-04-01", kwh: 17.3 }
-    ]
+    direction: 170
   };
 }
 
@@ -108,21 +113,64 @@ function getSettings() {
   return JSON.parse(localStorage.getItem("settings")) || defaultSettings();
 }
 
-// ---------------- HISTORY ----------------
-function getAllPVHistory(settings) {
-  let stored = JSON.parse(localStorage.getItem("pvHistory") || "[]");
-  return [...settings.pvHistorySeed, ...stored];
+// ---------------- UI ----------------
+function updateSystemInfo() {
+  let s = getSettings();
+  document.getElementById("systemInfo").innerHTML = `
+    📍 ${s.postcode}<br>
+    ☀️ PV: ${s.pvsize} kWp<br>
+    🔋 Battery: ${s.battery} kWh<br>
+    ⚡ Inverter: ${s.inverter} kW<br>
+    🧭 Direction: ${s.direction}°
+  `;
 }
 
-// ---------------- SAVE PV ----------------
+updateSystemInfo();
+
+// ---------------- SETTINGS UI ----------------
+function toggleSettings() {
+  let p = document.getElementById("settingsPanel");
+  if (p.style.display === "none") {
+    p.style.display = "block";
+    let s = getSettings();
+
+    set_postcode.value = s.postcode;
+    set_pvsize.value = s.pvsize;
+    set_battery.value = s.battery;
+    set_inverter.value = s.inverter;
+    set_direction.value = s.direction;
+  } else {
+    p.style.display = "none";
+  }
+}
+
+function saveSettings() {
+  let settings = {
+    postcode: set_postcode.value,
+    pvsize: parseFloat(set_pvsize.value),
+    battery: parseFloat(set_battery.value),
+    inverter: parseFloat(set_inverter.value),
+    direction: parseFloat(set_direction.value)
+  };
+
+  localStorage.setItem("settings", JSON.stringify(settings));
+  updateSystemInfo();
+  alert("Saved");
+}
+
+// ---------------- PV HISTORY ----------------
+function getHistory() {
+  return JSON.parse(localStorage.getItem("pvHistory") || "[]");
+}
+
 function savePV() {
 
-  let pv = parseFloat(document.getElementById("pvInput").value);
-  let date = document.getElementById("pvDate").value;
+  let pv = parseFloat(pvInput.value);
+  let date = pvDate.value;
 
-  if (!date || isNaN(pv)) return alert("Enter valid data");
+  if (!date || isNaN(pv)) return alert("Invalid input");
 
-  let history = JSON.parse(localStorage.getItem("pvHistory") || "[]");
+  let history = getHistory();
 
   history = history.filter(d => d.date !== date);
 
@@ -134,73 +182,60 @@ function savePV() {
 
   localStorage.setItem("pvHistory", JSON.stringify(history));
 
-  alert("Saved + model updated");
+  alert("Saved");
 }
 
-// ---------------- PHYSICS PV MODEL ----------------
-function calculateDailyPV(dayStart, radiation, temp, settings) {
+// ---------------- PV MODEL ----------------
+function calculatePV(radiation, temp, settings) {
 
   let total = 0;
 
   let orientation = Math.cos((settings.direction - 180) * Math.PI / 180);
   orientation = Math.max(0.75, orientation);
 
-  for (let h = dayStart; h < dayStart + 24; h++) {
+  for (let i = 0; i < radiation.length; i++) {
 
-    let rad = radiation[h] / 1000;
-    let t = temp[h];
+    let rad = radiation[i] / 1000;
 
-    let tempLoss = 1 - (Math.max(0, t - 25) * 0.004);
-    let systemLoss = 0.80;
+    let tempLoss = 1 - (Math.max(0, temp[i] - 25) * 0.004);
 
-    total += rad * settings.pvsize * orientation * tempLoss * systemLoss;
+    total += rad * settings.pvsize * orientation * tempLoss * 0.80;
   }
 
-  return Math.min(total, settings.inverter * 24);
+  return total;
 }
 
-// ---------------- LEARNING ----------------
-function getSmartCalibration(settings) {
+// ---------------- CALIBRATION ----------------
+function getCalibration(settings) {
+  let hist = getHistory();
 
-  let history = getAllPVHistory(settings);
-  let factors = [];
+  if (hist.length === 0) return 1;
 
-  history.forEach(entry => {
-    if (entry.kwh > 0) {
-      let expected = settings.pvsize * 4;
-      let factor = entry.kwh / expected;
+  let avg = hist.reduce((a,b)=>a+b.kwh,0)/hist.length;
+  let expected = settings.pvsize * 4;
 
-      if (factor > 0.3 && factor < 2.5) {
-        factors.push(factor);
-      }
-    }
-  });
-
-  if (!factors.length) return 1;
-
-  return factors.reduce((a,b)=>a+b,0)/factors.length;
+  return avg / expected;
 }
 
 // ---------------- SOC ----------------
-function recommendedSOCFromPV(pv, battery) {
+function getSOC(pv, battery) {
+  let r = pv / battery;
 
-  let ratio = pv / battery;
-
-  if (ratio > 2) return "20%";
-  if (ratio > 1.5) return "30%";
-  if (ratio > 1.0) return "50%";
-  if (ratio > 0.7) return "65%";
-  if (ratio > 0.4) return "80%";
+  if (r > 2) return "20%";
+  if (r > 1.5) return "30%";
+  if (r > 1) return "50%";
+  if (r > 0.7) return "65%";
+  if (r > 0.4) return "80%";
   return "90%";
 }
 
 // ---------------- MAIN ----------------
 async function runAI() {
 
-  document.getElementById("loading").innerText = "Loading...";
+  loading.innerText = "Loading...";
 
   let res = await fetch(
-    "https://api.open-meteo.com/v1/forecast?latitude=52.627&longitude=1.331&hourly=shortwave_radiation,temperature_2m&forecast_days=3&timezone=auto"
+    "https://api.open-meteo.com/v1/forecast?latitude=52.627&longitude=1.331&hourly=shortwave_radiation,temperature_2m,cloudcover,precipitation&forecast_days=3&timezone=auto"
   );
 
   let data = await res.json();
@@ -208,90 +243,76 @@ async function runAI() {
   let times = data.hourly.time;
   let rad = data.hourly.shortwave_radiation;
   let temp = data.hourly.temperature_2m;
+  let cloud = data.hourly.cloudcover;
+  let precip = data.hourly.precipitation;
 
   let s = getSettings();
-  let calibration = getSmartCalibration(s);
+  let calibration = getCalibration(s);
 
   let output = "";
 
   for (let d = 0; d < 3; d++) {
 
-    let dayStart = d * 24;
+    let start = d * 24;
 
-    let pv = calculateDailyPV(dayStart, rad, temp, s);
-    pv = pv * calibration;
+    let radDay = [];
+    let tempDay = [];
+    let cloudDay = [];
+    let precipDay = [];
 
-    if (d === 0) window.lastPredictedPV = pv.toFixed(1);
+    let sunshineHours = 0;
 
-    let soc = recommendedSOCFromPV(pv, s.battery);
+    for (let h = start; h < start + 24; h++) {
+
+      radDay.push(rad[h]);
+      tempDay.push(temp[h]);
+      cloudDay.push(cloud[h]);
+      precipDay.push(precip[h]);
+
+      if (rad[h] > 120) sunshineHours++;
+    }
+
+    let pv = calculatePV(radDay, tempDay, s) * calibration;
+
+    if (d === 0) window.lastPredictedPV = pv;
+
+    let avgCloud = cloudDay.reduce((a,b)=>a+b,0)/cloudDay.length;
+    let avgTemp = tempDay.reduce((a,b)=>a+b,0)/tempDay.length;
+    let totalPrecip = precipDay.reduce((a,b)=>a+b,0);
+
+    let soc = getSOC(pv, s.battery);
 
     let label = d === 0 ? "Today" : d === 1 ? "Tomorrow" : "Day +2";
 
-    let socHTML =
+    let socDisplay =
       d === 1
-      ? `<span class="highlight">${soc}</span>`
+      ? `<div class="highlight">${soc}</div>`
       : soc;
 
     output += `
       <div class="card">
         <b>${label}</b><br><br>
-        ⚡ Predicted PV: ${pv.toFixed(1)} kWh<br><br>
-        🔋 Recommended SOC: ${socHTML}
+
+        🌤️ Cloud: ${avgCloud.toFixed(0)}%<br>
+        🌡️ Temp: ${avgTemp.toFixed(1)}°C<br>
+        🌧️ Rain: ${totalPrecip.toFixed(1)} mm<br>
+        ☀️ Sunshine: ${sunshineHours} hrs<br><br>
+
+        ⚡ PV: ${pv.toFixed(1)} kWh<br><br>
+
+        🔋 SOC: ${socDisplay}
       </div>
     `;
   }
 
-  document.getElementById("output").innerHTML = output;
-  document.getElementById("loading").innerText = "";
+  outputDiv.innerHTML = output;
+  loading.innerText = "";
 }
 
 // ---------------- HISTORY UI ----------------
 function toggleHistory() {
-  let panel = document.getElementById("historyPanel");
-
-  if (panel.style.display === "none") {
-    panel.style.display = "block";
-    renderHistory();
-  } else {
-    panel.style.display = "none";
-  }
-}
-
-let chart;
-
-function renderHistory() {
-
-  let s = getSettings();
-  let history = getAllPVHistory(s);
-
-  history.sort((a,b)=>new Date(a.date)-new Date(b.date));
-
-  let labels = history.map(d=>d.date);
-  let actual = history.map(d=>d.kwh);
-  let predicted = history.map(d=>d.predicted || null);
-
-  let ctx = document.getElementById("pvChart");
-
-  if (chart) chart.destroy();
-
-  chart = new Chart(ctx, {
-    type: "bar",
-    data: {
-      labels: labels,
-      datasets: [
-        { label: "Actual", data: actual },
-        { type: "line", label: "Predicted", data: predicted }
-      ]
-    }
-  });
-
-  let html = "";
-
-  history.slice().reverse().forEach(d => {
-    html += `📅 ${d.date} → ${d.kwh} kWh ${(d.predicted ? `(pred ${d.predicted})` : "")}<br>`;
-  });
-
-  document.getElementById("historyContent").innerHTML = html;
+  let panel = historyPanel;
+  panel.style.display = panel.style.display === "none" ? "block" : "none";
 }
 
 </script>
