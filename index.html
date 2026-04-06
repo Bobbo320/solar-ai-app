@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Solar SOC AI Pro</title>
+  <title>Solar SOC AI</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
   <style>
@@ -45,11 +45,11 @@
     }
 
     .tomorrow-soc {
-      font-size: 32px;
+      font-size: 34px;
       font-weight: bold;
       color: red;
       background: #220000;
-      padding: 12px;
+      padding: 14px;
       border-radius: 10px;
       display: inline-block;
     }
@@ -58,7 +58,7 @@
 
 <body>
 
-<h2>⚡ Solar SOC AI Pro</h2>
+<h2>⚡ Solar SOC AI</h2>
 
 <button onclick="showTab('main')">Main</button>
 <button onclick="showTab('settings')">Settings</button>
@@ -72,7 +72,12 @@
   <p id="loading"></p>
 
   <div class="card">
-    <h3>🌤️ Weather</h3>
+    <h3>Debug</h3>
+    <div id="debug"></div>
+  </div>
+
+  <div class="card">
+    <h3>Weather</h3>
     <div id="weatherOutput"></div>
   </div>
 
@@ -90,10 +95,10 @@
     <input id="inverter" placeholder="Inverter kW"><br>
     <input id="battery" placeholder="Battery kWh"><br>
     <input id="pvSize" placeholder="PV kWp"><br>
-    <input id="direction" placeholder="Panel Direction (degrees)"><br>
+    <input id="direction" placeholder="Panel Direction (deg)"><br>
     <input id="elevation" placeholder="Elevation (m)"><br>
 
-    <button onclick="saveSettings()">Save Settings</button>
+    <button onclick="saveSettings()">Save</button>
   </div>
 
   <div class="card">
@@ -192,6 +197,8 @@ function addPV(){
 function updateCalibration(){
 
   let history = getHistory();
+  let pvSize = parseFloat(JSON.parse(localStorage.getItem("settings")).pvSize);
+
   let monthly = {};
 
   history.forEach(e=>{
@@ -205,7 +212,14 @@ function updateCalibration(){
   Object.keys(monthly).forEach(m=>{
     let arr = monthly[m];
     let avg = arr.reduce((a,b)=>a+b,0)/arr.length;
-    calibration[m] = avg / 20;
+
+    let baseline = pvSize * 4;
+
+    let factor = avg / baseline;
+
+    factor = Math.max(0.5, Math.min(1.5, factor));
+
+    calibration[m] = factor;
   });
 
   localStorage.setItem("calibration", JSON.stringify(calibration));
@@ -248,10 +262,8 @@ function solarPosition(date, lat, lon){
 }
 
 function angleEfficiency(sunAz, panelAz){
-
   let diff = Math.abs(sunAz - panelAz);
   if(diff>180) diff = 360-diff;
-
   return Math.max(0, Math.cos(toRad(diff)));
 }
 
@@ -261,40 +273,12 @@ async function getWeather(){
   return await res.json();
 }
 
-function renderWeather(data){
-
-  let out="";
-
-  for(let d=0; d<3; d++){
-
-    let c=0,r=0,p=0,sun=0;
-
-    for(let h=d*24; h<d*24+24; h++){
-      c+=data.hourly.cloudcover[h];
-      r+=data.hourly.shortwave_radiation[h];
-      p+=data.hourly.precipitation[h];
-      if(r>300) sun++;
-    }
-
-    c/=24; r/=24;
-
-    out += `
-      <b>${d===0?"Today":d===1?"Tomorrow":"Day +2"}</b><br>
-      ☁️ ${c.toFixed(0)}% |
-      ☀️ ${r.toFixed(0)} W/m² |
-      🌧️ ${p.toFixed(1)} mm |
-      🌞 ${sun} hrs<br><br>
-    `;
-  }
-
-  document.getElementById("weatherOutput").innerHTML = out;
-}
-
 // ---------------- PV MODEL ----------------
 function predictPV(hourly, dayIndex, settings, cal){
 
   let pvSize = parseFloat(settings.pvSize);
   let inverter = parseFloat(settings.inverter);
+
   let lat = 52.627;
   let lon = 1.331;
 
@@ -327,7 +311,7 @@ function predictPV(hourly, dayIndex, settings, cal){
 }
 
 // ---------------- SOC MODEL ----------------
-function calculateSOC(weather, cal, settings){
+function calculateSOC(weather, cal){
 
   let score =
     (weather.rad/1000)*0.5 +
@@ -351,12 +335,36 @@ async function runAI(){
   document.getElementById("loading").innerText="Loading...";
 
   let data = await getWeather();
-  renderWeather(data);
 
   let settings = JSON.parse(localStorage.getItem("settings"));
   let month = new Date().getMonth();
   let cal = getCalibration(month);
 
+  document.getElementById("debug").innerHTML =
+    `Calibration: ${cal.toFixed(2)}`;
+
+  // WEATHER SUMMARY
+  let wOut="";
+
+  for(let d=0; d<3; d++){
+
+    let c=0,r=0,sun=0;
+
+    for(let h=d*24; h<d*24+24; h++){
+      c+=data.hourly.cloudcover[h];
+      r+=data.hourly.shortwave_radiation[h];
+      if(data.hourly.shortwave_radiation[h]>300) sun++;
+    }
+
+    c/=24; r/=24;
+
+    wOut += `<b>${d===0?"Today":d===1?"Tomorrow":"Day +2"}</b><br>
+    ☁️ ${c.toFixed(0)}% | ☀️ ${r.toFixed(0)} W/m² | 🌞 ${sun} hrs<br><br>`;
+  }
+
+  document.getElementById("weatherOutput").innerHTML = wOut;
+
+  // MAIN OUTPUT
   let output="";
 
   for(let d=0; d<3; d++){
@@ -375,7 +383,7 @@ async function runAI(){
 
     let weather = {cloud:c, rad:r, sun:sun};
 
-    let soc = calculateSOC(weather, cal, settings);
+    let soc = calculateSOC(weather, cal);
 
     let pv = predictPV(data.hourly, d, settings, cal);
 
@@ -442,9 +450,8 @@ function renderCalibration(){
   el.innerHTML=html;
 }
 
-// ---------------- TAB SWITCH ----------------
+// ---------------- TABS ----------------
 function showTab(tab){
-
   document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
   document.getElementById(tab).classList.add("active");
 
