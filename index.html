@@ -1,8 +1,9 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Solar SOC AI Pro (Self Learning)</title>
+  <title>Solar SOC AI Pro (Aligned)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
+
   <style>
     body {
       font-family: Arial;
@@ -32,11 +33,19 @@
 
 <body>
 
-<h2>⚡ Solar SOC AI Pro (Self Learning)</h2>
+<h2>⚡ Solar SOC AI Pro (Aligned System)</h2>
 
 <div class="card">
 📍 <b>Location:</b><br>
 NR7 0WZ (Norwich, UK)
+</div>
+
+<div class="card">
+  <b>⚙️ System Config</b><br><br>
+
+  ☀️ PV: 6.5 kWp<br>
+  ⚡ Inverter: 5 kW<br>
+  🔋 Battery: 10.64 kWh<br>
 </div>
 
 <div class="card">
@@ -54,12 +63,20 @@ NR7 0WZ (Norwich, UK)
 <button onclick="runAI()">Plan Next 3 Days</button>
 
 <p id="loading"></p>
-
 <div id="output"></div>
 
 <script>
 
-// -------------------- Storage --------------------
+/* ---------------- SYSTEM ---------------- */
+
+const system = {
+  pvSize: 6.5,        // kWp
+  inverter: 5,        // kW
+  battery: 10.64      // kWh
+};
+
+/* ---------------- STORAGE ---------------- */
+
 function getPVHistory() {
   return JSON.parse(localStorage.getItem("pvHistory") || "[]");
 }
@@ -78,8 +95,10 @@ function savePV() {
   alert("Saved PV");
 }
 
-// -------------------- Calibration --------------------
+/* ---------------- CALIBRATION ---------------- */
+
 function getCalibrationFactorFromHistory(dayScoresMap) {
+
   let history = getPVHistory();
   let factors = [];
 
@@ -90,35 +109,13 @@ function getCalibrationFactorFromHistory(dayScoresMap) {
     }
   });
 
-  if (factors.length === 0) return 52;
+  if (factors.length === 0) return 50;
 
-  return factors.reduce((a,b)=>a+b,0) / factors.length;
+  return factors.reduce((a,b)=>a+b,0)/factors.length;
 }
 
-// -------------------- SOC Colour --------------------
-function socColor(socValue) {
-  let soc = parseInt(socValue);
-  if (soc >= 70) return "limegreen";
-  if (soc >= 40) return "orange";
-  return "red";
-}
+/* ---------------- SOLAR MODEL ---------------- */
 
-// -------------------- SOC Logic --------------------
-function recommendedSOC(avgScore, maxElevation) {
-
-  let seasonalFactor = maxElevation / 60;
-  seasonalFactor = Math.min(1, Math.max(0, seasonalFactor));
-
-  let adjustedScore = (avgScore * 0.7) + (seasonalFactor * 0.3);
-
-  let soc = 100 - (adjustedScore * 50);
-
-  soc = Math.min(95, Math.max(20, soc));
-
-  return Math.round(soc) + "%";
-}
-
-// -------------------- Solar Model --------------------
 function hourlySolarScore(cloud, radiation) {
   let cloudFactor = 1 - (cloud / 100);
   let radiationFactor = radiation / 1000;
@@ -126,61 +123,22 @@ function hourlySolarScore(cloud, radiation) {
   return Math.min(1, Math.max(0, score));
 }
 
-// -------------------- Sun Elevation --------------------
-function sunElevation(date, lat, lon) {
-  const rad = Math.PI / 180;
+/* ---------------- SOC MODEL ---------------- */
 
-  let day = Math.floor((date - new Date(date.getFullYear(), 0, 0)) / 86400000);
-  let decl = 23.45 * Math.sin(rad * (360 * (284 + day) / 365));
+function calculateSOC(predictedPV) {
 
-  let hour = date.getHours() + date.getMinutes() / 60;
-  let solarTime = hour + (lon / 15);
-  let hourAngle = 15 * (solarTime - 12);
+  let currentSOC = 50; // assumed starting SOC
+  let load = 8;        // estimated daily consumption (kWh)
 
-  let elevation = Math.asin(
-    Math.sin(lat * rad) * Math.sin(decl * rad) +
-    Math.cos(lat * rad) * Math.cos(decl * rad) * Math.cos(hourAngle * rad)
-  ) / rad;
+  let net = predictedPV - load;
 
-  return Math.max(0, elevation);
+  let soc = currentSOC + (net / system.battery) * 100;
+
+  return Math.min(100, Math.max(0, soc));
 }
 
-function maxSunElevationForDay(date, lat, lon) {
-  let maxElev = 0;
+/* ---------------- MAIN ---------------- */
 
-  for (let hour = 0; hour < 24; hour++) {
-    let d = new Date(date);
-    d.setHours(hour,0,0,0);
-
-    let elev = sunElevation(d, lat, lon);
-    if (elev > maxElev) maxElev = elev;
-  }
-
-  return maxElev;
-}
-
-// -------------------- Sunshine Hours --------------------
-function calculateSunshineHours(radiationArray, dayStart) {
-  let hours = 0;
-  for (let h = dayStart; h < dayStart + 24; h++) {
-    if (radiationArray[h] > 120) hours++;
-  }
-  return hours;
-}
-
-// -------------------- Weather Summary --------------------
-function weatherSummary(cloud, rad, temp, humidity, wind, precip) {
-  return `
-    🌤️ Cloud: ${cloud.toFixed(0)}%<br>
-    ☀️ Radiation: ${rad.toFixed(0)} W/m²<br>
-    🌡️ Temp: ${temp.toFixed(1)}°C<br>
-    💧 Humidity: ${humidity.toFixed(0)}%<br>
-    🌬️ Wind: ${wind.toFixed(1)} km/h<br>
-    🌧️ Precip: ${precip.toFixed(2)} mm
-  `;
-}
-
-// -------------------- Main --------------------
 async function runAI() {
 
   document.getElementById("loading").innerText = "Loading...";
@@ -194,15 +152,12 @@ async function runAI() {
   let times = data.hourly.time;
   let cloud = data.hourly.cloudcover;
   let radiation = data.hourly.shortwave_radiation;
-  let temp = data.hourly.temperature_2m;
-  let humidity = data.hourly.relativehumidity_2m;
-  let wind = data.hourly.windspeed_10m;
-  let precip = data.hourly.precipitation;
 
   let output = "";
   let dayScoresMap = {};
 
-  // Build score map
+  /* ---------------- SCORE BUILD ---------------- */
+
   for (let d = 0; d < 3; d++) {
 
     let dayStart = d * 24;
@@ -214,11 +169,9 @@ async function runAI() {
       let hour = date.getHours();
 
       if (hour >= 10 && hour <= 15) {
-        let elevation = sunElevation(date, 52.627, 1.331);
-        let sunFactor = Math.sin(elevation * Math.PI / 180);
 
         let baseScore = hourlySolarScore(cloud[h], radiation[h]);
-        scores.push(baseScore * sunFactor);
+        scores.push(baseScore);
       }
     }
 
@@ -230,7 +183,8 @@ async function runAI() {
 
   let calibrationFactor = getCalibrationFactorFromHistory(dayScoresMap);
 
-  // Render output
+  /* ---------------- OUTPUT ---------------- */
+
   for (let d = 0; d < 3; d++) {
 
     let dayStart = d * 24;
@@ -239,32 +193,22 @@ async function runAI() {
     let scores = [];
 
     for (let h = dayStart; h < dayStart + 24; h++) {
-      let date = new Date(times[h]);
-      let hour = date.getHours();
-
+      let hour = new Date(times[h]).getHours();
       if (hour >= 10 && hour <= 15) {
-        let elevation = sunElevation(date, 52.627, 1.331);
-        let sunFactor = Math.sin(elevation * Math.PI / 180);
-        let baseScore = hourlySolarScore(cloud[h], radiation[h]);
-        scores.push(baseScore * sunFactor);
+        scores.push(hourlySolarScore(cloud[h], radiation[h]));
       }
     }
 
     let avgScore = scores.reduce((a,b)=>a+b,0)/scores.length || 0;
 
-    let avgCloud = cloud.slice(dayStart, dayStart+24).reduce((a,b)=>a+b,0)/24;
-    let avgRad = radiation.slice(dayStart, dayStart+24).reduce((a,b)=>a+b,0)/24;
-    let avgTemp = temp.slice(dayStart, dayStart+24).reduce((a,b)=>a+b,0)/24;
-    let avgHum = humidity.slice(dayStart, dayStart+24).reduce((a,b)=>a+b,0)/24;
-    let avgWind = wind.slice(dayStart, dayStart+24).reduce((a,b)=>a+b,0)/24;
-    let avgPrecip = precip.slice(dayStart, dayStart+24).reduce((a,b)=>a+b,0)/24;
+    // 🔋 PV prediction aligned to real system
+    let predictedPV = avgScore * system.pvSize * calibrationFactor;
 
-    let dateObj = new Date(times[dayStart]);
-    let maxElevation = maxSunElevationForDay(dateObj, 52.627, 1.331);
+    // ⚡ inverter clipping effect (approx)
+    let inverterLimit = system.inverter * 6; // daily equivalent cap
+    predictedPV = Math.min(predictedPV, inverterLimit);
 
-    let predictedPV = (avgScore * calibrationFactor).toFixed(1);
-    let socValue = recommendedSOC(avgScore, maxElevation);
-    let sunshineHours = calculateSunshineHours(radiation, dayStart);
+    let soc = calculateSOC(predictedPV);
 
     let isTomorrow = (d === 1);
 
@@ -272,25 +216,21 @@ async function runAI() {
       <div class="card">
         <b>${d === 0 ? "Today" : d === 1 ? "Tomorrow" : "Day +2"}</b><br><br>
 
-        ${weatherSummary(avgCloud, avgRad, avgTemp, avgHum, avgWind, avgPrecip)}<br><br>
-
-        ☀️ Expected Sunshine Hours: ${sunshineHours} hrs<br><br>
-
         ⚡ Solar Score: ${(avgScore*100).toFixed(0)}%<br>
-        🔋 Estimated PV: ${predictedPV} kWh<br><br>
+        🔋 Expected PV: ${predictedPV.toFixed(1)} kWh<br><br>
 
         🔋 Recommended SOC:<br><br>
 
         <div style="
-          font-weight: bold;
-          font-size: ${isTomorrow ? '28px' : '18px'};
-          color: ${isTomorrow ? 'red' : socColor(socValue)};
-          background: ${isTomorrow ? '#1f2937' : 'transparent'};
-          padding: ${isTomorrow ? '10px' : '0'};
-          border-radius: ${isTomorrow ? '8px' : '0'};
-          display: inline-block;
+          font-weight:bold;
+          font-size:${isTomorrow ? '28px' : '18px'};
+          color:${isTomorrow ? 'red' : 'limegreen'};
+          background:${isTomorrow ? '#1f2937' : 'transparent'};
+          padding:${isTomorrow ? '10px' : '0'};
+          border-radius:8px;
+          display:inline-block;
         ">
-          ${socValue}
+          ${soc.toFixed(0)}%
         </div>
 
       </div>
