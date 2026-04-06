@@ -55,20 +55,20 @@ button {
 
 table {
   width:100%;
-  font-size:12px;
   border-collapse:collapse;
+  font-size:12px;
 }
 
-td,th {
+th,td {
   border:1px solid #333;
-  padding:2px;
+  padding:4px;
 }
 </style>
 </head>
 
 <body>
 
-<h2>Solar AI (Auto Learning)</h2>
+<h2>Solar AI</h2>
 
 <button onclick="loadWeather()">Load Weather</button>
 
@@ -149,7 +149,7 @@ let weatherData=null;
 
 async function loadWeather(){
 
-  let url = `https://api.open-meteo.com/v1/forecast?latitude=52.63&longitude=1.33&hourly=temperature_2m,shortwave_radiation,cloudcover,precipitation,windspeed_10m&forecast_days=3`;
+  let url = `https://api.open-meteo.com/v1/forecast?latitude=52.63&longitude=1.33&hourly=shortwave_radiation,cloudcover,temperature_2m,precipitation&forecast_days=3`;
 
   let res = await fetch(url);
   let data = await res.json();
@@ -198,7 +198,6 @@ function basePredict(dayIndex){
 /* ---------------- CALIBRATION ---------------- */
 
 function getMonthlyFactor(month){
-
   let cal = getCalibration();
   return cal[month] || 1;
 }
@@ -211,13 +210,11 @@ function updateCalibration(dateStr, actualPV){
   let month = d.getMonth();
 
   let predicted = basePredictFromDate(dateStr);
-
   if(predicted <= 0) return;
 
   let errorFactor = actualPV / predicted;
 
   let cal = getCalibration();
-
   if(!cal[month]) cal[month] = 1;
 
   let alpha = 0.2;
@@ -227,7 +224,7 @@ function updateCalibration(dateStr, actualPV){
   saveCalibration(cal);
 }
 
-/* ---------------- DATE-BASED PREDICTION ---------------- */
+/* ---------------- DATE PV ---------------- */
 
 function basePredictFromDate(dateStr){
 
@@ -255,11 +252,11 @@ function calibratedPV(dayIndex){
   return base * factor;
 }
 
-/* ---------------- SOC MODEL ---------------- */
+/* ---------------- SOC ---------------- */
 
 function calculateSOC(pvTomorrow){
 
-  let battery = 10; // kWh
+  let battery = 10;
   let currentSOC = 50;
   let load = 8;
 
@@ -269,8 +266,8 @@ function calculateSOC(pvTomorrow){
 
   let soc = currentSOC + (net / battery)*100;
 
-  if(soc>100) soc=100;
-  if(soc<0) soc=0;
+  if(soc > 100) soc = 100;
+  if(soc < 0) soc = 0;
 
   return soc;
 }
@@ -300,33 +297,27 @@ function renderWeather(){
   let html = `<div class="card"><b>3 Day Weather</b>`;
 
   for(let d=0; d<3; d++){
-
     let w = getDay(d);
 
     html += `
-      <br><br><b>${d===1?"Tomorrow":d===0?"Today":"Day3"}</b><br>
+      <br><br><b>${d===1?"Tomorrow":d===0?"Today":"Day 3"}</b><br>
       Radiation: ${w.rad.toFixed(1)}<br>
       Cloud: ${w.cloud.toFixed(1)}%
     `;
   }
 
   html += "</div>";
-
   weather.innerHTML = html;
 }
 
 function renderPV(){
 
-  let pv0 = calibratedPV(0);
-  let pv1 = calibratedPV(1);
-  let pv2 = calibratedPV(2);
-
   pv.innerHTML = `
     <div class="card">
       <b>PV Forecast (Calibrated)</b><br>
-      Today: ${pv0.toFixed(2)} kWh<br>
-      Tomorrow: ${pv1.toFixed(2)} kWh<br>
-      Day 3: ${pv2.toFixed(2)} kWh
+      Today: ${calibratedPV(0).toFixed(2)} kWh<br>
+      Tomorrow: ${calibratedPV(1).toFixed(2)} kWh<br>
+      Day 3: ${calibratedPV(2).toFixed(2)} kWh
     </div>
   `;
 }
@@ -344,20 +335,36 @@ function renderSOC(){
   `;
 }
 
+/* ---------------- HISTORY TABLE ---------------- */
+
 function renderHistory(){
 
   let h = getHistory();
 
-  let html = `<div class="card"><b>History</b><br>`;
+  if(h.length === 0){
+    history.innerHTML = `<div class="card"><b>History</b><br>No data</div>`;
+    return;
+  }
 
-  h.forEach(e=>{
-    html += `${e.date} → ${e.kwh} kWh<br>`;
-  });
+  let rows = h.map(e=>`
+    <tr>
+      <td>${e.date}</td>
+      <td>${e.kwh}</td>
+    </tr>
+  `).join("");
 
-  html += "</div>";
-
-  history.innerHTML = html;
+  history.innerHTML = `
+    <div class="card">
+      <b>Manual PV History</b>
+      <table>
+        <tr><th>Date</th><th>kWh</th></tr>
+        ${rows}
+      </table>
+    </div>
+  `;
 }
+
+/* ---------------- CHART ---------------- */
 
 let chartInstance=null;
 
@@ -376,7 +383,7 @@ function renderChart(data){
   });
 }
 
-/* ---------------- RENDER ALL ---------------- */
+/* ---------------- MASTER RENDER ---------------- */
 
 function renderAll(){
 
