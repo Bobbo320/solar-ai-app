@@ -23,7 +23,7 @@
       border-radius: 10px;
       text-align: left;
     }
-    input {
+    input, select {
       padding: 8px;
       width: 180px;
       margin-bottom: 10px;
@@ -54,6 +54,14 @@
   <label>Battery Capacity (kWh):</label><br>
   <input id="battery" type="number"><br>
 
+  <label>PV Orientation:</label><br>
+  <select id="orientation">
+    <option value="south">South</option>
+    <option value="se_sw">South-East / South-West</option>
+    <option value="east_west">East / West</option>
+    <option value="north">North</option>
+  </select><br>
+
   <label>Daily Load (kWh):</label><br>
   <input id="dailyLoad" type="number"><br>
 
@@ -83,6 +91,7 @@ function getSettings() {
     pvSize: s.pvSize ?? 6.5,
     inverter: s.inverter ?? 5,
     battery: s.battery ?? 10.64,
+    orientation: s.orientation || "south",
     dailyLoad: s.dailyLoad ?? 10,
     efficiency: s.efficiency ?? 85,
     socLow: s.socLow ?? 20,
@@ -96,6 +105,7 @@ function saveSettings() {
     pvSize: parseFloat(document.getElementById("pvSize").value),
     inverter: parseFloat(document.getElementById("inverter").value),
     battery: parseFloat(document.getElementById("battery").value),
+    orientation: document.getElementById("orientation").value,
     dailyLoad: parseFloat(document.getElementById("dailyLoad").value),
     efficiency: parseFloat(document.getElementById("efficiency").value),
     socLow: parseFloat(document.getElementById("socLow").value),
@@ -114,6 +124,7 @@ function loadSettingsToUI() {
   document.getElementById("pvSize").value = s.pvSize;
   document.getElementById("inverter").value = s.inverter;
   document.getElementById("battery").value = s.battery;
+  document.getElementById("orientation").value = s.orientation;
   document.getElementById("dailyLoad").value = s.dailyLoad;
   document.getElementById("efficiency").value = s.efficiency;
   document.getElementById("socLow").value = s.socLow;
@@ -125,15 +136,21 @@ function toggleSettings() {
   loadSettingsToUI();
 }
 
-// -------------------- POSTCODE → COORDS --------------------
+// -------------------- ORIENTATION FACTOR --------------------
+function getOrientationFactor(orientation) {
+  switch (orientation) {
+    case "south": return 1.0;
+    case "se_sw": return 0.92;
+    case "east_west": return 0.85;
+    case "north": return 0.65;
+    default: return 1.0;
+  }
+}
+
+// -------------------- POSTCODE --------------------
 async function getCoordinates(postcode) {
   let res = await fetch(`https://api.postcodes.io/postcodes/${postcode}`);
   let data = await res.json();
-
-  if (data.status !== 200) {
-    alert("Invalid postcode");
-    throw new Error("Postcode lookup failed");
-  }
 
   return {
     lat: data.result.latitude,
@@ -143,7 +160,6 @@ async function getCoordinates(postcode) {
 
 // -------------------- WEATHER --------------------
 async function getWeather(postcode) {
-
   let coords = await getCoordinates(postcode);
 
   let res = await fetch(
@@ -153,48 +169,49 @@ async function getWeather(postcode) {
   return await res.json();
 }
 
-// -------------------- TEMP EFF --------------------
+// -------------------- TEMP --------------------
 function temperatureEfficiency(temp) {
-  const nominalTemp = 25;
-  const coef = -0.004;
-
-  let factor = 1 + ((temp - nominalTemp) * coef);
-  return Math.min(1.05, Math.max(0.8, factor));
+  let f = 1 + ((temp - 25) * -0.004);
+  return Math.min(1.05, Math.max(0.8, f));
 }
 
-// -------------------- SOLAR SCORE --------------------
+// -------------------- SOLAR --------------------
 function hourlySolarScore(cloud, radiation) {
   return Math.min(1, Math.max(0,
     (1 - cloud / 100) * 0.6 + (radiation / 1000) * 0.4
   ));
 }
 
-// -------------------- SUNSHINE --------------------
-function calculateSunshineHours(radiation, start) {
+function calculateSunshineHours(rad, start) {
   let h = 0;
   for (let i = start; i < start + 24; i++) {
-    if (radiation[i] > 120) h++;
+    if (rad[i] > 120) h++;
   }
   return h;
 }
 
-// -------------------- CLOUD WEIGHT --------------------
 function weightedCloudAverage(cloud, start) {
-  let sum = 0, weight = 0;
-
+  let sum = 0, wsum = 0;
   for (let i = 0; i < 24; i++) {
-    let w = Math.exp(-Math.pow((i - 12) / 6, 2));
-    sum += cloud[start + i] * w;
-    weight += w;
+    let w = Math.exp(-Math.pow((i - 12)/6,2));
+    sum += cloud[start+i]*w;
+    wsum += w;
   }
-
-  return sum / weight;
+  return sum/wsum;
 }
 
 // -------------------- PV --------------------
 function estimatePV(avgScore, sunshine, temp, s) {
-  let raw = s.pvSize * sunshine * avgScore * (s.efficiency / 100) * temperatureEfficiency(temp);
+
+  let orientationFactor = getOrientationFactor(s.orientation);
+
+  let raw = s.pvSize * sunshine * avgScore *
+            (s.efficiency / 100) *
+            temperatureEfficiency(temp) *
+            orientationFactor;
+
   let limit = s.inverter * sunshine;
+
   return Math.min(raw, limit);
 }
 
@@ -202,6 +219,7 @@ function estimatePV(avgScore, sunshine, temp, s) {
 function recommendedSOC(pv, s) {
   let shortfall = Math.max(0, s.dailyLoad - pv);
   let required = shortfall * 1.2;
+
   let soc = (required / s.battery) * 100;
 
   if (soc < s.socLow) soc = s.socLow;
@@ -210,7 +228,7 @@ function recommendedSOC(pv, s) {
   return Math.round(soc);
 }
 
-// -------------------- WEATHER UI --------------------
+// -------------------- UI --------------------
 function weatherSummary(cloud, rad, temp, hum, precip) {
   return `
     🌤️ Cloud: ${cloud.toFixed(0)}%<br>
@@ -244,14 +262,14 @@ async function runAI() {
 
     let weightedCloud = weightedCloudAverage(cloud, start);
 
-    let avgRad = rad.slice(start, start+24).reduce((a,b)=>a+b)/24;
+    let avgRad = rad.slice(start,start+24).reduce((a,b)=>a+b)/24;
 
-    let scores = rad.slice(start, start+24)
-      .map((r,i)=>hourlySolarScore(cloud[start+i], r));
+    let scores = rad.slice(start,start+24)
+      .map((r,i)=>hourlySolarScore(cloud[start+i],r));
 
     let avgScore = scores.reduce((a,b)=>a+b)/scores.length;
 
-    let sunshine = calculateSunshineHours(rad, start);
+    let sunshine = calculateSunshineHours(rad,start);
     let middayTemp = temp[start+12];
 
     let pv = estimatePV(avgScore, sunshine, middayTemp, s);
