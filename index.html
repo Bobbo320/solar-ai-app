@@ -1,410 +1,305 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
-<style>
-body {
-  font-family: Arial;
-  background:#000;
-  color:#fff;
-  margin:10px;
-}
-
-h2 { text-align:center; }
-
-.card {
-  background:#111;
-  padding:10px;
-  margin-top:10px;
-  border-radius:8px;
-}
-
-input {
-  width:100%;
-  padding:8px;
-  margin:5px 0;
-  background:#222;
-  color:#fff;
-  border:1px solid #444;
-}
-
-button {
-  width:100%;
-  padding:10px;
-  margin-top:10px;
-  background:#222;
-  color:#fff;
-  border:1px solid #555;
-}
-
-.soc-box {
-  margin-top:15px;
-  padding:20px;
-  background:#220000;
-  text-align:center;
-  border-radius:10px;
-}
-
-.soc-value {
-  font-size:36px;
-  color:#ff4d4d;
-  font-weight:bold;
-}
-
-table {
-  width:100%;
-  border-collapse:collapse;
-  font-size:12px;
-}
-
-th,td {
-  border:1px solid #333;
-  padding:4px;
-}
-</style>
+  <title>Solar SOC AI Pro (Self Learning)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body {
+      font-family: Arial;
+      padding: 20px;
+      background: #0f172a;
+      color: white;
+      text-align: center;
+    }
+    button {
+      padding: 12px;
+      margin: 10px;
+      font-size: 16px;
+    }
+    .card {
+      margin-top: 15px;
+      padding: 15px;
+      background: #1e293b;
+      border-radius: 10px;
+      text-align: left;
+    }
+    input {
+      padding: 8px;
+      width: 160px;
+    }
+  </style>
 </head>
 
 <body>
 
-<h2>Solar AI</h2>
+<h2>⚡ Solar SOC AI Pro (Self Learning)</h2>
 
-<button onclick="loadWeather()">Load Weather</button>
+<div class="card">
+📍 <b>Location:</b><br>
+NR7 0WZ (Norwich, UK)
+</div>
 
-<div id="settings"></div>
-<div id="weather"></div>
-<div id="pv"></div>
-<div id="soc"></div>
-<div id="history"></div>
+<div class="card">
+  <b>📥 Add Daily PV Data</b><br><br>
 
-<canvas id="chart"></canvas>
+  <label>Date:</label><br>
+  <input id="pvDate" type="date"><br><br>
+
+  <label>PV (kWh):</label><br>
+  <input id="pvInput" type="number"><br><br>
+
+  <button onclick="savePV()">Save PV</button>
+</div>
+
+<button onclick="runAI()">Plan Next 3 Days</button>
+
+<p id="loading"></p>
+
+<div id="output"></div>
 
 <script>
 
-/* ---------------- STORAGE ---------------- */
-
-function getSettings(){
-  return JSON.parse(localStorage.getItem("settings") || "{}");
-}
-
-function saveSettings(s){
-  localStorage.setItem("settings", JSON.stringify(s));
-}
-
-function getHistory(){
+// -------------------- Storage --------------------
+function getPVHistory() {
   return JSON.parse(localStorage.getItem("pvHistory") || "[]");
 }
 
-function saveHistory(h){
-  localStorage.setItem("pvHistory", JSON.stringify(h));
+function savePV() {
+  let pv = parseFloat(document.getElementById("pvInput").value);
+  let date = document.getElementById("pvDate").value;
+
+  if (!date || isNaN(pv)) return alert("Enter valid data");
+
+  let history = getPVHistory();
+  history.push({ date, kwh: pv });
+
+  localStorage.setItem("pvHistory", JSON.stringify(history));
+
+  alert("Saved PV");
 }
 
-function getCalibration(){
-  return JSON.parse(localStorage.getItem("calibration") || "{}");
+// -------------------- Calibration --------------------
+function getCalibrationFactorFromHistory(dayScoresMap) {
+  let history = getPVHistory();
+  let factors = [];
+
+  history.forEach(entry => {
+    let score = dayScoresMap[entry.date];
+    if (score && score > 0) {
+      factors.push(entry.kwh / score);
+    }
+  });
+
+  if (factors.length === 0) return 52;
+
+  return factors.reduce((a,b)=>a+b,0) / factors.length;
 }
 
-function saveCalibration(c){
-  localStorage.setItem("calibration", JSON.stringify(c));
+// -------------------- SOC Colour --------------------
+function socColor(socValue) {
+  let soc = parseInt(socValue);
+  if (soc >= 70) return "limegreen";
+  if (soc >= 40) return "orange";
+  return "red";
 }
 
-/* ---------------- SETTINGS ---------------- */
+// -------------------- SOC Logic --------------------
+function recommendedSOC(avgScore, maxElevation) {
 
-function renderSettings(){
+  let seasonalFactor = maxElevation / 60;
+  seasonalFactor = Math.min(1, Math.max(0, seasonalFactor));
 
-  let s = getSettings();
+  let adjustedScore = (avgScore * 0.7) + (seasonalFactor * 0.3);
 
-  settings.innerHTML = `
-    <div class="card">
-      <b>Settings</b>
+  let soc = 100 - (adjustedScore * 50);
 
-      <input id="inverter" placeholder="Inverter kW" value="${s.inverter || 5}">
-      <input id="pvSize" placeholder="PV size kW" value="${s.pvSize || 6.5}">
+  soc = Math.min(95, Math.max(20, soc));
 
-      <button onclick="saveSettingsFromUI()">Save</button>
-    </div>
+  return Math.round(soc) + "%";
+}
 
-    <div class="card">
-      <b>Manual PV Input</b>
-      <input id="pvDate" type="date">
-      <input id="pvKwh" placeholder="kWh generated">
-      <button onclick="addManualPV()">Add PV</button>
-    </div>
+// -------------------- Solar Model --------------------
+function hourlySolarScore(cloud, radiation) {
+  let cloudFactor = 1 - (cloud / 100);
+  let radiationFactor = radiation / 1000;
+  let score = (cloudFactor * 0.6) + (radiationFactor * 0.4);
+  return Math.min(1, Math.max(0, score));
+}
+
+// -------------------- Sun Elevation --------------------
+function sunElevation(date, lat, lon) {
+  const rad = Math.PI / 180;
+
+  let day = Math.floor((date - new Date(date.getFullYear(), 0, 0)) / 86400000);
+  let decl = 23.45 * Math.sin(rad * (360 * (284 + day) / 365));
+
+  let hour = date.getHours() + date.getMinutes() / 60;
+  let solarTime = hour + (lon / 15);
+  let hourAngle = 15 * (solarTime - 12);
+
+  let elevation = Math.asin(
+    Math.sin(lat * rad) * Math.sin(decl * rad) +
+    Math.cos(lat * rad) * Math.cos(decl * rad) * Math.cos(hourAngle * rad)
+  ) / rad;
+
+  return Math.max(0, elevation);
+}
+
+function maxSunElevationForDay(date, lat, lon) {
+  let maxElev = 0;
+
+  for (let hour = 0; hour < 24; hour++) {
+    let d = new Date(date);
+    d.setHours(hour,0,0,0);
+
+    let elev = sunElevation(d, lat, lon);
+    if (elev > maxElev) maxElev = elev;
+  }
+
+  return maxElev;
+}
+
+// -------------------- Sunshine Hours --------------------
+function calculateSunshineHours(radiationArray, dayStart) {
+  let hours = 0;
+  for (let h = dayStart; h < dayStart + 24; h++) {
+    if (radiationArray[h] > 120) hours++;
+  }
+  return hours;
+}
+
+// -------------------- Weather Summary --------------------
+function weatherSummary(cloud, rad, temp, humidity, wind, precip) {
+  return `
+    🌤️ Cloud: ${cloud.toFixed(0)}%<br>
+    ☀️ Radiation: ${rad.toFixed(0)} W/m²<br>
+    🌡️ Temp: ${temp.toFixed(1)}°C<br>
+    💧 Humidity: ${humidity.toFixed(0)}%<br>
+    🌬️ Wind: ${wind.toFixed(1)} km/h<br>
+    🌧️ Precip: ${precip.toFixed(2)} mm
   `;
 }
 
-function saveSettingsFromUI(){
+// -------------------- Main --------------------
+async function runAI() {
 
-  let s = {
-    inverter: parseFloat(document.getElementById("inverter").value),
-    pvSize: parseFloat(document.getElementById("pvSize").value)
-  };
+  document.getElementById("loading").innerText = "Loading...";
 
-  saveSettings(s);
-}
+  let res = await fetch(
+    "https://api.open-meteo.com/v1/forecast?latitude=52.627&longitude=1.331&hourly=cloudcover,temperature_2m,shortwave_radiation,relativehumidity_2m,windspeed_10m,precipitation&forecast_days=3&timezone=auto"
+  );
 
-/* ---------------- WEATHER ---------------- */
-
-let weatherData=null;
-
-async function loadWeather(){
-
-  let url = `https://api.open-meteo.com/v1/forecast?latitude=52.63&longitude=1.33&hourly=shortwave_radiation,cloudcover,temperature_2m,precipitation&forecast_days=3`;
-
-  let res = await fetch(url);
   let data = await res.json();
 
-  weatherData = data.hourly;
+  let times = data.hourly.time;
+  let cloud = data.hourly.cloudcover;
+  let radiation = data.hourly.shortwave_radiation;
+  let temp = data.hourly.temperature_2m;
+  let humidity = data.hourly.relativehumidity_2m;
+  let wind = data.hourly.windspeed_10m;
+  let precip = data.hourly.precipitation;
 
-  renderAll();
-}
+  let output = "";
+  let dayScoresMap = {};
 
-/* ---------------- DAILY WEATHER ---------------- */
+  // Build score map
+  for (let d = 0; d < 3; d++) {
 
-function getDay(index){
+    let dayStart = d * 24;
+    let scores = [];
 
-  let start = index*24;
+    for (let h = dayStart; h < dayStart + 24; h++) {
 
-  let rad=[], cloud=[];
+      let date = new Date(times[h]);
+      let hour = date.getHours();
 
-  for(let i=0;i<24;i++){
-    rad.push(weatherData.shortwave_radiation[start+i]||0);
-    cloud.push(weatherData.cloudcover[start+i]||0);
+      if (hour >= 10 && hour <= 15) {
+        let elevation = sunElevation(date, 52.627, 1.331);
+        let sunFactor = Math.sin(elevation * Math.PI / 180);
+
+        let baseScore = hourlySolarScore(cloud[h], radiation[h]);
+        scores.push(baseScore * sunFactor);
+      }
+    }
+
+    let avgScore = scores.reduce((a,b)=>a+b,0)/scores.length || 0;
+
+    let dateKey = new Date(times[dayStart]).toISOString().split("T")[0];
+    dayScoresMap[dateKey] = avgScore;
   }
 
-  return {
-    rad: rad.reduce((a,b)=>a+b)/24,
-    cloud: cloud.reduce((a,b)=>a+b)/24
-  };
-}
+  let calibrationFactor = getCalibrationFactorFromHistory(dayScoresMap);
 
-/* ---------------- BASE PV ---------------- */
+  // Render output
+  for (let d = 0; d < 3; d++) {
 
-function basePredict(dayIndex){
+    let dayStart = d * 24;
+    let dateKey = new Date(times[dayStart]).toISOString().split("T")[0];
 
-  let s = getSettings();
-  let w = getDay(dayIndex);
+    let scores = [];
 
-  let cloudFactor = 1 - (w.cloud/100);
-  let base = w.rad * 0.08;
+    for (let h = dayStart; h < dayStart + 24; h++) {
+      let date = new Date(times[h]);
+      let hour = date.getHours();
 
-  let pv = (s.pvSize || 6) * base * cloudFactor;
+      if (hour >= 10 && hour <= 15) {
+        let elevation = sunElevation(date, 52.627, 1.331);
+        let sunFactor = Math.sin(elevation * Math.PI / 180);
+        let baseScore = hourlySolarScore(cloud[h], radiation[h]);
+        scores.push(baseScore * sunFactor);
+      }
+    }
 
-  let inverterLimit = (s.inverter || 5) * 6;
+    let avgScore = scores.reduce((a,b)=>a+b,0)/scores.length || 0;
 
-  return Math.min(pv, inverterLimit);
-}
+    let avgCloud = cloud.slice(dayStart, dayStart+24).reduce((a,b)=>a+b,0)/24;
+    let avgRad = radiation.slice(dayStart, dayStart+24).reduce((a,b)=>a+b,0)/24;
+    let avgTemp = temp.slice(dayStart, dayStart+24).reduce((a,b)=>a+b,0)/24;
+    let avgHum = humidity.slice(dayStart, dayStart+24).reduce((a,b)=>a+b,0)/24;
+    let avgWind = wind.slice(dayStart, dayStart+24).reduce((a,b)=>a+b,0)/24;
+    let avgPrecip = precip.slice(dayStart, dayStart+24).reduce((a,b)=>a+b,0)/24;
 
-/* ---------------- CALIBRATION ---------------- */
+    let dateObj = new Date(times[dayStart]);
+    let maxElevation = maxSunElevationForDay(dateObj, 52.627, 1.331);
 
-function getMonthlyFactor(month){
-  let cal = getCalibration();
-  return cal[month] || 1;
-}
+    let predictedPV = (avgScore * calibrationFactor).toFixed(1);
+    let socValue = recommendedSOC(avgScore, maxElevation);
+    let sunshineHours = calculateSunshineHours(radiation, dayStart);
 
-/* ---------------- AUTO LEARNING ---------------- */
+    let isTomorrow = (d === 1);
 
-function updateCalibration(dateStr, actualPV){
+    output += `
+      <div class="card">
+        <b>${d === 0 ? "Today" : d === 1 ? "Tomorrow" : "Day +2"}</b><br><br>
 
-  let d = new Date(dateStr);
-  let month = d.getMonth();
+        ${weatherSummary(avgCloud, avgRad, avgTemp, avgHum, avgWind, avgPrecip)}<br><br>
 
-  let predicted = basePredictFromDate(dateStr);
-  if(predicted <= 0) return;
+        ☀️ Expected Sunshine Hours: ${sunshineHours} hrs<br><br>
 
-  let errorFactor = actualPV / predicted;
+        ⚡ Solar Score: ${(avgScore*100).toFixed(0)}%<br>
+        🔋 Estimated PV: ${predictedPV} kWh<br><br>
 
-  let cal = getCalibration();
-  if(!cal[month]) cal[month] = 1;
+        🔋 Recommended SOC:<br><br>
 
-  let alpha = 0.2;
+        <div style="
+          font-weight: bold;
+          font-size: ${isTomorrow ? '28px' : '18px'};
+          color: ${isTomorrow ? 'red' : socColor(socValue)};
+          background: ${isTomorrow ? '#1f2937' : 'transparent'};
+          padding: ${isTomorrow ? '10px' : '0'};
+          border-radius: ${isTomorrow ? '8px' : '0'};
+          display: inline-block;
+        ">
+          ${socValue}
+        </div>
 
-  cal[month] = cal[month]*(1-alpha) + errorFactor*alpha;
-
-  saveCalibration(cal);
-}
-
-/* ---------------- DATE PV ---------------- */
-
-function basePredictFromDate(dateStr){
-
-  let d = new Date(dateStr);
-  let today = new Date();
-
-  let diff = Math.round((d - today)/(1000*60*60*24));
-
-  if(diff < 0 || diff > 2) return 0;
-
-  return basePredict(diff);
-}
-
-/* ---------------- CALIBRATED PV ---------------- */
-
-function calibratedPV(dayIndex){
-
-  let d = new Date();
-  d.setDate(d.getDate()+dayIndex);
-  let month = d.getMonth();
-
-  let base = basePredict(dayIndex);
-  let factor = getMonthlyFactor(month);
-
-  return base * factor;
-}
-
-/* ---------------- SOC ---------------- */
-
-function calculateSOC(pvTomorrow){
-
-  let battery = 10;
-  let currentSOC = 50;
-  let load = 8;
-
-  if(!pvTomorrow) return 50;
-
-  let net = pvTomorrow - load;
-
-  let soc = currentSOC + (net / battery)*100;
-
-  if(soc > 100) soc = 100;
-  if(soc < 0) soc = 0;
-
-  return soc;
-}
-
-/* ---------------- MANUAL PV ---------------- */
-
-function addManualPV(){
-
-  let date = document.getElementById("pvDate").value;
-  let kwh = parseFloat(document.getElementById("pvKwh").value);
-
-  if(!date || isNaN(kwh)) return;
-
-  let history = getHistory();
-  history.push({date,kwh});
-  saveHistory(history);
-
-  updateCalibration(date,kwh);
-
-  renderHistory();
-}
-
-/* ---------------- UI ---------------- */
-
-function renderWeather(){
-
-  let html = `<div class="card"><b>3 Day Weather</b>`;
-
-  for(let d=0; d<3; d++){
-    let w = getDay(d);
-
-    html += `
-      <br><br><b>${d===1?"Tomorrow":d===0?"Today":"Day 3"}</b><br>
-      Radiation: ${w.rad.toFixed(1)}<br>
-      Cloud: ${w.cloud.toFixed(1)}%
+      </div>
     `;
   }
 
-  html += "</div>";
-  weather.innerHTML = html;
+  document.getElementById("output").innerHTML = output;
+  document.getElementById("loading").innerText = "";
 }
-
-function renderPV(){
-
-  pv.innerHTML = `
-    <div class="card">
-      <b>PV Forecast (Calibrated)</b><br>
-      Today: ${calibratedPV(0).toFixed(2)} kWh<br>
-      Tomorrow: ${calibratedPV(1).toFixed(2)} kWh<br>
-      Day 3: ${calibratedPV(2).toFixed(2)} kWh
-    </div>
-  `;
-}
-
-function renderSOC(){
-
-  let pvTomorrow = calibratedPV(1);
-  let soc = calculateSOC(pvTomorrow);
-
-  soc.innerHTML = `
-    <div class="soc-box">
-      <b>🔥 Tomorrow SOC</b><br>
-      <div class="soc-value">${soc.toFixed(0)}%</div>
-    </div>
-  `;
-}
-
-/* ---------------- HISTORY TABLE ---------------- */
-
-function renderHistory(){
-
-  let h = getHistory();
-
-  if(h.length === 0){
-    history.innerHTML = `<div class="card"><b>History</b><br>No data</div>`;
-    return;
-  }
-
-  let rows = h.map(e=>`
-    <tr>
-      <td>${e.date}</td>
-      <td>${e.kwh}</td>
-    </tr>
-  `).join("");
-
-  history.innerHTML = `
-    <div class="card">
-      <b>Manual PV History</b>
-      <table>
-        <tr><th>Date</th><th>kWh</th></tr>
-        ${rows}
-      </table>
-    </div>
-  `;
-}
-
-/* ---------------- CHART ---------------- */
-
-let chartInstance=null;
-
-function renderChart(data){
-
-  let ctx = document.getElementById("chart").getContext("2d");
-
-  if(chartInstance) chartInstance.destroy();
-
-  chartInstance = new Chart(ctx,{
-    type:'line',
-    data:{
-      labels:["Today","Tomorrow","Day3"],
-      datasets:[{data:data}]
-    }
-  });
-}
-
-/* ---------------- MASTER RENDER ---------------- */
-
-function renderAll(){
-
-  if(!weatherData) return;
-
-  renderSettings();
-  renderWeather();
-  renderPV();
-  renderSOC();
-  renderHistory();
-
-  renderChart([
-    calibratedPV(0),
-    calibratedPV(1),
-    calibratedPV(2)
-  ]);
-}
-
-/* ---------------- INIT ---------------- */
-
-window.onload = loadWeather;
 
 </script>
 
