@@ -62,7 +62,6 @@
     <option value="north">North (65% output)</option>
   </select><br>
 
-  <!-- ✅ UPDATED SHADING DROPDOWN -->
   <label>Shading:</label><br>
   <select id="shading">
     <option value="100">None (100% output)</option>
@@ -158,6 +157,28 @@ function getOrientationFactor(o) {
   return 1;
 }
 
+// -------------------- NEW: ORIENTATION USING SUN SPLIT --------------------
+function applyOrientationToSun(morning, afternoon, orientation) {
+
+  if (orientation === "south") {
+    return morning + afternoon;
+  }
+
+  if (orientation === "se_sw") {
+    return (morning * 0.95) + (afternoon * 0.95);
+  }
+
+  if (orientation === "east_west") {
+    return (morning * 1.2) + (afternoon * 0.8);
+  }
+
+  if (orientation === "north") {
+    return (morning + afternoon) * 0.65;
+  }
+
+  return morning + afternoon;
+}
+
 // -------------------- POSTCODE --------------------
 async function getCoordinates(postcode) {
   let res = await fetch(`https://api.postcodes.io/postcodes/${postcode}`);
@@ -182,14 +203,24 @@ function temperatureEfficiency(t) {
   return Math.min(1.05, Math.max(0.8, f));
 }
 
+// -------------------- SUNSHINE SPLIT --------------------
+function sunshineSplit(r,start){
+  let morning=0;
+  let afternoon=0;
+
+  for(let i=0;i<24;i++){
+    if(r[start+i] > 120){
+      if(i < 12) morning++;
+      else afternoon++;
+    }
+  }
+
+  return {morning, afternoon};
+}
+
 // -------------------- SOLAR --------------------
 function hourlySolarScore(c, r) {
   return Math.min(1, Math.max(0, (1-c/100)*0.6 + (r/1000)*0.4));
-}
-
-function calculateSunshineHours(r,start){
-  let h=0; for(let i=start;i<start+24;i++){ if(r[i]>120) h++; }
-  return h;
 }
 
 function weightedCloudAverage(c,start){
@@ -269,7 +300,16 @@ async function runAI(){
 
     let avgScore=scores.reduce((a,b)=>a+b)/scores.length;
 
-    let sun=calculateSunshineHours(rad,start);
+    // 🔆 Sunshine split
+    let split = sunshineSplit(rad,start);
+
+    // ✅ Apply orientation weighting using split
+    let sun = applyOrientationToSun(
+      split.morning,
+      split.afternoon,
+      s.orientation
+    );
+
     let midTemp=temp[start+12];
 
     let pv=estimatePV(avgScore,sun,midTemp,s);
@@ -282,7 +322,11 @@ async function runAI(){
       <div class="card">
         <h3>${label}</h3>
         ${weatherSummary(wc,avgRad,midTemp,hum[start+12],precip[start+12])}
-        <br><b>🌞 Sunshine Hours:</b> ${sun}
+
+        <br><b>🌞 Sunshine Hours:</b> ${split.morning + split.afternoon}
+        <br>🌅 Morning: ${split.morning}h
+        <br>🌇 Afternoon: ${split.afternoon}h
+
         <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
         <br><span ${style}>🔋 Recommended SOC: ${soc}%</span>
       </div>
