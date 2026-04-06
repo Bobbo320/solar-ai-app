@@ -4,25 +4,34 @@
   <title>Solar AI App</title>
   <style>
     body { font-family: Arial; margin: 20px; }
+
     .tab { display: none; }
     .active { display: block; }
+
     button { margin: 5px; padding: 10px; }
     input { margin: 5px; padding: 5px; }
-    .highlight {
-      background: yellow;
-      padding: 10px;
-      font-size: 20px;
-      font-weight: bold;
-    }
-    .tomorrow {
+
+    .soc-box {
+      margin-top: 20px;
+      padding: 25px;
       background: #ffdddd;
-      font-size: 22px;
+      border-radius: 10px;
+      text-align: center;
+    }
+
+    .soc-title {
+      font-size: 18px;
+      margin-bottom: 10px;
+    }
+
+    .soc-value {
+      font-size: 36px;
       font-weight: bold;
       color: red;
-      padding: 10px;
     }
   </style>
 </head>
+
 <body>
 
 <h2>Solar AI App</h2>
@@ -34,7 +43,9 @@
 
 <div id="dashboard" class="tab active">
   <h3>Dashboard</h3>
-  <button onclick="loadWeather()">Refresh Weather</button>
+
+  <button onclick="loadWeather()">Load Weather</button>
+
   <div id="weather"></div>
   <div id="pv"></div>
   <div id="soc"></div>
@@ -71,6 +82,8 @@
 <script>
 let weatherData = null;
 
+/* ---------------- NAV ---------------- */
+
 function showTab(tab){
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById(tab).classList.add('active');
@@ -105,12 +118,12 @@ function loadSettings(){
 /* ---------------- MANUAL PV ---------------- */
 
 function addPV(){
-  let date = pvDate.value;
-  let kwh = parseFloat(pvInput.value);
-
   let history = JSON.parse(localStorage.getItem("pvHistory") || "[]");
 
-  history.push({date, kwh});
+  history.push({
+    date: pvDate.value,
+    kwh: parseFloat(pvInput.value)
+  });
 
   localStorage.setItem("pvHistory", JSON.stringify(history));
   alert("Saved");
@@ -143,7 +156,6 @@ function drawChart(data){
   data.forEach((d,i)=>{
     let x = i * 40;
     let y = 200 - (d.kwh / max) * 180;
-
     ctx.fillRect(x, y, 20, 200 - y);
   });
 }
@@ -151,12 +163,11 @@ function drawChart(data){
 /* ---------------- WEATHER ---------------- */
 
 async function loadWeather(){
-  let settings = JSON.parse(localStorage.getItem("settings"));
 
   let lat = 52.627;
   let lon = 1.331;
 
-  let url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=shortwave_radiation,cloudcover&forecast_days=3`;
+  let url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=shortwave_radiation,cloudcover,precipitation&forecast_days=3`;
 
   let res = await fetch(url);
   let data = await res.json();
@@ -168,78 +179,115 @@ async function loadWeather(){
 }
 
 function displayWeather(){
-  let html = "<h4>Weather (3 days)</h4>";
-  html += "<pre>" + JSON.stringify(weatherData.hourly || weatherData, null, 2) + "</pre>";
-  weather.innerHTML = html;
+  weather.innerHTML = `<pre>${JSON.stringify(weatherData, null, 2)}</pre>`;
 }
 
-/* ---------------- SOLAR MODEL ---------------- */
+/* ---------------- WEATHER HELPERS ---------------- */
+
+function getDailyWeather(hourly, dayIndex){
+
+  let start = dayIndex * 24;
+
+  let clouds = [];
+  let radiation = [];
+  let precip = [];
+
+  for(let i=0;i<24;i++){
+    let idx = start + i;
+    clouds.push(hourly.cloudcover[idx]);
+    radiation.push(hourly.shortwave_radiation[idx]);
+    precip.push(hourly.precipitation[idx]);
+  }
+
+  let avgCloud = clouds.reduce((a,b)=>a+b,0)/24;
+  let avgRad = radiation.reduce((a,b)=>a+b,0)/24;
+  let totalPrecip = precip.reduce((a,b)=>a+b,0);
+
+  let sunshineHours = radiation.filter(r => r > 100).length;
+
+  return {
+    cloud: avgCloud,
+    radiation: avgRad,
+    precipitation: totalPrecip,
+    sunshine: sunshineHours
+  };
+}
+
+/* ---------------- PV MODEL ---------------- */
 
 function predictDay(dayIndex){
+
   let settings = JSON.parse(localStorage.getItem("settings"));
 
   let pvSize = parseFloat(settings.pvSize);
   let inverter = parseFloat(settings.inverter);
 
-  let total = 0;
+  let w = getDailyWeather(weatherData, dayIndex);
 
-  for(let i=0;i<24;i++){
+  let cloudFactor = 0.4 + 0.6 * (1 - w.cloud / 100);
+  let rainPenalty = Math.max(0.7, 1 - (w.precipitation * 0.05));
+  let sunshineFactor = Math.min(1.2, 0.7 + (w.sunshine / 10));
 
-    let idx = dayIndex*24 + i;
+  let base = w.radiation * 0.08;
 
-    let rad = weatherData.shortwave_radiation[idx];
-    let cloud = weatherData.cloudcover[idx];
+  let pv = pvSize * base * cloudFactor * rainPenalty * sunshineFactor;
 
-    let cloudFactor = 0.4 + 0.6 * (1 - cloud/100);
+  pv = Math.min(pv, inverter * 6);
 
-    let effective = rad * cloudFactor;
-
-    let power = (effective / 1000) * pvSize;
-
-    power = Math.min(power, inverter);
-
-    total += power / 4;
-  }
-
-  return total;
+  return pv;
 }
 
 /* ---------------- SOC ---------------- */
 
 function calculateSOC(pvToday, pvTomorrow){
-  let settings = JSON.parse(localStorage.getItem("settings"));
 
+  let settings = JSON.parse(localStorage.getItem("settings"));
   let battery = parseFloat(settings.battery);
 
-  let soc = 50;
+  let ratio = pvTomorrow / battery;
 
-  if(pvTomorrow < pvToday){
-    soc += 20;
+  let soc;
+
+  if(ratio > 3){
+    soc = 20;
+  } else if(ratio > 1.5){
+    soc = 35;
   } else {
-    soc -= 10;
+    soc = 60;
   }
 
-  soc = Math.max(10, Math.min(90, soc));
-
-  return soc;
+  return Math.max(10, Math.min(90, soc));
 }
 
-/* ---------------- PV + SOC DISPLAY ---------------- */
+/* ---------------- DISPLAY ---------------- */
 
 function calculatePV(){
 
   let pvToday = predictDay(0);
   let pvTomorrow = predictDay(1);
 
+  let wToday = getDailyWeather(weatherData, 0);
+
   pv.innerHTML = `
     <h3>Predicted PV</h3>
     Today: ${pvToday.toFixed(2)} kWh<br>
     Tomorrow: ${pvTomorrow.toFixed(2)} kWh
+
+    <h4>Weather Today</h4>
+    ☁️ ${wToday.cloud.toFixed(0)}%<br>
+    ☀️ ${wToday.radiation.toFixed(0)} W/m²<br>
+    🌞 ${wToday.sunshine} hrs<br>
+    🌧️ ${wToday.precipitation.toFixed(2)} mm
   `;
 
-  let soc = calculateSOC(pvToday, pvTomorrow);
+  let socVal = calculateSOC(pvToday, pvTomorrow);
 
-  soc.innerHTML = `<div class="tomorrow">Recommended SOC: ${soc}%</div>`;
+  soc.innerHTML = `
+    <div class="soc-box">
+      <div class="soc-title">Recommended SOC (Tomorrow)</div>
+      <div class="soc-value">${socVal}%</div>
+    </div>
+  `;
 }
 
 /* ---------------- INIT ---------------- */
