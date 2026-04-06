@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Solar SOC AI Pro (Full Weather + Learning)</title>
+  <title>Solar SOC AI Pro</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -43,7 +43,6 @@
       margin: 4px;
       width: 90%;
     }
-
   </style>
 </head>
 
@@ -55,7 +54,6 @@
 
 <button onclick="runAI()">Plan Next 3 Days</button>
 <button onclick="toggleSettings()">⚙️ Settings</button>
-<button onclick="toggleHistory()">📊 PV History</button>
 
 <br><br>
 
@@ -89,14 +87,10 @@
   <button onclick="saveSettings()">Save</button>
 </div>
 
-<!-- HISTORY -->
-<div id="historyPanel" class="card" style="display:none;">
-  <b>📊 PV History</b><br><br>
-  <canvas id="pvChart"></canvas>
-  <div id="historyContent"></div>
-</div>
-
 <script>
+
+const outputDiv = document.getElementById("output");
+const loading = document.getElementById("loading");
 
 // ---------------- SETTINGS ----------------
 function defaultSettings() {
@@ -113,7 +107,6 @@ function getSettings() {
   return JSON.parse(localStorage.getItem("settings")) || defaultSettings();
 }
 
-// ---------------- UI ----------------
 function updateSystemInfo() {
   let s = getSettings();
   document.getElementById("systemInfo").innerHTML = `
@@ -130,10 +123,11 @@ updateSystemInfo();
 // ---------------- SETTINGS UI ----------------
 function toggleSettings() {
   let p = document.getElementById("settingsPanel");
+
   if (p.style.display === "none") {
     p.style.display = "block";
-    let s = getSettings();
 
+    let s = getSettings();
     set_postcode.value = s.postcode;
     set_pvsize.value = s.pvsize;
     set_battery.value = s.battery;
@@ -168,7 +162,10 @@ function savePV() {
   let pv = parseFloat(pvInput.value);
   let date = pvDate.value;
 
-  if (!date || isNaN(pv)) return alert("Invalid input");
+  if (!date || isNaN(pv)) {
+    alert("Invalid input");
+    return;
+  }
 
   let history = getHistory();
 
@@ -196,7 +193,6 @@ function calculatePV(radiation, temp, settings) {
   for (let i = 0; i < radiation.length; i++) {
 
     let rad = radiation[i] / 1000;
-
     let tempLoss = 1 - (Math.max(0, temp[i] - 25) * 0.004);
 
     total += rad * settings.pvsize * orientation * tempLoss * 0.80;
@@ -207,8 +203,8 @@ function calculatePV(radiation, temp, settings) {
 
 // ---------------- CALIBRATION ----------------
 function getCalibration(settings) {
-  let hist = getHistory();
 
+  let hist = getHistory();
   if (hist.length === 0) return 1;
 
   let avg = hist.reduce((a,b)=>a+b.kwh,0)/hist.length;
@@ -219,6 +215,7 @@ function getCalibration(settings) {
 
 // ---------------- SOC ----------------
 function getSOC(pv, battery) {
+
   let r = pv / battery;
 
   if (r > 2) return "20%";
@@ -234,85 +231,87 @@ async function runAI() {
 
   loading.innerText = "Loading...";
 
-  let res = await fetch(
-    "https://api.open-meteo.com/v1/forecast?latitude=52.627&longitude=1.331&hourly=shortwave_radiation,temperature_2m,cloudcover,precipitation&forecast_days=3&timezone=auto"
-  );
+  try {
 
-  let data = await res.json();
+    let res = await fetch(
+      "https://api.open-meteo.com/v1/forecast?latitude=52.627&longitude=1.331&hourly=shortwave_radiation,temperature_2m,cloudcover,precipitation&forecast_days=3&timezone=auto"
+    );
 
-  let times = data.hourly.time;
-  let rad = data.hourly.shortwave_radiation;
-  let temp = data.hourly.temperature_2m;
-  let cloud = data.hourly.cloudcover;
-  let precip = data.hourly.precipitation;
+    let data = await res.json();
 
-  let s = getSettings();
-  let calibration = getCalibration(s);
+    let times = data.hourly.time;
+    let rad = data.hourly.shortwave_radiation;
+    let temp = data.hourly.temperature_2m;
+    let cloud = data.hourly.cloudcover;
+    let precip = data.hourly.precipitation;
 
-  let output = "";
+    let s = getSettings();
+    let calibration = getCalibration(s);
 
-  for (let d = 0; d < 3; d++) {
+    let output = "";
 
-    let start = d * 24;
+    for (let d = 0; d < 3; d++) {
 
-    let radDay = [];
-    let tempDay = [];
-    let cloudDay = [];
-    let precipDay = [];
+      let start = d * 24;
 
-    let sunshineHours = 0;
+      let radDay = [];
+      let tempDay = [];
+      let cloudDay = [];
+      let precipDay = [];
 
-    for (let h = start; h < start + 24; h++) {
+      let sunshineHours = 0;
 
-      radDay.push(rad[h]);
-      tempDay.push(temp[h]);
-      cloudDay.push(cloud[h]);
-      precipDay.push(precip[h]);
+      for (let h = start; h < Math.min(start + 24, times.length); h++) {
 
-      if (rad[h] > 120) sunshineHours++;
+        radDay.push(rad[h]);
+        tempDay.push(temp[h]);
+        cloudDay.push(cloud[h]);
+        precipDay.push(precip[h]);
+
+        if (rad[h] > 120) sunshineHours++;
+      }
+
+      let pv = calculatePV(radDay, tempDay, s) * calibration;
+
+      if (d === 0) window.lastPredictedPV = pv;
+
+      let avgCloud = cloudDay.reduce((a,b)=>a+b,0)/cloudDay.length;
+      let avgTemp = tempDay.reduce((a,b)=>a+b,0)/tempDay.length;
+      let totalPrecip = precipDay.reduce((a,b)=>a+b,0);
+
+      let soc = getSOC(pv, s.battery);
+
+      let label = d === 0 ? "Today" : d === 1 ? "Tomorrow" : "Day +2";
+
+      let socDisplay =
+        d === 1
+        ? `<div class="highlight">${soc}</div>`
+        : soc;
+
+      output += `
+        <div class="card">
+          <b>${label}</b><br><br>
+
+          🌤️ Cloud: ${avgCloud.toFixed(0)}%<br>
+          🌡️ Temp: ${avgTemp.toFixed(1)}°C<br>
+          🌧️ Rain: ${totalPrecip.toFixed(1)} mm<br>
+          ☀️ Sunshine: ${sunshineHours} hrs<br><br>
+
+          ⚡ PV: ${pv.toFixed(1)} kWh<br><br>
+
+          🔋 SOC: ${socDisplay}
+        </div>
+      `;
     }
 
-    let pv = calculatePV(radDay, tempDay, s) * calibration;
+    outputDiv.innerHTML = output;
 
-    if (d === 0) window.lastPredictedPV = pv;
-
-    let avgCloud = cloudDay.reduce((a,b)=>a+b,0)/cloudDay.length;
-    let avgTemp = tempDay.reduce((a,b)=>a+b,0)/tempDay.length;
-    let totalPrecip = precipDay.reduce((a,b)=>a+b,0);
-
-    let soc = getSOC(pv, s.battery);
-
-    let label = d === 0 ? "Today" : d === 1 ? "Tomorrow" : "Day +2";
-
-    let socDisplay =
-      d === 1
-      ? `<div class="highlight">${soc}</div>`
-      : soc;
-
-    output += `
-      <div class="card">
-        <b>${label}</b><br><br>
-
-        🌤️ Cloud: ${avgCloud.toFixed(0)}%<br>
-        🌡️ Temp: ${avgTemp.toFixed(1)}°C<br>
-        🌧️ Rain: ${totalPrecip.toFixed(1)} mm<br>
-        ☀️ Sunshine: ${sunshineHours} hrs<br><br>
-
-        ⚡ PV: ${pv.toFixed(1)} kWh<br><br>
-
-        🔋 SOC: ${socDisplay}
-      </div>
-    `;
+  } catch (err) {
+    outputDiv.innerHTML = "Error loading data: " + err;
+    console.error(err);
   }
 
-  outputDiv.innerHTML = output;
   loading.innerText = "";
-}
-
-// ---------------- HISTORY UI ----------------
-function toggleHistory() {
-  let panel = historyPanel;
-  panel.style.display = panel.style.display === "none" ? "block" : "none";
 }
 
 </script>
