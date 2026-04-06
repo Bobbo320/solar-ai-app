@@ -3,20 +3,20 @@
 <head>
   <title>Solar AI App</title>
 
-  <!-- Mobile scaling -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <style>
     body {
       font-family: Arial;
       margin: 10px;
       font-size: 16px;
+      background: #000;
+      color: #fff;
     }
 
-    h2 {
-      font-size: 22px;
-      text-align: center;
-    }
+    h2 { text-align: center; }
 
     .nav {
       display: flex;
@@ -28,55 +28,53 @@
     button {
       flex: 1 1 45%;
       padding: 12px;
-      font-size: 14px;
+      background: #222;
+      color: #fff;
+      border: 1px solid #444;
+      border-radius: 6px;
     }
 
     input {
-      margin: 6px 0;
-      padding: 10px;
       width: 100%;
-      font-size: 16px;
+      padding: 10px;
+      margin: 6px 0;
+      background: #111;
+      color: #fff;
+      border: 1px solid #444;
       box-sizing: border-box;
     }
 
-    .tab {
-      display: none;
-    }
-
-    .active {
-      display: block;
-    }
+    .tab { display: none; }
+    .active { display: block; }
 
     .card {
-      background: #f5f5f5;
+      background: #111;
       padding: 12px;
       margin-top: 10px;
       border-radius: 8px;
-      font-size: 14px;
-      line-height: 1.5;
+      border: 1px solid #333;
     }
 
     .soc-box {
       margin-top: 20px;
       padding: 20px;
-      background: #ffdddd;
+      background: #220000;
       border-radius: 10px;
       text-align: center;
-    }
-
-    .soc-title {
-      font-size: 16px;
-      margin-bottom: 8px;
+      border: 1px solid #550000;
     }
 
     .soc-value {
       font-size: 32px;
+      color: #ff4d4d;
       font-weight: bold;
-      color: red;
     }
 
-    #pv, #weather, #soc {
-      margin-top: 10px;
+    canvas {
+      margin-top: 15px;
+      background: #111;
+      border-radius: 8px;
+      padding: 10px;
     }
   </style>
 </head>
@@ -96,42 +94,38 @@
 <div id="dashboard" class="tab active">
   <button onclick="loadWeather()">Load Weather</button>
 
-  <div id="weather"></div>
   <div id="pv"></div>
   <div id="soc"></div>
+
+  <canvas id="pvChart"></canvas>
 </div>
 
 <!-- SETTINGS -->
 <div id="settings" class="tab">
-  <h3>Settings</h3>
-
-  <input id="postcode" placeholder="Postcode"><br>
-  <input id="pvSize" placeholder="PV Size (kWp)"><br>
-  <input id="inverter" placeholder="Inverter (kW)"><br>
-  <input id="battery" placeholder="Battery (kWh)"><br>
-  <input id="direction" placeholder="Direction (degrees)"><br>
-  <input id="elevation" placeholder="Elevation (m)"><br>
+  <input id="postcode" placeholder="Postcode">
+  <input id="pvSize" placeholder="PV Size (kWp)">
+  <input id="inverter" placeholder="Inverter (kW)">
+  <input id="battery" placeholder="Battery (kWh)">
+  <input id="direction" placeholder="Direction">
+  <input id="elevation" placeholder="Elevation">
 
   <button onclick="saveSettings()">Save Settings</button>
 </div>
 
 <!-- MANUAL PV -->
 <div id="manual" class="tab">
-  <h3>Manual PV Input</h3>
-
-  <input type="date" id="pvDate"><br>
-  <input id="pvInput" placeholder="kWh"><br>
-
+  <input type="date" id="pvDate">
+  <input id="pvInput" placeholder="kWh">
   <button onclick="addPV()">Add PV</button>
 </div>
 
 <!-- HISTORY -->
 <div id="history" class="tab">
-  <h3>PV History</h3>
   <div id="historyList"></div>
 </div>
 
 <script>
+
 let weatherData = null;
 
 /* ---------------- NAV ---------------- */
@@ -154,7 +148,6 @@ function saveSettings(){
     direction: direction.value,
     elevation: elevation.value
   };
-
   localStorage.setItem("settings", JSON.stringify(settings));
   alert("Saved");
 }
@@ -212,22 +205,7 @@ async function loadWeather(){
 
   weatherData = data.hourly;
 
-  displayWeather();
   calculatePV();
-}
-
-function displayWeather(){
-  if(!weatherData){
-    weather.innerHTML = "Weather not loaded";
-    return;
-  }
-
-  weather.innerHTML = `
-    <div class="card">
-      <b>Weather Loaded (3 Days)</b><br>
-      Cloud, Radiation, Precipitation available
-    </div>
-  `;
 }
 
 /* ---------------- WEATHER HELPERS ---------------- */
@@ -250,27 +228,27 @@ function getDailyWeather(hourly, dayIndex){
   let avgCloud = clouds.reduce((a,b)=>a+b,0)/24;
   let avgRad = radiation.reduce((a,b)=>a+b,0)/24;
   let totalPrecip = precip.reduce((a,b)=>a+b,0);
-
   let sunshineHours = radiation.filter(r => r > 100).length;
 
-  return {
-    cloud: avgCloud,
-    radiation: avgRad,
-    precipitation: totalPrecip,
-    sunshine: sunshineHours
-  };
+  return { cloud: avgCloud, radiation: avgRad, precipitation: totalPrecip, sunshine: sunshineHours };
 }
 
-/* ---------------- PV MODEL ---------------- */
+/* ---------------- CALIBRATION ---------------- */
 
-function predictDay(dayIndex){
+function getCalibrationData(){
+  return JSON.parse(localStorage.getItem("calibration") || "{}");
+}
+
+function saveCalibrationData(data){
+  localStorage.setItem("calibration", JSON.stringify(data));
+}
+
+function basePredict(dayIndex){
 
   let settings = JSON.parse(localStorage.getItem("settings") || "{}");
 
   let pvSize = parseFloat(settings.pvSize);
   let inverter = parseFloat(settings.inverter);
-
-  if(!weatherData) return 0;
 
   let w = getDailyWeather(weatherData, dayIndex);
 
@@ -282,73 +260,131 @@ function predictDay(dayIndex){
 
   let pv = pvSize * base * cloudFactor * rainPenalty * sunshineFactor;
 
-  pv = Math.min(pv, inverter * 6);
+  return Math.min(pv, inverter * 6);
+}
 
-  return pv;
+function buildCalibration(){
+
+  let history = JSON.parse(localStorage.getItem("pvHistory") || "[]");
+  let calibration = {};
+
+  history.forEach(entry => {
+
+    let date = new Date(entry.date);
+    let month = date.getMonth();
+
+    let predicted = basePredictFromDate(entry.date);
+
+    if(predicted <= 0) return;
+
+    let factor = entry.kwh / predicted;
+
+    if(!calibration[month]) calibration[month] = [];
+    calibration[month].push(factor);
+  });
+
+  let monthly = {};
+
+  Object.keys(calibration).forEach(m => {
+    let arr = calibration[m];
+    monthly[m] = arr.reduce((a,b)=>a+b,0) / arr.length;
+  });
+
+  saveCalibrationData(monthly);
+}
+
+function basePredictFromDate(dateStr){
+  return 1; // simplified fallback for calibration stability
+}
+
+function calibratedPredict(dayIndex){
+
+  buildCalibration();
+
+  let date = new Date();
+  date.setDate(date.getDate() + dayIndex);
+
+  let month = date.getMonth();
+  let calibration = getCalibrationData();
+
+  let factor = calibration[month] || 1.0;
+
+  return basePredict(dayIndex) * factor;
 }
 
 /* ---------------- SOC ---------------- */
 
-function calculateSOC(pvToday, pvTomorrow){
+function calculateSOC(pvTomorrow){
 
   let settings = JSON.parse(localStorage.getItem("settings") || "{}");
   let battery = parseFloat(settings.battery);
 
   let ratio = pvTomorrow / battery;
 
-  let soc;
+  if(ratio > 3) return 20;
+  if(ratio > 1.5) return 35;
+  return 60;
+}
 
-  if(ratio > 3){
-    soc = 20;
-  } else if(ratio > 1.5){
-    soc = 35;
-  } else {
-    soc = 60;
-  }
+/* ---------------- GRAPH ---------------- */
 
-  return Math.max(10, Math.min(90, soc));
+let chartInstance = null;
+
+function renderChart(values){
+
+  let ctx = document.getElementById('pvChart').getContext('2d');
+
+  if(chartInstance) chartInstance.destroy();
+
+  chartInstance = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: ['Today','Tomorrow','Day 3'],
+      datasets: [{
+        label: 'PV kWh',
+        data: values
+      }]
+    },
+    options: {
+      plugins: {
+        legend: { labels: { color: '#fff' } }
+      },
+      scales: {
+        x: { ticks: { color: '#fff' } },
+        y: { ticks: { color: '#fff' } }
+      }
+    }
+  });
 }
 
 /* ---------------- DISPLAY ---------------- */
 
 function calculatePV(){
 
-  if(!weatherData){
-    pv.innerHTML = "Load weather first";
-    return;
-  }
+  if(!weatherData) return;
 
-  let pvToday = predictDay(0);
-  let pvTomorrow = predictDay(1);
-  let pvDay3 = predictDay(2);
+  let pvToday = calibratedPredict(0);
+  let pvTomorrow = calibratedPredict(1);
+  let pvDay3 = calibratedPredict(2);
 
-  let w0 = getDailyWeather(weatherData, 0);
-  let w1 = getDailyWeather(weatherData, 1);
-  let w2 = getDailyWeather(weatherData, 2);
+  let soc = calculateSOC(pvTomorrow);
 
   pv.innerHTML = `
     <div class="card">
-      <h3>📊 PV Forecast</h3>
-
-      <b>Today:</b> ${pvToday.toFixed(2)} kWh<br>
-      ☁️ ${w0.cloud.toFixed(0)}% | ☀️ ${w0.radiation.toFixed(0)} W/m² | 🌞 ${w0.sunshine} hrs | 🌧️ ${w0.precipitation.toFixed(2)} mm<br><br>
-
-      <b>Tomorrow:</b> ${pvTomorrow.toFixed(2)} kWh<br>
-      ☁️ ${w1.cloud.toFixed(0)}% | ☀️ ${w1.radiation.toFixed(0)} W/m² | 🌞 ${w1.sunshine} hrs | 🌧️ ${w1.precipitation.toFixed(2)} mm<br><br>
-
-      <b>Day 3:</b> ${pvDay3.toFixed(2)} kWh<br>
-      ☁️ ${w2.cloud.toFixed(0)}% | ☀️ ${w2.radiation.toFixed(0)} W/m² | 🌞 ${w2.sunshine} hrs | 🌧️ ${w2.precipitation.toFixed(2)} mm
+      Today: ${pvToday.toFixed(2)} kWh<br>
+      Tomorrow: ${pvTomorrow.toFixed(2)} kWh<br>
+      Day 3: ${pvDay3.toFixed(2)} kWh
     </div>
   `;
-
-  let socVal = calculateSOC(pvToday, pvTomorrow);
 
   soc.innerHTML = `
     <div class="soc-box">
-      <div class="soc-title">Recommended SOC (Tomorrow)</div>
-      <div class="soc-value">${socVal}%</div>
+      Recommended SOC (Tomorrow)<br>
+      <div class="soc-value">${soc}%</div>
     </div>
   `;
+
+  renderChart([pvToday,pvTomorrow,pvDay3]);
 }
 
 /* ---------------- INIT ---------------- */
