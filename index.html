@@ -46,13 +46,13 @@
   <input id="postcode"><br>
 
   <label>PV Size (kWp):</label><br>
-  <input id="pvSize" type="number" step="0.1"><br>
+  <input id="pvSize" type="number"><br>
 
   <label>Inverter Size (kW):</label><br>
-  <input id="inverter" type="number" step="0.1"><br>
+  <input id="inverter" type="number"><br>
 
   <label>Battery Capacity (kWh):</label><br>
-  <input id="battery" type="number" step="0.1"><br>
+  <input id="battery" type="number"><br>
 
   <label>Daily Load (kWh):</label><br>
   <input id="dailyLoad" type="number"><br>
@@ -66,8 +66,7 @@
   <label>SOC High (%):</label><br>
   <input id="socHigh" type="number"><br>
 
-  <br>
-  <button onclick="saveSettings()">Save Settings</button>
+  <button onclick="saveSettings()">Save</button>
 </div>
 
 <p id="loading"></p>
@@ -104,7 +103,7 @@ function saveSettings() {
   };
 
   localStorage.setItem("settings", JSON.stringify(settings));
-  alert("Settings saved");
+  alert("Saved");
   toggleSettings();
 }
 
@@ -122,104 +121,102 @@ function loadSettingsToUI() {
 }
 
 function toggleSettings() {
-  let panel = document.getElementById("settingsPanel");
-  panel.classList.toggle("hidden");
+  document.getElementById("settingsPanel").classList.toggle("hidden");
   loadSettingsToUI();
 }
 
+// -------------------- POSTCODE → COORDS --------------------
+async function getCoordinates(postcode) {
+  let res = await fetch(`https://api.postcodes.io/postcodes/${postcode}`);
+  let data = await res.json();
+
+  if (data.status !== 200) {
+    alert("Invalid postcode");
+    throw new Error("Postcode lookup failed");
+  }
+
+  return {
+    lat: data.result.latitude,
+    lon: data.result.longitude
+  };
+}
+
 // -------------------- WEATHER --------------------
-async function getWeather() {
+async function getWeather(postcode) {
+
+  let coords = await getCoordinates(postcode);
+
   let res = await fetch(
-    "https://api.open-meteo.com/v1/forecast?latitude=52.627&longitude=1.331&hourly=cloudcover,temperature_2m,shortwave_radiation,relativehumidity_2m,precipitation&forecast_days=3&timezone=auto"
+    `https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&hourly=cloudcover,temperature_2m,shortwave_radiation,relativehumidity_2m,precipitation&forecast_days=3&timezone=auto`
   );
+
   return await res.json();
 }
 
-// -------------------- TEMPERATURE --------------------
+// -------------------- TEMP EFF --------------------
 function temperatureEfficiency(temp) {
   const nominalTemp = 25;
   const coef = -0.004;
 
-  let delta = temp - nominalTemp;
-  let factor = 1 + (delta * coef);
-
-  if (factor < 0.8) factor = 0.8;
-  if (factor > 1.05) factor = 1.05;
-
-  return factor;
+  let factor = 1 + ((temp - nominalTemp) * coef);
+  return Math.min(1.05, Math.max(0.8, factor));
 }
 
 // -------------------- SOLAR SCORE --------------------
 function hourlySolarScore(cloud, radiation) {
-  let cloudFactor = 1 - (cloud / 100);
-  let radiationFactor = radiation / 1000;
-  let score = (cloudFactor * 0.6) + (radiationFactor * 0.4);
-  return Math.min(1, Math.max(0, score));
+  return Math.min(1, Math.max(0,
+    (1 - cloud / 100) * 0.6 + (radiation / 1000) * 0.4
+  ));
 }
 
-// -------------------- SUNSHINE HOURS --------------------
-function calculateSunshineHours(radiationArray, startIndex) {
-  let hours = 0;
-  for (let i = startIndex; i < startIndex + 24; i++) {
-    if (radiationArray[i] > 120) hours++;
+// -------------------- SUNSHINE --------------------
+function calculateSunshineHours(radiation, start) {
+  let h = 0;
+  for (let i = start; i < start + 24; i++) {
+    if (radiation[i] > 120) h++;
   }
-  return hours;
+  return h;
 }
 
-// -------------------- CLOUD WEIGHTING --------------------
-function weightedCloudAverage(cloudArray, startIndex) {
-
-  let weights = [];
-  for (let i = 0; i < 24; i++) {
-    let hourWeight = Math.exp(-Math.pow((i - 12) / 6, 2));
-    weights.push(hourWeight);
-  }
-
-  let weightedSum = 0;
-  let weightTotal = 0;
+// -------------------- CLOUD WEIGHT --------------------
+function weightedCloudAverage(cloud, start) {
+  let sum = 0, weight = 0;
 
   for (let i = 0; i < 24; i++) {
-    weightedSum += cloudArray[startIndex + i] * weights[i];
-    weightTotal += weights[i];
+    let w = Math.exp(-Math.pow((i - 12) / 6, 2));
+    sum += cloud[start + i] * w;
+    weight += w;
   }
 
-  return weightedSum / weightTotal;
+  return sum / weight;
 }
 
-// -------------------- PV ESTIMATE --------------------
-function estimatePV(avgScore, sunshineHours, middayTemp, settings) {
-
-  let tempFactor = temperatureEfficiency(middayTemp);
-
-  let raw = settings.pvSize * sunshineHours * avgScore * (settings.efficiency / 100) * tempFactor;
-
-  let inverterLimit = settings.inverter * sunshineHours;
-
-  return Math.min(raw, inverterLimit);
+// -------------------- PV --------------------
+function estimatePV(avgScore, sunshine, temp, s) {
+  let raw = s.pvSize * sunshine * avgScore * (s.efficiency / 100) * temperatureEfficiency(temp);
+  let limit = s.inverter * sunshine;
+  return Math.min(raw, limit);
 }
 
-// -------------------- SOC MODEL --------------------
-function recommendedSOC(predictedPV, settings) {
-
-  let shortfall = Math.max(0, settings.dailyLoad - predictedPV);
+// -------------------- SOC --------------------
+function recommendedSOC(pv, s) {
+  let shortfall = Math.max(0, s.dailyLoad - pv);
   let required = shortfall * 1.2;
+  let soc = (required / s.battery) * 100;
 
-  let soc = (required / settings.battery) * 100;
-
-  // USE SETTINGS BOUNDS
-  if (soc < settings.socLow) soc = settings.socLow;
-  if (soc > settings.socHigh) soc = settings.socHigh;
+  if (soc < s.socLow) soc = s.socLow;
+  if (soc > s.socHigh) soc = s.socHigh;
 
   return Math.round(soc);
 }
 
-// -------------------- WEATHER DISPLAY --------------------
-function weatherSummary(cloud, rad, temp, humidity, precip) {
+// -------------------- WEATHER UI --------------------
+function weatherSummary(cloud, rad, temp, hum, precip) {
   return `
     🌤️ Cloud: ${cloud.toFixed(0)}%<br>
     ☀️ Radiation: ${rad.toFixed(0)} W/m²<br>
     🌡️ Temp (midday): ${temp.toFixed(1)}°C<br>
-    💧 Humidity: ${humidity.toFixed(0)}%<br>
+    💧 Humidity: ${hum.toFixed(0)}%<br>
     🌧️ Precip: ${precip.toFixed(2)} mm
   `;
 }
@@ -227,19 +224,19 @@ function weatherSummary(cloud, rad, temp, humidity, precip) {
 // -------------------- MAIN --------------------
 async function runAI() {
 
-  let settings = getSettings();
+  let s = getSettings();
 
   document.getElementById("loading").innerText = "Loading...";
 
-  let data = await getWeather();
+  let data = await getWeather(s.postcode);
 
   let cloud = data.hourly.cloudcover;
-  let radiation = data.hourly.shortwave_radiation;
+  let rad = data.hourly.shortwave_radiation;
   let temp = data.hourly.temperature_2m;
-  let humidity = data.hourly.relativehumidity_2m;
+  let hum = data.hourly.relativehumidity_2m;
   let precip = data.hourly.precipitation;
 
-  let outputHTML = "";
+  let html = "";
 
   for (let d = 0; d < 3; d++) {
 
@@ -247,51 +244,34 @@ async function runAI() {
 
     let weightedCloud = weightedCloudAverage(cloud, start);
 
-    let dailyRad = 0;
-    let scores = [];
+    let avgRad = rad.slice(start, start+24).reduce((a,b)=>a+b)/24;
 
-    for (let i = start; i < start + 24; i++) {
-      dailyRad += radiation[i];
-      scores.push(hourlySolarScore(cloud[i], radiation[i]));
-    }
+    let scores = rad.slice(start, start+24)
+      .map((r,i)=>hourlySolarScore(cloud[start+i], r));
 
-    let avgRad = dailyRad / 24;
-    let avgScore = scores.reduce((a,b)=>a+b,0) / scores.length;
+    let avgScore = scores.reduce((a,b)=>a+b)/scores.length;
 
-    let sunshineHours = calculateSunshineHours(radiation, start);
+    let sunshine = calculateSunshineHours(rad, start);
+    let middayTemp = temp[start+12];
 
-    let middayTemp = temp[start + 12];
+    let pv = estimatePV(avgScore, sunshine, middayTemp, s);
+    let soc = recommendedSOC(pv, s);
 
-    let pv = estimatePV(avgScore, sunshineHours, middayTemp, settings);
+    let label = d===0?"Today":d===1?"Tomorrow":"The day after tomorrow";
+    let style = d===1?"style='color:red;font-weight:bold;font-size:20px'":"";
 
-    let soc = recommendedSOC(pv, settings);
-
-    let label = d === 0 ? "Today" : d === 1 ? "Tomorrow" : "The day after tomorrow";
-
-    let socStyle = (d === 1)
-      ? "style='color:red; font-weight:bold; font-size:20px;'"
-      : "";
-
-    outputHTML += `
+    html += `
       <div class="card">
         <h3>${label}</h3>
-
-        ${weatherSummary(
-          weightedCloud,
-          avgRad,
-          middayTemp,
-          humidity[start + 12],
-          precip[start + 12]
-        )}
-
-        <br><b>🌞 Sunshine Hours:</b> ${sunshineHours}
+        ${weatherSummary(weightedCloud, avgRad, middayTemp, hum[start+12], precip[start+12])}
+        <br><b>🌞 Sunshine Hours:</b> ${sunshine}
         <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
-        <br><span ${socStyle}>🔋 Recommended SOC: ${soc}%</span>
+        <br><span ${style}>🔋 Recommended SOC: ${soc}%</span>
       </div>
     `;
   }
 
-  document.getElementById("output").innerHTML = outputHTML;
+  document.getElementById("output").innerHTML = html;
   document.getElementById("loading").innerText = "";
 }
 
