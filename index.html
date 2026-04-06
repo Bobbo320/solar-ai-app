@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Solar SOC AI Pro (Season Aware)</title>
+  <title>Solar SOC AI Pro</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
   <style>
@@ -14,9 +14,15 @@
     }
 
     button {
-      padding: 12px;
-      margin: 10px;
-      font-size: 16px;
+      padding: 10px;
+      margin: 6px;
+      font-size: 14px;
+    }
+
+    input {
+      padding: 6px;
+      margin: 4px;
+      width: 80%;
     }
 
     .card {
@@ -27,38 +33,85 @@
       text-align: left;
     }
 
-    .footer {
-      margin-top: 20px;
-      padding: 15px;
-      background: #020617;
-      border-radius: 10px;
-      text-align: left;
-      font-size: 14px;
+    .tab {
+      display: none;
+    }
+
+    .active {
+      display: block;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+
+    th, td {
+      border: 1px solid #555;
+      padding: 6px;
+      text-align: center;
     }
   </style>
 </head>
 
 <body>
 
-<h2>⚡ Solar SOC AI Pro (Season Aware)</h2>
+<h2>⚡ Solar SOC AI Pro</h2>
 
-<div class="card">
-📍 <b>Location:</b><br>
-NR7 0WZ (Norwich, UK)<br>
-<small>Lat: 52.627 | Lon: 1.331</small>
+<button onclick="showTab('main')">Main</button>
+<button onclick="showTab('settings')">Settings</button>
+<button onclick="showTab('history')">PV History</button>
+
+<!-- MAIN TAB -->
+<div id="main" class="tab active">
+
+  <div class="card">
+    📍 <b id="locationDisplay"></b>
+  </div>
+
+  <button onclick="runAI()">Plan Next 3 Days</button>
+
+  <p id="loading"></p>
+  <div id="output"></div>
+
 </div>
 
-<button onclick="runAI()">Plan Next 3 Days</button>
+<!-- SETTINGS TAB -->
+<div id="settings" class="tab">
 
-<p id="loading"></p>
-<div id="output"></div>
+  <div class="card">
+    <h3>Settings</h3>
 
-<div class="footer">
-<b>📊 Solar Score Meaning:</b><br><br>
-🔥 85–100% → Excellent<br>
-👍 65–85% → Good<br>
-⚖️ 45–65% → Moderate<br>
-⚠️ &lt;45% → Low solar<br>
+    <input id="postcode" placeholder="Postcode"><br>
+    <input id="inverter" placeholder="Inverter kW"><br>
+    <input id="battery" placeholder="Battery kWh"><br>
+    <input id="pvSize" placeholder="PV Size kWp"><br>
+    <input id="direction" placeholder="Direction (deg)"><br>
+    <input id="elevation" placeholder="Elevation (m)"><br>
+
+    <button onclick="saveSettings()">Save Settings</button>
+  </div>
+
+  <div class="card">
+    <h3>Manual PV Input</h3>
+
+    <input type="date" id="pvDate"><br>
+    <input type="number" id="pvInput" placeholder="PV kWh"><br>
+
+    <button onclick="savePV()">Save PV</button>
+
+    <div id="pvHistoryTable"></div>
+  </div>
+
+</div>
+
+<!-- HISTORY TAB -->
+<div id="history" class="tab">
+  <div class="card">
+    <h3>Historical PV Data</h3>
+    <div id="historyTable"></div>
+  </div>
 </div>
 
 <script>
@@ -66,30 +119,129 @@ NR7 0WZ (Norwich, UK)<br>
 const LAT = 52.627;
 const LON = 1.331;
 
-// -----------------------------
-// Monthly Calibration Storage
-// -----------------------------
-function getMonthlyCalibration() {
-  return JSON.parse(localStorage.getItem("monthlyCalibration")) || {};
+// ---------------- SETTINGS ----------------
+function getSettings() {
+  return JSON.parse(localStorage.getItem("settings")) || {};
 }
 
-function setMonthlyCalibration(data) {
-  localStorage.setItem("monthlyCalibration", JSON.stringify(data));
+function saveSettings() {
+  let settings = {
+    postcode: document.getElementById("postcode").value,
+    inverter: document.getElementById("inverter").value,
+    battery: document.getElementById("battery").value,
+    pvSize: document.getElementById("pvSize").value,
+    direction: document.getElementById("direction").value,
+    elevation: document.getElementById("elevation").value
+  };
+
+  localStorage.setItem("settings", JSON.stringify(settings));
+  alert("Settings saved");
+  loadSettingsUI();
 }
 
-function getMonthKey(dateStr) {
-  return new Date(dateStr).getMonth() + 1;
+// ---------------- PV HISTORY ----------------
+function getHistory() {
+  return JSON.parse(localStorage.getItem("pvHistory")) || [];
 }
 
-function getCalibrationForDate(dateStr) {
-  let calMap = getMonthlyCalibration();
-  let month = getMonthKey(dateStr);
-  return calMap[month] || 1;
+function savePV() {
+  let pv = parseFloat(document.getElementById("pvInput").value);
+  let date = document.getElementById("pvDate").value;
+
+  if (!date || isNaN(pv)) {
+    alert("Enter valid PV and date");
+    return;
+  }
+
+  let history = getHistory();
+
+  history = history.filter(d => d.date !== date);
+  history.push({ date, kwh: pv });
+
+  localStorage.setItem("pvHistory", JSON.stringify(history));
+
+  renderPVHistory();
+  renderHistoryTab();
+
+  alert("Saved");
 }
 
-// -----------------------------
-// Sun Elevation
-// -----------------------------
+function renderPVHistory() {
+  let history = getHistory();
+  let container = document.getElementById("pvHistoryTable");
+
+  if (!container) return;
+
+  if (history.length === 0) {
+    container.innerHTML = "No data";
+    return;
+  }
+
+  let html = "<table><tr><th>Date</th><th>kWh</th></tr>";
+
+  history.sort((a,b)=> new Date(b.date)-new Date(a.date));
+
+  history.forEach(h => {
+    html += `<tr><td>${h.date}</td><td>${h.kwh}</td></tr>`;
+  });
+
+  html += "</table>";
+  container.innerHTML = html;
+}
+
+function renderHistoryTab() {
+  let history = getHistory();
+  let container = document.getElementById("historyTable");
+
+  if (!container) return;
+
+  if (history.length === 0) {
+    container.innerHTML = "No history";
+    return;
+  }
+
+  let html = "<table><tr><th>Date</th><th>PV (kWh)</th></tr>";
+
+  history.sort((a,b)=> new Date(b.date)-new Date(a.date));
+
+  history.forEach(h => {
+    html += `<tr><td>${h.date}</td><td>${h.kwh}</td></tr>`;
+  });
+
+  html += "</table>";
+  container.innerHTML = html;
+}
+
+// ---------------- UI ----------------
+function showTab(tab) {
+  document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+  document.getElementById(tab).classList.add("active");
+
+  if (tab === "settings") {
+    loadSettingsUI();
+    renderPVHistory();
+  }
+
+  if (tab === "history") {
+    renderHistoryTab();
+  }
+}
+
+function loadSettingsUI() {
+  let s = getSettings();
+
+  document.getElementById("postcode").value = s.postcode || "";
+  document.getElementById("inverter").value = s.inverter || "";
+  document.getElementById("battery").value = s.battery || "";
+  document.getElementById("pvSize").value = s.pvSize || "6.5";
+  document.getElementById("direction").value = s.direction || "170";
+  document.getElementById("elevation").value = s.elevation || "30";
+
+  document.getElementById("locationDisplay").innerText =
+    (s.postcode || "NR7 0WZ") + " (Norwich)";
+}
+
+// ---------------- SOLAR ----------------
 function sunElevation(date, lat, lon) {
   const rad = Math.PI / 180;
 
@@ -108,165 +260,94 @@ function sunElevation(date, lat, lon) {
   return Math.max(0, elevation);
 }
 
-// -----------------------------
-// Seasonal SOC Logic
-// -----------------------------
-function seasonalSOCRecommendation(avgScore, maxElevation, date) {
+function seasonalSOC(avgScore, maxElevation, date) {
 
   let month = new Date(date).getMonth() + 1;
 
-  let seasonalWeight;
-
-  if (month <= 2 || month === 12) {
-    seasonalWeight = 0.9; // Winter
-  } else if (month <= 5) {
-    seasonalWeight = 0.6; // Spring
-  } else if (month <= 8) {
-    seasonalWeight = 0.3; // Summer
-  } else {
-    seasonalWeight = 0.5; // Autumn
-  }
+  let seasonalWeight =
+    (month <= 2 || month === 12) ? 0.9 :
+    (month <= 5) ? 0.6 :
+    (month <= 8) ? 0.3 : 0.5;
 
   let elevationFactor = maxElevation / 60;
-  elevationFactor = Math.min(1, Math.max(0, elevationFactor));
 
-  let adjustedScore =
+  let adjusted =
     (avgScore * 0.6) +
     (elevationFactor * 0.2) +
     ((1 - seasonalWeight) * 0.2);
 
-  let soc = 100 - (adjustedScore * 60);
-
-  soc = Math.min(95, Math.max(20, soc));
-
-  return Math.round(soc) + "%";
+  let soc = 100 - (adjusted * 60);
+  return Math.round(Math.min(95, Math.max(20, soc))) + "%";
 }
 
-// -----------------------------
-// Solar scoring
-// -----------------------------
-function hourlySolarScore(cloud, radiation) {
-  let cloudFactor = 1 - (cloud / 100);
-  let radiationFactor = radiation / 1000;
-
-  let score = (cloudFactor * 0.6) + (radiationFactor * 0.4);
-  return Math.min(1, Math.max(0, score));
+function hourlyScore(cloud, rad) {
+  return Math.min(1, Math.max(0, (1 - cloud/100)*0.6 + (rad/1000)*0.4));
 }
 
-// -----------------------------
-// Weather summary
-// -----------------------------
-function weatherSummary(avgCloud, avgRad, avgTemp) {
-  if (avgCloud < 20 && avgRad > 600) {
-    return "☀️ Clear skies with strong solar radiation.";
-  }
-  if (avgCloud < 40 && avgRad > 400) {
-    return "🌤️ Mostly sunny with some cloud.";
-  }
-  if (avgCloud < 70) {
-    return "⛅ Mixed cloud cover.";
-  }
-  return "☁️ Heavy cloud cover.";
-}
-
-// -----------------------------
-// Main AI function
-// -----------------------------
+// ---------------- MAIN ----------------
 async function runAI() {
 
-  try {
+  document.getElementById("loading").innerText = "Loading...";
 
-    document.getElementById("loading").innerText = "Loading forecast...";
+  let res = await fetch("https://api.open-meteo.com/v1/forecast?latitude=52.627&longitude=1.331&hourly=cloudcover,temperature_2m,shortwave_radiation&forecast_days=3&timezone=auto");
 
-    let res = await fetch(
-      "https://api.open-meteo.com/v1/forecast?latitude=52.627&longitude=1.331&hourly=cloudcover,temperature_2m,shortwave_radiation&forecast_days=3&timezone=auto"
-    );
+  let data = await res.json();
 
-    let data = await res.json();
+  let times = data.hourly.time;
+  let cloud = data.hourly.cloudcover;
+  let rad = data.hourly.shortwave_radiation;
 
-    let times = data.hourly.time;
-    let cloud = data.hourly.cloudcover;
-    let radiation = data.hourly.shortwave_radiation;
-    let temp = data.hourly.temperature_2m;
+  let output = "";
 
-    let output = "";
+  for (let d = 0; d < 3; d++) {
 
-    for (let d = 0; d < 3; d++) {
+    let start = d * 24;
+    let scores = [];
 
-      let dayStart = d * 24;
+    for (let h = start; h < start + 24; h++) {
 
-      let scores = [];
-      let cloudVals = [];
-      let radVals = [];
-      let tempVals = [];
+      let dt = new Date(times[h]);
+      let hour = dt.getHours();
 
-      for (let h = dayStart; h < dayStart + 24; h++) {
-
-        let date = new Date(times[h]);
-        let hour = date.getHours();
-
-        if (hour >= 10 && hour <= 15) {
-
-          let elevation = sunElevation(date, LAT, LON);
-          let sunFactor = Math.sin(elevation * Math.PI / 180);
-
-          let baseScore = hourlySolarScore(cloud[h], radiation[h]);
-          let adjustedScore = baseScore * sunFactor;
-
-          scores.push(adjustedScore);
-          cloudVals.push(cloud[h]);
-          radVals.push(radiation[h]);
-          tempVals.push(temp[h]);
-        }
+      if (hour >= 10 && hour <= 15) {
+        let elev = sunElevation(dt, LAT, LON);
+        let score = hourlyScore(cloud[h], rad[h]) * Math.sin(elev*Math.PI/180);
+        scores.push(score);
       }
-
-      let avgScore = scores.reduce((a,b)=>a+b,0) / scores.length;
-      if (isNaN(avgScore)) avgScore = 0;
-
-      let avgCloud = cloudVals.reduce((a,b)=>a+b,0) / cloudVals.length;
-      let avgRad = radVals.reduce((a,b)=>a+b,0) / radVals.length;
-      let avgTemp = tempVals.reduce((a,b)=>a+b,0) / tempVals.length;
-
-      let dateObj = new Date(times[dayStart]);
-      let maxElevation = 0;
-
-      for (let h = 0; h < 24; h++) {
-        let d2 = new Date(dateObj);
-        d2.setHours(h);
-        let elev = sunElevation(d2, LAT, LON);
-        if (elev > maxElevation) maxElevation = elev;
-      }
-
-      let percent = (avgScore * 100).toFixed(0);
-
-      let soc = seasonalSOCRecommendation(avgScore, maxElevation, dateObj);
-
-      output += `
-        <div class="card">
-          <b>Day ${d === 0 ? "Today" : d === 1 ? "Tomorrow" : "Day +2"}</b><br><br>
-
-          🌤️ Weather: ${weatherSummary(avgCloud, avgRad, avgTemp)}<br><br>
-
-          ⚡ Solar Score: ${percent}%<br>
-          ☀️ Max Sun Elevation: ${maxElevation.toFixed(1)}°<br><br>
-
-          🌡️ Temp: ${avgTemp.toFixed(1)}°C<br>
-          ☁️ Cloud: ${avgCloud.toFixed(0)}%<br>
-          ☀️ Radiation: ${avgRad.toFixed(0)} W/m²<br><br>
-
-          🔋 Recommended SOC: <b>${soc}</b><br>
-        </div>
-      `;
     }
 
-    document.getElementById("output").innerHTML = output;
-    document.getElementById("loading").innerText = "";
+    let avg = scores.reduce((a,b)=>a+b,0)/scores.length || 0;
 
-  } catch (err) {
-    document.getElementById("output").innerHTML = "Error loading data";
-    document.getElementById("loading").innerText = "";
+    let dateObj = new Date(times[start]);
+
+    let maxElev = 0;
+    for (let h = 0; h < 24; h++) {
+      let dt = new Date(dateObj);
+      dt.setHours(h);
+      let e = sunElevation(dt, LAT, LON);
+      if (e > maxElev) maxElev = e;
+    }
+
+    output += `
+      <div class="card">
+        <b>${d===0?"Today":d===1?"Tomorrow":"Day +2"}</b><br><br>
+
+        ⚡ Solar Score: ${(avg*100).toFixed(0)}%<br>
+        ☀️ Max Elevation: ${maxElev.toFixed(1)}°<br><br>
+
+        🔋 Recommended SOC: <b>${seasonalSOC(avg, maxElev, dateObj)}</b>
+      </div>
+    `;
   }
+
+  document.getElementById("output").innerHTML = output;
+  document.getElementById("loading").innerText = "";
 }
+
+// ---------------- INIT ----------------
+loadSettingsUI();
+renderPVHistory();
+renderHistoryTab();
 
 </script>
 
