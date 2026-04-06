@@ -64,7 +64,7 @@ async function getWeather() {
 // -------------------- Temperature Efficiency --------------------
 function temperatureEfficiency(temp) {
   const nominalTemp = 25;
-  const coef = -0.004; // -0.4% per °C
+  const coef = -0.004;
 
   let delta = temp - nominalTemp;
   let efficiencyFactor = 1 + (delta * coef);
@@ -90,6 +90,29 @@ function calculateSunshineHours(radiationArray, startIndex) {
     if (radiationArray[i] > 120) hours++;
   }
   return hours;
+}
+
+// -------------------- Cloud Timing Weighting --------------------
+function weightedCloudAverage(cloudArray, startIndex) {
+
+  let weights = [];
+
+  for (let i = 0; i < 24; i++) {
+    // Peak weighting around midday (index ~12)
+    let hourWeight = Math.exp(-Math.pow((i - 12) / 6, 2));
+    weights.push(hourWeight);
+  }
+
+  let weightedSum = 0;
+  let weightTotal = 0;
+
+  for (let i = 0; i < 24; i++) {
+    let cloud = cloudArray[startIndex + i];
+    weightedSum += cloud * weights[i];
+    weightTotal += weights[i];
+  }
+
+  return weightedSum / weightTotal;
 }
 
 // -------------------- PV Estimate --------------------
@@ -153,23 +176,22 @@ async function runAI() {
 
     let start = d * 24;
 
-    let dailyCloud = 0;
+    // Weighted cloud instead of simple average
+    let weightedCloud = weightedCloudAverage(cloud, start);
+
     let dailyRad = 0;
     let scores = [];
 
     for (let i = start; i < start + 24; i++) {
-      dailyCloud += cloud[i];
       dailyRad += radiation[i];
       scores.push(hourlySolarScore(cloud[i], radiation[i]));
     }
 
-    let avgCloud = dailyCloud / 24;
     let avgRad = dailyRad / 24;
     let avgScore = scores.reduce((a,b)=>a+b,0) / scores.length;
 
     let sunshineHours = calculateSunshineHours(radiation, start);
 
-    // Midday values
     let middayTemp = temp[start + 12];
 
     let pv = estimatePV(avgScore, sunshineHours, middayTemp);
@@ -180,7 +202,7 @@ async function runAI() {
     let dayLabel = "";
     if (d === 0) dayLabel = "Today";
     if (d === 1) dayLabel = "Tomorrow";
-    if (d === 2) dayLabel = "Day 3";
+    if (d === 2) dayLabel = "The day after tomorrow";
 
     let socStyle = (d === 1)
       ? "style='color:red; font-weight:bold; font-size:20px;'"
@@ -191,7 +213,7 @@ async function runAI() {
         <h3>${dayLabel}</h3>
 
         ${weatherSummary(
-          avgCloud,
+          weightedCloud,
           avgRad,
           middayTemp,
           humidity[start + 12],
