@@ -323,7 +323,9 @@ async function runAI(){
         <h3>${label}</h3>
         ${weatherSummary(wc,avgRad,midTemp,hum[start+12],precip[start+12])}
 
-        <br><b>🌞 Sunshine Hours:</b> ${split.morning + 
+        <br><b>🌞 Sunshine Hours:</b> ${split.morning + split.afternoon}
+        <br>🌅 Morning: ${split.morning}h
+        <br>🌇 Afternoon: ${split.afternoon}h
 
         <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
         <br><span ${style}>🔋 Recommended SOC: ${soc}%</span>
