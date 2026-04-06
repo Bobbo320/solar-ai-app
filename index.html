@@ -15,13 +15,20 @@
       color: #fff;
     }
 
-    h2 { text-align: center; }
+    button {
+      padding: 12px;
+      width: 100%;
+      background: #222;
+      color: #fff;
+      border: 1px solid #444;
+      margin-bottom: 10px;
+    }
 
     .card {
       background: #111;
       padding: 12px;
-      margin-top: 10px;
       border-radius: 8px;
+      margin-top: 10px;
       border: 1px solid #333;
     }
 
@@ -34,36 +41,15 @@
       border: 2px solid #550000;
     }
 
-    .soc-title {
-      font-size: 18px;
-      font-weight: bold;
-      margin-bottom: 10px;
-    }
-
     .soc-value {
-      font-size: 42px;
-      font-weight: bold;
+      font-size: 40px;
       color: #ff4d4d;
+      font-weight: bold;
     }
 
-    .forecast-day {
-      margin-top: 6px;
-    }
-
-    button {
-      padding: 12px;
-      background: #222;
-      color: #fff;
-      border: 1px solid #444;
-      border-radius: 6px;
-      width: 100%;
-    }
-
-    canvas {
-      margin-top: 15px;
-      background: #111;
-      border-radius: 8px;
-      padding: 10px;
+    .error {
+      color: red;
+      font-size: 12px;
     }
   </style>
 </head>
@@ -72,8 +58,9 @@
 
 <h2>Solar AI App</h2>
 
-<button onclick="loadWeather()">Refresh Weather</button>
+<button onclick="loadWeather()">Load / Refresh Weather</button>
 
+<div id="status"></div>
 <div id="weather"></div>
 <div id="pv"></div>
 <div id="soc"></div>
@@ -87,6 +74,8 @@ let weatherData = null;
 /* LOAD WEATHER */
 async function loadWeather(){
 
+  status.innerHTML = "Loading weather...";
+
   try {
     let lat = 52.627;
     let lon = 1.331;
@@ -96,17 +85,28 @@ async function loadWeather(){
     let res = await fetch(url);
     let data = await res.json();
 
+    console.log("API RESPONSE:", data);
+
+    if(!data.hourly){
+      throw new Error("No hourly data returned");
+    }
+
     weatherData = data.hourly;
+
+    status.innerHTML = "Weather loaded ✅";
 
     renderAll();
 
   } catch(e){
-    alert("Weather failed to load");
     console.error(e);
+    status.innerHTML = `<div class="error">Weather failed to load ❌</div>`;
+
+    // fallback so UI still works
+    renderFallback();
   }
 }
 
-/* DAILY WEATHER */
+/* GET DAILY */
 function getDailyWeather(dayIndex){
 
   let start = dayIndex * 24;
@@ -118,9 +118,9 @@ function getDailyWeather(dayIndex){
   for(let i=0;i<24;i++){
     let idx = start + i;
 
-    clouds.push(weatherData.cloudcover[idx] || 0);
-    radiation.push(weatherData.shortwave_radiation[idx] || 0);
-    precip.push(weatherData.precipitation[idx] || 0);
+    clouds.push(weatherData?.cloudcover?.[idx] ?? 50);
+    radiation.push(weatherData?.shortwave_radiation?.[idx] ?? 100);
+    precip.push(weatherData?.precipitation?.[idx] ?? 0);
   }
 
   let avgCloud = clouds.reduce((a,b)=>a+b,0)/24;
@@ -139,9 +139,7 @@ function getDailyWeather(dayIndex){
 /* PV MODEL */
 function predictPV(dayIndex){
 
-  if(!weatherData) return 0;
-
-  let pvSize = 6.5; // fallback
+  let pvSize = 6.5;
   let inverter = 5;
 
   let w = getDailyWeather(dayIndex);
@@ -154,13 +152,17 @@ function predictPV(dayIndex){
 
   let pv = pvSize * base * cloudFactor * rainPenalty * sunshineFactor;
 
+  if(isNaN(pv)) pv = 0;
+
   return Math.min(pv, inverter * 6);
 }
 
-/* SOC MODEL */
+/* SOC */
 function calculateSOC(pvTomorrow){
 
   let battery = 10.64;
+
+  if(!pvTomorrow || isNaN(pvTomorrow)) return 50;
 
   let ratio = pvTomorrow / battery;
 
@@ -172,30 +174,36 @@ function calculateSOC(pvTomorrow){
 /* RENDER */
 function renderAll(){
 
-  if(!weatherData) return;
+  if(!weatherData){
+    status.innerHTML = "No weather data";
+    return;
+  }
 
   let pvToday = predictPV(0);
   let pvTomorrow = predictPV(1);
   let pvDay3 = predictPV(2);
 
-  /* WEATHER DISPLAY */
+  /* WEATHER */
   let wHtml = "<div class='card'><b>3 Day Weather</b>";
 
   for(let d=0; d<3; d++){
     let w = getDailyWeather(d);
 
     wHtml += `
-      <div class="forecast-day">
+      <div>
         <b>${d===0?"Today":d===1?"Tomorrow":"Day 3"}</b><br>
-        ☁️ ${w.cloud.toFixed(0)}% | ☀️ ${w.radiation.toFixed(0)} W/m² | 🌞 ${w.sunshine} hrs | 🌧️ ${w.precipitation.toFixed(2)} mm
-      </div>
+        ☁️ ${w.cloud.toFixed(0)}% |
+        ☀️ ${w.radiation.toFixed(0)} W/m² |
+        🌞 ${w.sunshine} hrs |
+        🌧️ ${w.precipitation.toFixed(2)} mm
+      </div><br>
     `;
   }
 
   wHtml += "</div>";
   weather.innerHTML = wHtml;
 
-  /* PV DISPLAY */
+  /* PV */
   pv.innerHTML = `
     <div class="card">
       Today: <b>${pvToday.toFixed(2)} kWh</b><br>
@@ -204,18 +212,44 @@ function renderAll(){
     </div>
   `;
 
-  /* SOC DISPLAY */
+  /* SOC */
   let soc = calculateSOC(pvTomorrow);
 
   soc.innerHTML = `
     <div class="soc-box">
-      <div class="soc-title">🔥 SOC (Tomorrow)</div>
+      <div>🔥 SOC Tomorrow</div>
       <div class="soc-value">${soc}%</div>
     </div>
   `;
 
-  /* GRAPH */
   renderChart([pvToday, pvTomorrow, pvDay3]);
+}
+
+/* FALLBACK */
+function renderFallback(){
+
+  weather.innerHTML = "<div class='card'>Fallback weather used</div>";
+
+  let pvToday = 20;
+  let pvTomorrow = 22;
+  let pvDay3 = 18;
+
+  pv.innerHTML = `
+    <div class='card'>
+      Today: ${pvToday} kWh<br>
+      Tomorrow: ${pvTomorrow} kWh<br>
+      Day 3: ${pvDay3} kWh
+    </div>
+  `;
+
+  let soc = calculateSOC(pvTomorrow);
+
+  soc.innerHTML = `
+    <div class="soc-box">
+      🔥 SOC Tomorrow<br>
+      <div class="soc-value">${soc}%</div>
+    </div>
+  `;
 }
 
 /* CHART */
@@ -235,20 +269,11 @@ function renderChart(values){
         label: 'PV kWh',
         data: values
       }]
-    },
-    options: {
-      plugins: {
-        legend: { labels: { color: '#fff' } }
-      },
-      scales: {
-        x: { ticks: { color: '#fff' } },
-        y: { ticks: { color: '#fff' } }
-      }
     }
   });
 }
 
-/* AUTO LOAD */
+/* START */
 window.onload = loadWeather;
 
 </script>
