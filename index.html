@@ -40,6 +40,7 @@
       background: #111;
       color: #fff;
       border: 1px solid #444;
+      box-sizing: border-box;
     }
 
     .tab { display: none; }
@@ -53,6 +54,17 @@
       border: 1px solid #333;
     }
 
+    .forecast-day {
+      margin-top: 8px;
+      padding: 8px 0;
+      border-bottom: 1px solid #333;
+    }
+
+    .pv-value {
+      color: #4dd2ff;
+      font-weight: bold;
+    }
+
     .soc-box {
       margin-top: 20px;
       padding: 25px;
@@ -64,29 +76,14 @@
 
     .soc-title {
       font-size: 18px;
-      margin-bottom: 10px;
       font-weight: bold;
+      margin-bottom: 10px;
     }
 
     .soc-value {
-      font-size: 40px;
+      font-size: 42px;
       font-weight: bold;
       color: #ff4d4d;
-    }
-
-    .forecast-day {
-      margin-top: 8px;
-      padding: 8px 0;
-      border-bottom: 1px solid #333;
-    }
-
-    .forecast-title {
-      font-weight: bold;
-    }
-
-    .pv-value {
-      color: #4dd2ff;
-      font-weight: bold;
     }
 
     canvas {
@@ -111,8 +108,6 @@
 
 <!-- DASHBOARD -->
 <div id="dashboard" class="tab active">
-  <button onclick="loadWeather()">Load Weather</button>
-
   <div id="weather"></div>
   <div id="pv"></div>
   <div id="soc"></div>
@@ -198,7 +193,7 @@ async function loadWeather(){
   calculatePV();
 }
 
-/* WEATHER DISPLAY (3 DAYS) */
+/* WEATHER DISPLAY */
 function displayWeather(){
 
   let html = `<div class="card"><b>3 Day Weather</b>`;
@@ -208,7 +203,7 @@ function displayWeather(){
 
     html += `
       <div class="forecast-day">
-        <div class="forecast-title">Day ${d === 0 ? "Today" : d === 1 ? "Tomorrow" : "Day 3"}</div>
+        <b>${d === 0 ? "Today" : d === 1 ? "Tomorrow" : "Day 3"}</b><br>
         ☁️ ${w.cloud.toFixed(0)}% | ☀️ ${w.radiation.toFixed(0)} W/m² | 🌞 ${w.sunshine} hrs | 🌧️ ${w.precipitation.toFixed(2)} mm
       </div>
     `;
@@ -319,9 +314,9 @@ function calculatePV(){
 
   pv.innerHTML = `
     <div class="card">
-      <div class="forecast-day"><b>Today:</b> ${pvToday.toFixed(2)} kWh</div>
-      <div class="forecast-day"><b>Tomorrow:</b> ${pvTomorrow.toFixed(2)} kWh</div>
-      <div class="forecast-day"><b>Day 3:</b> ${pvDay3.toFixed(2)} kWh</div>
+      <div class="forecast-day"><b>Today:</b> <span class="pv-value">${pvToday.toFixed(2)} kWh</span></div>
+      <div class="forecast-day"><b>Tomorrow:</b> <span class="pv-value">${pvTomorrow.toFixed(2)} kWh</span></div>
+      <div class="forecast-day"><b>Day 3:</b> <span class="pv-value">${pvDay3.toFixed(2)} kWh</span></div>
     </div>
   `;
 
@@ -361,6 +356,7 @@ function renderHistory(){
 
 /* INIT */
 loadSettings();
+loadWeather(); // ✅ auto load weather + SOC
 
 </script>
 
