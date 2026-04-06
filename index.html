@@ -165,6 +165,27 @@ function getAutoCalibration(date) {
   return map[month] || 1;
 }
 
+// ---------------- SOC MODEL (CLIPPING AWARE) ----------------
+function calculateSOC(avgScore, maxElevation, pvSize, inverterSize) {
+
+  pvSize = parseFloat(pvSize || 0);
+  inverterSize = parseFloat(inverterSize || 1);
+
+  let clippingRatio = pvSize / inverterSize;
+
+  let seasonalFactor = Math.min(1, maxElevation / 60);
+
+  let solarPotential = avgScore * seasonalFactor;
+
+  let clippingAdjustment = Math.min(1.5, Math.max(0.5, 1 / clippingRatio));
+
+  let baseSOC = 100 - (solarPotential * 70);
+
+  let soc = baseSOC * clippingAdjustment;
+
+  return Math.max(15, Math.min(95, Math.round(soc)));
+}
+
 // ---------------- PV SAVE ----------------
 function savePV() {
 
@@ -179,7 +200,6 @@ function savePV() {
   let history = getHistory();
 
   history = history.filter(d => d.date !== date);
-
   history.push({ date, kwh: pv });
 
   localStorage.setItem("pvHistory", JSON.stringify(history));
@@ -203,7 +223,7 @@ async function getWeather() {
   return await res.json();
 }
 
-// ---------------- MAIN AI ----------------
+// ---------------- MAIN ----------------
 async function runAI() {
 
   document.getElementById("loading").innerText = "Loading...";
@@ -215,6 +235,11 @@ async function runAI() {
   let precip = data.hourly.precipitation;
   let humidity = data.hourly.relativehumidity_2m;
   let wind = data.hourly.windspeed_10m;
+
+  let settings = JSON.parse(localStorage.getItem("settings")) || {};
+
+  let pvSize = settings.pvSize;
+  let inverterSize = settings.inverter;
 
   let output = "";
 
@@ -239,6 +264,9 @@ async function runAI() {
 
     if (d === 0) lastPredictedPV = predictedPV;
 
+    let maxElevation = 60; // simplified seasonal proxy
+    let soc = calculateSOC(score, maxElevation, pvSize, inverterSize);
+
     output += `
       <div class="card">
         <b>${d===0?"Today":d===1?"Tomorrow":"Day +2"}</b><br><br>
@@ -252,7 +280,8 @@ async function runAI() {
         💨 Wind: ${avgWind.toFixed(1)} km/h<br>
         ☀️ Radiation: ${avgRad.toFixed(0)} W/m²<br><br>
 
-        🔋 Predicted PV: ${predictedPV.toFixed(1)} kWh
+        🔋 Predicted PV: ${predictedPV.toFixed(1)} kWh<br>
+        🔋 Recommended SOC: <b>${soc}%</b>
       </div>
     `;
   }
@@ -261,16 +290,16 @@ async function runAI() {
   document.getElementById("loading").innerText = "";
 }
 
-// ---------------- RENDER PV HISTORY ----------------
-function renderPVHistory() {
+// ---------------- HISTORY ----------------
+function renderHistory() {
 
+  let el = document.getElementById("historyTable");
   let history = getHistory();
-  let el = document.getElementById("pvHistoryTable");
 
   if (!el) return;
 
   if (history.length === 0) {
-    el.innerHTML = "No PV data";
+    el.innerHTML = "No history";
     return;
   }
 
@@ -287,16 +316,16 @@ function renderPVHistory() {
   el.innerHTML = html;
 }
 
-// ---------------- HISTORY ----------------
-function renderHistory() {
+// ---------------- PV HISTORY ----------------
+function renderPVHistory() {
 
+  let el = document.getElementById("pvHistoryTable");
   let history = getHistory();
-  let el = document.getElementById("historyTable");
 
   if (!el) return;
 
   if (history.length === 0) {
-    el.innerHTML = "No data";
+    el.innerHTML = "No PV data";
     return;
   }
 
