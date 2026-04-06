@@ -56,10 +56,20 @@
 
   <label>PV Orientation:</label><br>
   <select id="orientation">
-    <option value="south">South</option>
-    <option value="se_sw">South-East / South-West</option>
-    <option value="east_west">East / West</option>
-    <option value="north">North</option>
+    <option value="south">South (100% output)</option>
+    <option value="se_sw">SE / SW (92% output)</option>
+    <option value="east_west">East / West (85% output)</option>
+    <option value="north">North (65% output)</option>
+  </select><br>
+
+  <!-- ✅ UPDATED SHADING DROPDOWN -->
+  <label>Shading:</label><br>
+  <select id="shading">
+    <option value="100">None (100% output)</option>
+    <option value="90">Very light (90%)</option>
+    <option value="80">Light (80%)</option>
+    <option value="70">Moderate (70%)</option>
+    <option value="50">Heavy (50%)</option>
   </select><br>
 
   <label>Daily Load (kWh):</label><br>
@@ -92,6 +102,7 @@ function getSettings() {
     inverter: s.inverter ?? 5,
     battery: s.battery ?? 10.64,
     orientation: s.orientation || "south",
+    shading: s.shading ?? 100,
     dailyLoad: s.dailyLoad ?? 10,
     efficiency: s.efficiency ?? 85,
     socLow: s.socLow ?? 20,
@@ -106,6 +117,7 @@ function saveSettings() {
     inverter: parseFloat(document.getElementById("inverter").value),
     battery: parseFloat(document.getElementById("battery").value),
     orientation: document.getElementById("orientation").value,
+    shading: parseFloat(document.getElementById("shading").value),
     dailyLoad: parseFloat(document.getElementById("dailyLoad").value),
     efficiency: parseFloat(document.getElementById("efficiency").value),
     socLow: parseFloat(document.getElementById("socLow").value),
@@ -125,6 +137,7 @@ function loadSettingsToUI() {
   document.getElementById("inverter").value = s.inverter;
   document.getElementById("battery").value = s.battery;
   document.getElementById("orientation").value = s.orientation;
+  document.getElementById("shading").value = s.shading;
   document.getElementById("dailyLoad").value = s.dailyLoad;
   document.getElementById("efficiency").value = s.efficiency;
   document.getElementById("socLow").value = s.socLow;
@@ -136,161 +149,148 @@ function toggleSettings() {
   loadSettingsToUI();
 }
 
-// -------------------- ORIENTATION FACTOR --------------------
-function getOrientationFactor(orientation) {
-  switch (orientation) {
-    case "south": return 1.0;
-    case "se_sw": return 0.92;
-    case "east_west": return 0.85;
-    case "north": return 0.65;
-    default: return 1.0;
-  }
+// -------------------- ORIENTATION --------------------
+function getOrientationFactor(o) {
+  if (o==="south") return 1;
+  if (o==="se_sw") return 0.92;
+  if (o==="east_west") return 0.85;
+  if (o==="north") return 0.65;
+  return 1;
 }
 
 // -------------------- POSTCODE --------------------
 async function getCoordinates(postcode) {
   let res = await fetch(`https://api.postcodes.io/postcodes/${postcode}`);
   let data = await res.json();
-
-  return {
-    lat: data.result.latitude,
-    lon: data.result.longitude
-  };
+  return { lat: data.result.latitude, lon: data.result.longitude };
 }
 
 // -------------------- WEATHER --------------------
 async function getWeather(postcode) {
-  let coords = await getCoordinates(postcode);
+  let c = await getCoordinates(postcode);
 
   let res = await fetch(
-    `https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&hourly=cloudcover,temperature_2m,shortwave_radiation,relativehumidity_2m,precipitation&forecast_days=3&timezone=auto`
+    `https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}&hourly=cloudcover,temperature_2m,shortwave_radiation,relativehumidity_2m,precipitation&forecast_days=3&timezone=auto`
   );
 
   return await res.json();
 }
 
 // -------------------- TEMP --------------------
-function temperatureEfficiency(temp) {
-  let f = 1 + ((temp - 25) * -0.004);
+function temperatureEfficiency(t) {
+  let f = 1 + ((t - 25) * -0.004);
   return Math.min(1.05, Math.max(0.8, f));
 }
 
 // -------------------- SOLAR --------------------
-function hourlySolarScore(cloud, radiation) {
-  return Math.min(1, Math.max(0,
-    (1 - cloud / 100) * 0.6 + (radiation / 1000) * 0.4
-  ));
+function hourlySolarScore(c, r) {
+  return Math.min(1, Math.max(0, (1-c/100)*0.6 + (r/1000)*0.4));
 }
 
-function calculateSunshineHours(rad, start) {
-  let h = 0;
-  for (let i = start; i < start + 24; i++) {
-    if (rad[i] > 120) h++;
-  }
+function calculateSunshineHours(r,start){
+  let h=0; for(let i=start;i<start+24;i++){ if(r[i]>120) h++; }
   return h;
 }
 
-function weightedCloudAverage(cloud, start) {
-  let sum = 0, wsum = 0;
-  for (let i = 0; i < 24; i++) {
-    let w = Math.exp(-Math.pow((i - 12)/6,2));
-    sum += cloud[start+i]*w;
-    wsum += w;
+function weightedCloudAverage(c,start){
+  let s=0,w=0;
+  for(let i=0;i<24;i++){
+    let wt=Math.exp(-Math.pow((i-12)/6,2));
+    s+=c[start+i]*wt; w+=wt;
   }
-  return sum/wsum;
+  return s/w;
 }
 
 // -------------------- PV --------------------
-function estimatePV(avgScore, sunshine, temp, s) {
+function estimatePV(avgScore, sun, temp, s) {
 
   let orientationFactor = getOrientationFactor(s.orientation);
+  let shadingFactor = s.shading / 100;
 
-  let raw = s.pvSize * sunshine * avgScore *
-            (s.efficiency / 100) *
+  let raw = s.pvSize * sun * avgScore *
+            (s.efficiency/100) *
             temperatureEfficiency(temp) *
-            orientationFactor;
+            orientationFactor *
+            shadingFactor;
 
-  let limit = s.inverter * sunshine;
+  let limit = s.inverter * sun;
 
   return Math.min(raw, limit);
 }
 
 // -------------------- SOC --------------------
-function recommendedSOC(pv, s) {
-  let shortfall = Math.max(0, s.dailyLoad - pv);
-  let required = shortfall * 1.2;
+function recommendedSOC(pv,s){
+  let shortfall=Math.max(0,s.dailyLoad-pv);
+  let required=shortfall*1.2;
+  let soc=(required/s.battery)*100;
 
-  let soc = (required / s.battery) * 100;
-
-  if (soc < s.socLow) soc = s.socLow;
-  if (soc > s.socHigh) soc = s.socHigh;
+  if(soc<s.socLow) soc=s.socLow;
+  if(soc>s.socHigh) soc=s.socHigh;
 
   return Math.round(soc);
 }
 
 // -------------------- UI --------------------
-function weatherSummary(cloud, rad, temp, hum, precip) {
+function weatherSummary(c,r,t,h,p){
   return `
-    🌤️ Cloud: ${cloud.toFixed(0)}%<br>
-    ☀️ Radiation: ${rad.toFixed(0)} W/m²<br>
-    🌡️ Temp (midday): ${temp.toFixed(1)}°C<br>
-    💧 Humidity: ${hum.toFixed(0)}%<br>
-    🌧️ Precip: ${precip.toFixed(2)} mm
+    🌤️ Cloud: ${c.toFixed(0)}%<br>
+    ☀️ Radiation: ${r.toFixed(0)} W/m²<br>
+    🌡️ Temp (midday): ${t.toFixed(1)}°C<br>
+    💧 Humidity: ${h.toFixed(0)}%<br>
+    🌧️ Precip: ${p.toFixed(2)} mm
   `;
 }
 
 // -------------------- MAIN --------------------
-async function runAI() {
+async function runAI(){
 
-  let s = getSettings();
+  let s=getSettings();
+  document.getElementById("loading").innerText="Loading...";
 
-  document.getElementById("loading").innerText = "Loading...";
+  let data=await getWeather(s.postcode);
 
-  let data = await getWeather(s.postcode);
+  let cloud=data.hourly.cloudcover;
+  let rad=data.hourly.shortwave_radiation;
+  let temp=data.hourly.temperature_2m;
+  let hum=data.hourly.relativehumidity_2m;
+  let precip=data.hourly.precipitation;
 
-  let cloud = data.hourly.cloudcover;
-  let rad = data.hourly.shortwave_radiation;
-  let temp = data.hourly.temperature_2m;
-  let hum = data.hourly.relativehumidity_2m;
-  let precip = data.hourly.precipitation;
+  let html="";
 
-  let html = "";
+  for(let d=0;d<3;d++){
 
-  for (let d = 0; d < 3; d++) {
+    let start=d*24;
 
-    let start = d * 24;
+    let wc=weightedCloudAverage(cloud,start);
+    let avgRad=rad.slice(start,start+24).reduce((a,b)=>a+b)/24;
 
-    let weightedCloud = weightedCloudAverage(cloud, start);
-
-    let avgRad = rad.slice(start,start+24).reduce((a,b)=>a+b)/24;
-
-    let scores = rad.slice(start,start+24)
+    let scores=rad.slice(start,start+24)
       .map((r,i)=>hourlySolarScore(cloud[start+i],r));
 
-    let avgScore = scores.reduce((a,b)=>a+b)/scores.length;
+    let avgScore=scores.reduce((a,b)=>a+b)/scores.length;
 
-    let sunshine = calculateSunshineHours(rad,start);
-    let middayTemp = temp[start+12];
+    let sun=calculateSunshineHours(rad,start);
+    let midTemp=temp[start+12];
 
-    let pv = estimatePV(avgScore, sunshine, middayTemp, s);
-    let soc = recommendedSOC(pv, s);
+    let pv=estimatePV(avgScore,sun,midTemp,s);
+    let soc=recommendedSOC(pv,s);
 
-    let label = d===0?"Today":d===1?"Tomorrow":"The day after tomorrow";
-    let style = d===1?"style='color:red;font-weight:bold;font-size:20px'":"";
+    let label=d===0?"Today":d===1?"Tomorrow":"The day after tomorrow";
+    let style=d===1?"style='color:red;font-weight:bold;font-size:20px'":"";
 
-    html += `
+    html+=`
       <div class="card">
         <h3>${label}</h3>
-        ${weatherSummary(weightedCloud, avgRad, middayTemp, hum[start+12], precip[start+12])}
-        <br><b>🌞 Sunshine Hours:</b> ${sunshine}
+        ${weatherSummary(wc,avgRad,midTemp,hum[start+12],precip[start+12])}
+        <br><b>🌞 Sunshine Hours:</b> ${sun}
         <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
         <br><span ${style}>🔋 Recommended SOC: ${soc}%</span>
       </div>
     `;
   }
 
-  document.getElementById("output").innerHTML = html;
-  document.getElementById("loading").innerText = "";
+  document.getElementById("output").innerHTML=html;
+  document.getElementById("loading").innerText="";
 }
 
 </script>
