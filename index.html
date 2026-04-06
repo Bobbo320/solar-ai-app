@@ -60,6 +60,12 @@
   <label>Efficiency (%):</label><br>
   <input id="efficiency" type="number"><br>
 
+  <label>SOC Low (%):</label><br>
+  <input id="socLow" type="number"><br>
+
+  <label>SOC High (%):</label><br>
+  <input id="socHigh" type="number"><br>
+
   <br>
   <button onclick="saveSettings()">Save Settings</button>
 </div>
@@ -79,7 +85,9 @@ function getSettings() {
     inverter: s.inverter ?? 5,
     battery: s.battery ?? 10.64,
     dailyLoad: s.dailyLoad ?? 10,
-    efficiency: s.efficiency ?? 85
+    efficiency: s.efficiency ?? 85,
+    socLow: s.socLow ?? 20,
+    socHigh: s.socHigh ?? 95
   };
 }
 
@@ -90,7 +98,9 @@ function saveSettings() {
     inverter: parseFloat(document.getElementById("inverter").value),
     battery: parseFloat(document.getElementById("battery").value),
     dailyLoad: parseFloat(document.getElementById("dailyLoad").value),
-    efficiency: parseFloat(document.getElementById("efficiency").value)
+    efficiency: parseFloat(document.getElementById("efficiency").value),
+    socLow: parseFloat(document.getElementById("socLow").value),
+    socHigh: parseFloat(document.getElementById("socHigh").value)
   };
 
   localStorage.setItem("settings", JSON.stringify(settings));
@@ -107,6 +117,8 @@ function loadSettingsToUI() {
   document.getElementById("battery").value = s.battery;
   document.getElementById("dailyLoad").value = s.dailyLoad;
   document.getElementById("efficiency").value = s.efficiency;
+  document.getElementById("socLow").value = s.socLow;
+  document.getElementById("socHigh").value = s.socHigh;
 }
 
 function toggleSettings() {
@@ -194,8 +206,9 @@ function recommendedSOC(predictedPV, settings) {
 
   let soc = (required / settings.battery) * 100;
 
-  if (soc < 20) soc = 20;
-  if (soc > 95) soc = 95;
+  // USE SETTINGS BOUNDS
+  if (soc < settings.socLow) soc = settings.socLow;
+  if (soc > settings.socHigh) soc = settings.socHigh;
 
   return Math.round(soc);
 }
