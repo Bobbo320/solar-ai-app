@@ -3,13 +3,12 @@
 <head>
   <title>Solar AI App</title>
   <style>
-    body { font-family: Arial; margin: 20px; }
+    body { font-family: Arial; margin: 15px; }
+    button { margin: 5px; padding: 10px; }
+    input { margin: 5px; padding: 6px; width: 200px; }
 
     .tab { display: none; }
     .active { display: block; }
-
-    button { margin: 5px; padding: 10px; }
-    input { margin: 5px; padding: 5px; }
 
     .soc-box {
       margin-top: 20px;
@@ -28,6 +27,13 @@
       font-size: 36px;
       font-weight: bold;
       color: red;
+    }
+
+    .card {
+      background: #f5f5f5;
+      padding: 10px;
+      margin-top: 10px;
+      border-radius: 8px;
     }
   </style>
 </head>
@@ -76,7 +82,6 @@
 <div id="history" class="tab">
   <h3>PV History</h3>
   <div id="historyList"></div>
-  <canvas id="chart" width="400" height="200"></canvas>
 </div>
 
 <script>
@@ -87,6 +92,7 @@ let weatherData = null;
 function showTab(tab){
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById(tab).classList.add('active');
+
   if(tab === 'history') renderHistory();
 }
 
@@ -101,13 +107,15 @@ function saveSettings(){
     direction: direction.value,
     elevation: elevation.value
   };
+
   localStorage.setItem("settings", JSON.stringify(settings));
   alert("Saved");
 }
 
 function loadSettings(){
   let s = JSON.parse(localStorage.getItem("settings") || "{}");
-  postcode.value = s.postcode || "";
+
+  postcode.value = s.postcode || "NR7 0WZ";
   pvSize.value = s.pvSize || 6.5;
   inverter.value = s.inverter || 5;
   battery.value = s.battery || 10.64;
@@ -134,30 +142,13 @@ function addPV(){
 function renderHistory(){
   let history = JSON.parse(localStorage.getItem("pvHistory") || "[]");
 
-  let html = "<ul>";
+  let html = "<div class='card'>";
   history.forEach(h => {
-    html += `<li>${h.date} : ${h.kwh} kWh</li>`;
+    html += `${h.date} : ${h.kwh} kWh<br>`;
   });
-  html += "</ul>";
+  html += "</div>";
 
   historyList.innerHTML = html;
-
-  drawChart(history);
-}
-
-function drawChart(data){
-  let ctx = document.getElementById("chart").getContext("2d");
-  ctx.clearRect(0,0,400,200);
-
-  if(!data.length) return;
-
-  let max = Math.max(...data.map(d => d.kwh));
-
-  data.forEach((d,i)=>{
-    let x = i * 40;
-    let y = 200 - (d.kwh / max) * 180;
-    ctx.fillRect(x, y, 20, 200 - y);
-  });
 }
 
 /* ---------------- WEATHER ---------------- */
@@ -179,7 +170,17 @@ async function loadWeather(){
 }
 
 function displayWeather(){
-  weather.innerHTML = `<pre>${JSON.stringify(weatherData, null, 2)}</pre>`;
+  if(!weatherData){
+    weather.innerHTML = "Weather not loaded";
+    return;
+  }
+
+  weather.innerHTML = `
+    <div class="card">
+      <b>Weather Loaded (3 Days)</b><br>
+      Cloud, Radiation, Precipitation data available for PV model.
+    </div>
+  `;
 }
 
 /* ---------------- WEATHER HELPERS ---------------- */
@@ -217,10 +218,12 @@ function getDailyWeather(hourly, dayIndex){
 
 function predictDay(dayIndex){
 
-  let settings = JSON.parse(localStorage.getItem("settings"));
+  let settings = JSON.parse(localStorage.getItem("settings") || "{}");
 
   let pvSize = parseFloat(settings.pvSize);
   let inverter = parseFloat(settings.inverter);
+
+  if(!weatherData) return 0;
 
   let w = getDailyWeather(weatherData, dayIndex);
 
@@ -241,7 +244,7 @@ function predictDay(dayIndex){
 
 function calculateSOC(pvToday, pvTomorrow){
 
-  let settings = JSON.parse(localStorage.getItem("settings"));
+  let settings = JSON.parse(localStorage.getItem("settings") || "{}");
   let battery = parseFloat(settings.battery);
 
   let ratio = pvTomorrow / battery;
@@ -263,21 +266,32 @@ function calculateSOC(pvToday, pvTomorrow){
 
 function calculatePV(){
 
+  if(!weatherData){
+    pv.innerHTML = "Load weather first";
+    return;
+  }
+
   let pvToday = predictDay(0);
   let pvTomorrow = predictDay(1);
+  let pvDay3 = predictDay(2);
 
-  let wToday = getDailyWeather(weatherData, 0);
+  let w0 = getDailyWeather(weatherData, 0);
+  let w1 = getDailyWeather(weatherData, 1);
+  let w2 = getDailyWeather(weatherData, 2);
 
   pv.innerHTML = `
-    <h3>Predicted PV</h3>
-    Today: ${pvToday.toFixed(2)} kWh<br>
-    Tomorrow: ${pvTomorrow.toFixed(2)} kWh
+    <div class="card">
+      <h3>📊 PV Forecast</h3>
 
-    <h4>Weather Today</h4>
-    ☁️ ${wToday.cloud.toFixed(0)}%<br>
-    ☀️ ${wToday.radiation.toFixed(0)} W/m²<br>
-    🌞 ${wToday.sunshine} hrs<br>
-    🌧️ ${wToday.precipitation.toFixed(2)} mm
+      <b>Today:</b> ${pvToday.toFixed(2)} kWh<br>
+      ☁️ ${w0.cloud.toFixed(0)}% | ☀️ ${w0.radiation.toFixed(0)} W/m² | 🌞 ${w0.sunshine} hrs | 🌧️ ${w0.precipitation.toFixed(2)} mm<br><br>
+
+      <b>Tomorrow:</b> ${pvTomorrow.toFixed(2)} kWh<br>
+      ☁️ ${w1.cloud.toFixed(0)}% | ☀️ ${w1.radiation.toFixed(0)} W/m² | 🌞 ${w1.sunshine} hrs | 🌧️ ${w1.precipitation.toFixed(2)} mm<br><br>
+
+      <b>Day 3:</b> ${pvDay3.toFixed(2)} kWh<br>
+      ☁️ ${w2.cloud.toFixed(0)}% | ☀️ ${w2.radiation.toFixed(0)} W/m² | 🌞 ${w2.sunshine} hrs | 🌧️ ${w2.precipitation.toFixed(2)} mm
+    </div>
   `;
 
   let socVal = calculateSOC(pvToday, pvTomorrow);
@@ -293,6 +307,7 @@ function calculatePV(){
 /* ---------------- INIT ---------------- */
 
 loadSettings();
+
 </script>
 
 </body>
