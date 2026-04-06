@@ -124,7 +124,7 @@ function weatherSummary(cloud, rad, temp, humidity, wind, precip) {
 // ---------------- PV MODEL (FIXED) ----------------
 function calculatePV(avgScore, sunshineHours) {
 
-  let efficiency = 0.75; // system losses (realistic)
+  let efficiency = 0.85; // system losses (realistic)
 
   // base production
   let pv = system.pvSize * sunshineHours * avgScore * efficiency;
