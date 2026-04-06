@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Solar SOC AI Pro (Self Learning)</title>
+  <title>Solar SOC AI Pro</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body {
@@ -45,12 +45,12 @@ NR7 0WZ (Norwich, UK)
 
 // -------------------- Settings --------------------
 const system = {
-  pvSize: 6.5,          // kWp
-  inverter: 5,          // kW
-  battery: 10.64        // kWh
+  pvSize: 6.5,
+  inverter: 5,
+  battery: 10.64
 };
 
-const dailyLoad = 10;    // kWh/day
+const dailyLoad = 10;
 const efficiency = 0.85;
 
 // -------------------- Weather Fetch --------------------
@@ -80,28 +80,22 @@ function calculateSunshineHours(radiationArray, startIndex) {
 
 // -------------------- PV Estimate --------------------
 function estimatePV(avgScore, sunshineHours) {
-
   let raw = system.pvSize * sunshineHours * avgScore * efficiency;
-
-  // inverter clipping
   let inverterLimit = system.inverter * sunshineHours;
-
   return Math.min(raw, inverterLimit);
 }
 
-// -------------------- SOC (UPDATED MODEL) --------------------
+// -------------------- SOC Model --------------------
 function recommendedSOC(predictedPV) {
 
   const batteryCapacity = system.battery;
   const buffer = 1.2;
 
   let shortfall = Math.max(0, dailyLoad - predictedPV);
-
   let required = shortfall * buffer;
 
   let soc = (required / batteryCapacity) * 100;
 
-  // enforce battery limits
   if (soc < 20) soc = 20;
   if (soc > 95) soc = 95;
 
@@ -127,7 +121,6 @@ async function runAI() {
 
   let data = await getWeather();
 
-  let times = data.hourly.time;
   let cloud = data.hourly.cloudcover;
   let radiation = data.hourly.shortwave_radiation;
   let temp = data.hourly.temperature_2m;
@@ -156,14 +149,23 @@ async function runAI() {
     let avgScore = scores.reduce((a,b)=>a+b,0) / scores.length;
 
     let sunshineHours = calculateSunshineHours(radiation, start);
-
     let pv = estimatePV(avgScore, sunshineHours);
-
     let soc = recommendedSOC(pv);
+
+    // Labels
+    let dayLabel = "";
+    if (d === 0) dayLabel = "Today";
+    if (d === 1) dayLabel = "Tomorrow";
+    if (d === 2) dayLabel = "Day 3";
+
+    // Highlight tomorrow SOC
+    let socStyle = (d === 1)
+      ? "style='color:red; font-weight:bold; font-size:20px;'"
+      : "";
 
     outputHTML += `
       <div class="card">
-        <h3>Day ${d + 1}</h3>
+        <h3>${dayLabel}</h3>
 
         ${weatherSummary(
           avgCloud,
@@ -176,7 +178,7 @@ async function runAI() {
 
         <br><b>🌞 Sunshine Hours:</b> ${sunshineHours}
         <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
-        <br><b>🔋 Recommended SOC:</b> ${soc}%
+        <br><span ${socStyle}>🔋 Recommended SOC: ${soc}%</span>
       </div>
     `;
   }
