@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Solar SOC AI Pro - Energy Model</title>
+  <title>Solar SOC AI Pro (Integrated)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
   <style>
@@ -44,23 +44,21 @@
       font-size: 13px;
     }
 
-    #debug {
-      background:#000;
-      color:#0f0;
-      font-size:11px;
-      padding:8px;
-      text-align:left;
-      max-height:120px;
-      overflow:auto;
+    .tomorrow-soc {
+      font-size: 28px;
+      font-weight: bold;
+      color: red;
+      background: #220000;
+      padding: 10px;
+      border-radius: 8px;
+      display: inline-block;
     }
   </style>
 </head>
 
 <body>
 
-<h2>⚡ Solar SOC AI Pro (Energy Model)</h2>
-
-<div id="debug"></div>
+<h2>⚡ Solar SOC AI Pro</h2>
 
 <button onclick="showTab('main')">Main</button>
 <button onclick="showTab('settings')">Settings</button>
@@ -69,25 +67,21 @@
 <!-- MAIN -->
 <div id="main" class="tab active">
 
-  <div class="card">📍 System Active</div>
-
   <button onclick="runAI()">Plan Next 3 Days</button>
 
   <p id="loading"></p>
+
+  <div class="card">
+    <h3>🌤️ 3-Day Weather</h3>
+    <div id="weatherOutput">Loading...</div>
+  </div>
+
   <div id="output"></div>
+
 </div>
 
 <!-- SETTINGS -->
 <div id="settings" class="tab">
-
-  <div class="card">
-    <h3>Manual PV Input</h3>
-
-    <input type="date" id="pvDate"><br>
-    <input type="number" id="pvInput" placeholder="kWh"><br>
-
-    <button onclick="savePV()">Save PV</button>
-  </div>
 
   <div class="card">
     <h3>Settings</h3>
@@ -102,10 +96,18 @@
     <button onclick="saveSettings()">Save Settings</button>
   </div>
 
+  <div class="card">
+    <h3>Manual PV Input</h3>
+    <input type="date" id="pvDate"><br>
+    <input type="number" id="pvInput" placeholder="kWh"><br>
+    <button onclick="savePV()">Save PV</button>
+  </div>
+
 </div>
 
 <!-- HISTORY -->
 <div id="history" class="tab">
+
   <div class="card">
     <h3>PV History</h3>
     <div id="historyTable"></div>
@@ -115,20 +117,10 @@
     <h3>Calibration</h3>
     <div id="calibrationTable"></div>
   </div>
+
 </div>
 
 <script>
-
-// ---------------- DEBUG ----------------
-function log(msg){
-  console.log(msg);
-  document.getElementById("debug").innerHTML += msg + "<br>";
-}
-
-// ---------------- STORAGE ----------------
-function getHistory(){
-  return JSON.parse(localStorage.getItem("pvHistory")) || [];
-}
 
 // ---------------- SETTINGS ----------------
 function saveSettings(){
@@ -140,12 +132,10 @@ function saveSettings(){
     direction: document.getElementById("direction").value,
     elevation: document.getElementById("elevation").value
   };
-
   localStorage.setItem("settings", JSON.stringify(s));
   alert("Saved");
 }
 
-// ---------------- LOAD SETTINGS ----------------
 function loadSettings(){
   let s = JSON.parse(localStorage.getItem("settings"));
 
@@ -169,20 +159,20 @@ function loadSettings(){
   document.getElementById("elevation").value = s.elevation;
 }
 
-// ---------------- SAVE PV ----------------
+// ---------------- PV HISTORY ----------------
+function getHistory(){
+  return JSON.parse(localStorage.getItem("pvHistory")) || [];
+}
+
 function savePV(){
   let date = document.getElementById("pvDate").value;
   let pv = parseFloat(document.getElementById("pvInput").value);
 
-  if(!date || isNaN(pv)){
-    alert("Invalid");
-    return;
-  }
+  if(!date || isNaN(pv)) return alert("Invalid");
 
   let history = getHistory();
-
-  history = history.filter(d=>d.date !== date);
-  history.push({date, kwh: pv});
+  history = history.filter(d=>d.date!==date);
+  history.push({date, kwh:pv});
 
   localStorage.setItem("pvHistory", JSON.stringify(history));
 
@@ -193,77 +183,104 @@ function savePV(){
   alert("Saved");
 }
 
-// ---------------- WEATHER ----------------
-async function getWeather(){
-  let res = await fetch(
-    "https://api.open-meteo.com/v1/forecast?latitude=52.627&longitude=1.331&hourly=cloudcover,shortwave_radiation&forecast_days=3&timezone=auto"
-  );
-  return await res.json();
-}
-
-// ---------------- HOURLY PV SIMULATION ----------------
-function simulatePV(hourly, settings){
-
-  let pvSize = parseFloat(settings.pvSize);
-  let inverter = parseFloat(settings.inverter);
-
-  let total = 0;
-
-  for(let i=0;i<hourly.cloudcover.length;i++){
-
-    let cloud = hourly.cloudcover[i];
-    let rad = hourly.shortwave_radiation[i];
-
-    let potential = (rad / 1000) * pvSize;
-
-    let cloudFactor = 1 - (cloud / 100);
-
-    let raw = potential * cloudFactor;
-
-    let clipped = Math.min(raw, inverter);
-
-    total += clipped / 4; // approximate kWh scaling
-  }
-
-  return total;
-}
-
 // ---------------- CALIBRATION ----------------
 function updateCalibration(){
 
   let history = getHistory();
-
   let monthly = {};
 
   history.forEach(h=>{
     let m = new Date(h.date).getMonth();
-    if(!monthly[m]) monthly[m] = [];
+    if(!monthly[m]) monthly[m]=[];
     monthly[m].push(h.kwh);
   });
 
-  let cal = {};
+  let cal={};
 
   Object.keys(monthly).forEach(m=>{
     let avg = monthly[m].reduce((a,b)=>a+b,0)/monthly[m].length;
-    let baseline = 20;
-    cal[m] = avg / baseline;
+    cal[m] = avg / 20; // baseline
   });
 
   localStorage.setItem("calibration", JSON.stringify(cal));
 }
 
-// ---------------- GET CALIBRATION ----------------
 function getCalibration(month){
   let c = JSON.parse(localStorage.getItem("calibration")) || {};
   return c[month] || 1;
 }
 
-// ---------------- ENERGY-BASED SOC ----------------
-function energySOC(pv, battery){
+// ---------------- WEATHER ----------------
+async function getWeather(){
+  let res = await fetch(
+    "https://api.open-meteo.com/v1/forecast?latitude=52.627&longitude=1.331&hourly=cloudcover,shortwave_radiation,precipitation&forecast_days=3&timezone=auto"
+  );
+  return await res.json();
+}
 
-  if(pv > battery * 1.2) return 40;
-  if(pv > battery * 0.8) return 55;
-  return 75;
+function renderWeather(data){
+
+  let cloud = data.hourly.cloudcover;
+  let rad = data.hourly.shortwave_radiation;
+  let precip = data.hourly.precipitation;
+
+  let out="";
+
+  for(let d=0; d<3; d++){
+
+    let start = d*24;
+
+    let c=0,r=0,p=0,sun=0;
+
+    for(let h=start; h<start+24; h++){
+      c+=cloud[h];
+      r+=rad[h];
+      p+=precip[h];
+      if(rad[h]>300) sun++;
+    }
+
+    c/=24; r/=24;
+
+    out += `
+      <b>${d===0?"Today":d===1?"Tomorrow":"Day +2"}</b><br>
+      ☁️ ${c.toFixed(0)}% |
+      ☀️ ${r.toFixed(0)} W/m² |
+      🌧️ ${p.toFixed(1)} mm |
+      🌞 ${sun} hrs<br><br>
+    `;
+  }
+
+  document.getElementById("weatherOutput").innerHTML = out;
+}
+
+// ---------------- SOC MODEL ----------------
+function calculateSOC(weather, cal, settings){
+
+  let rad = weather.rad;
+  let cloud = weather.cloud;
+  let sun = weather.sun;
+
+  let radFactor = rad/1000;
+  let cloudFactor = 1 - (cloud/100);
+  let sunFactor = sun/12;
+
+  let score = (radFactor*0.5)+(cloudFactor*0.3)+(sunFactor*0.2);
+
+  let calibrated = score * cal;
+
+  let pv = parseFloat(settings.pvSize);
+  let inverter = parseFloat(settings.inverter);
+
+  let clipping = pv/inverter;
+
+  let soc = 80 - (calibrated*60);
+
+  if(calibrated < 0.4) soc += 10;
+  if(sun < 4) soc += 10;
+  if(calibrated > 0.7) soc -= 10;
+  if(clipping > 1.2) soc -= 5;
+
+  return Math.max(20, Math.min(90, Math.round(soc)));
 }
 
 // ---------------- MAIN ----------------
@@ -272,74 +289,89 @@ async function runAI(){
   document.getElementById("loading").innerText="Loading...";
 
   let data = await getWeather();
+  renderWeather(data);
+
   let settings = JSON.parse(localStorage.getItem("settings"));
-
   let month = new Date().getMonth();
-  let calibration = getCalibration(month);
+  let cal = getCalibration(month);
 
-  let hourlyPV = simulatePV(data.hourly, settings);
+  let output="";
 
-  let adjustedPV = hourlyPV * calibration;
+  for(let d=0; d<3; d++){
 
-  let battery = parseFloat(settings.battery);
+    let start = d*24;
 
-  let soc = energySOC(adjustedPV, battery);
+    let c=0,r=0,sun=0;
 
-  let output = `
-    <div class="card">
-      ⚡ Predicted PV: ${adjustedPV.toFixed(1)} kWh<br>
-      🔧 Calibration: ${calibration.toFixed(2)}<br><br>
+    for(let h=start; h<start+24; h++){
+      c+=data.hourly.cloudcover[h];
+      r+=data.hourly.shortwave_radiation[h];
+      if(data.hourly.shortwave_radiation[h]>300) sun++;
+    }
 
-      🔋 Recommended SOC:<br>
-      <b style="font-size:24px">${soc}%</b>
-    </div>
-  `;
+    c/=24; r/=24;
+
+    let weather = {cloud:c, rad:r, sun:sun};
+
+    let soc = calculateSOC(weather, cal, settings);
+
+    output += `
+      <div class="card">
+        <b>${d===0?"Today":d===1?"Tomorrow":"Day +2"}</b><br><br>
+
+        ⚡ SOC Recommendation:<br>
+
+        ${d===1
+          ? `<span class="tomorrow-soc">${soc}%</span>`
+          : `<b>${soc}%</b>`
+        }
+
+        <br><br>
+
+        ☁️ Cloud: ${c.toFixed(0)}%<br>
+        ☀️ Radiation: ${r.toFixed(0)} W/m²<br>
+        🌞 Sunshine hours: ${sun}
+      </div>
+    `;
+  }
 
   document.getElementById("output").innerHTML = output;
   document.getElementById("loading").innerText="";
 }
 
-// ---------------- HISTORY ----------------
+// ---------------- HISTORY UI ----------------
 function renderHistory(){
   let h = getHistory();
   let el = document.getElementById("historyTable");
 
-  if(h.length===0){
-    el.innerHTML="No history";
-    return;
-  }
+  if(!h.length){ el.innerHTML="No history"; return; }
 
   let html="<table><tr><th>Date</th><th>kWh</th></tr>";
 
   h.forEach(d=>{
-    html += `<tr><td>${d.date}</td><td>${d.kwh}</td></tr>`;
+    html+=`<tr><td>${d.date}</td><td>${d.kwh}</td></tr>`;
   });
 
-  html += "</table>";
-
-  el.innerHTML = html;
+  html+="</table>";
+  el.innerHTML=html;
 }
 
-// ---------------- CALIBRATION UI ----------------
 function renderCalibration(){
-
   let c = JSON.parse(localStorage.getItem("calibration")) || {};
   let el = document.getElementById("calibrationTable");
 
   let html="<table><tr><th>Month</th><th>Factor</th></tr>";
 
   Object.keys(c).forEach(m=>{
-    html += `<tr><td>${m}</td><td>${c[m].toFixed(2)}</td></tr>`;
+    html+=`<tr><td>${m}</td><td>${c[m].toFixed(2)}</td></tr>`;
   });
 
-  html += "</table>";
-
-  el.innerHTML = html;
+  html+="</table>";
+  el.innerHTML=html;
 }
 
 // ---------------- TABS ----------------
 function showTab(tab){
-
   document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
   document.getElementById(tab).classList.add("active");
 
@@ -359,7 +391,6 @@ window.addEventListener("load",()=>{
   renderHistory();
   renderCalibration();
 });
-
 </script>
 
 </body>
