@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Solar SOC AI Pro (Integrated)</title>
+  <title>Solar SOC AI Pro</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
   <style>
@@ -45,7 +45,7 @@
     }
 
     .tomorrow-soc {
-      font-size: 28px;
+      font-size: 30px;
       font-weight: bold;
       color: red;
       background: #220000;
@@ -94,13 +94,6 @@
     <input id="elevation" placeholder="Elevation (m)"><br>
 
     <button onclick="saveSettings()">Save Settings</button>
-  </div>
-
-  <div class="card">
-    <h3>Manual PV Input</h3>
-    <input type="date" id="pvDate"><br>
-    <input type="number" id="pvInput" placeholder="kWh"><br>
-    <button onclick="savePV()">Save PV</button>
   </div>
 
 </div>
@@ -159,50 +152,9 @@ function loadSettings(){
   document.getElementById("elevation").value = s.elevation;
 }
 
-// ---------------- PV HISTORY ----------------
+// ---------------- HISTORY ----------------
 function getHistory(){
   return JSON.parse(localStorage.getItem("pvHistory")) || [];
-}
-
-function savePV(){
-  let date = document.getElementById("pvDate").value;
-  let pv = parseFloat(document.getElementById("pvInput").value);
-
-  if(!date || isNaN(pv)) return alert("Invalid");
-
-  let history = getHistory();
-  history = history.filter(d=>d.date!==date);
-  history.push({date, kwh:pv});
-
-  localStorage.setItem("pvHistory", JSON.stringify(history));
-
-  updateCalibration();
-  renderHistory();
-  renderCalibration();
-
-  alert("Saved");
-}
-
-// ---------------- CALIBRATION ----------------
-function updateCalibration(){
-
-  let history = getHistory();
-  let monthly = {};
-
-  history.forEach(h=>{
-    let m = new Date(h.date).getMonth();
-    if(!monthly[m]) monthly[m]=[];
-    monthly[m].push(h.kwh);
-  });
-
-  let cal={};
-
-  Object.keys(monthly).forEach(m=>{
-    let avg = monthly[m].reduce((a,b)=>a+b,0)/monthly[m].length;
-    cal[m] = avg / 20; // baseline
-  });
-
-  localStorage.setItem("calibration", JSON.stringify(cal));
 }
 
 function getCalibration(month){
@@ -253,16 +205,39 @@ function renderWeather(data){
   document.getElementById("weatherOutput").innerHTML = out;
 }
 
+// ---------------- PV MODEL ----------------
+function predictPV(hourly, dayIndex, settings, cal){
+
+  let pvSize = parseFloat(settings.pvSize);
+  let inverter = parseFloat(settings.inverter);
+
+  let start = dayIndex * 24;
+  let total = 0;
+
+  for(let h=start; h<start+24; h++){
+
+    let cloud = hourly.cloudcover[h];
+    let rad = hourly.shortwave_radiation[h];
+
+    let potential = (rad/1000)*pvSize;
+    let cloudFactor = 1 - (cloud/100);
+
+    let raw = potential * cloudFactor;
+
+    let clipped = Math.min(raw, inverter);
+
+    total += clipped / 4;
+  }
+
+  return total * cal;
+}
+
 // ---------------- SOC MODEL ----------------
 function calculateSOC(weather, cal, settings){
 
-  let rad = weather.rad;
-  let cloud = weather.cloud;
-  let sun = weather.sun;
-
-  let radFactor = rad/1000;
-  let cloudFactor = 1 - (cloud/100);
-  let sunFactor = sun/12;
+  let radFactor = weather.rad/1000;
+  let cloudFactor = 1 - (weather.cloud/100);
+  let sunFactor = weather.sun/12;
 
   let score = (radFactor*0.5)+(cloudFactor*0.3)+(sunFactor*0.2);
 
@@ -276,7 +251,7 @@ function calculateSOC(weather, cal, settings){
   let soc = 80 - (calibrated*60);
 
   if(calibrated < 0.4) soc += 10;
-  if(sun < 4) soc += 10;
+  if(weather.sun < 4) soc += 10;
   if(calibrated > 0.7) soc -= 10;
   if(clipping > 1.2) soc -= 5;
 
@@ -315,11 +290,15 @@ async function runAI(){
 
     let soc = calculateSOC(weather, cal, settings);
 
+    let pv = predictPV(data.hourly, d, settings, cal);
+
     output += `
       <div class="card">
         <b>${d===0?"Today":d===1?"Tomorrow":"Day +2"}</b><br><br>
 
-        ⚡ SOC Recommendation:<br>
+        ⚡ Predicted PV: <b>${pv.toFixed(1)} kWh</b><br><br>
+
+        🔋 SOC Recommendation:<br>
 
         ${d===1
           ? `<span class="tomorrow-soc">${soc}%</span>`
@@ -339,7 +318,25 @@ async function runAI(){
   document.getElementById("loading").innerText="";
 }
 
-// ---------------- HISTORY UI ----------------
+// ---------------- INIT ----------------
+window.addEventListener("load",()=>{
+  loadSettings();
+});
+
+function showTab(tab){
+  document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
+  document.getElementById(tab).classList.add("active");
+
+  if(tab==="history"){
+    renderHistory();
+    renderCalibration();
+  }
+
+  if(tab==="settings"){
+    loadSettings();
+  }
+}
+
 function renderHistory(){
   let h = getHistory();
   let el = document.getElementById("historyTable");
@@ -370,27 +367,6 @@ function renderCalibration(){
   el.innerHTML=html;
 }
 
-// ---------------- TABS ----------------
-function showTab(tab){
-  document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
-  document.getElementById(tab).classList.add("active");
-
-  if(tab==="history"){
-    renderHistory();
-    renderCalibration();
-  }
-
-  if(tab==="settings"){
-    loadSettings();
-  }
-}
-
-// ---------------- INIT ----------------
-window.addEventListener("load",()=>{
-  loadSettings();
-  renderHistory();
-  renderCalibration();
-});
 </script>
 
 </body>
