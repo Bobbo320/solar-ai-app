@@ -58,7 +58,7 @@
 
 <!-- MAIN -->
 <div id="main" class="tab active">
-  <div class="card">📍 System Active</div>
+  <div class="card">📍 Local System</div>
 
   <button onclick="runAI()">Plan Next 3 Days</button>
   <p id="loading"></p>
@@ -128,10 +128,9 @@ function saveSettings() {
   };
 
   localStorage.setItem("settings", JSON.stringify(settings));
-  alert("Saved");
+  alert("Settings saved");
 }
 
-// ---------------- LOAD SETTINGS ----------------
 function loadSettingsUI() {
   let s = JSON.parse(localStorage.getItem("settings")) || {};
 
@@ -166,7 +165,7 @@ function getAutoCalibration(date) {
   return map[month] || 1;
 }
 
-// ---------------- PV ----------------
+// ---------------- PV SAVE ----------------
 function savePV() {
 
   let pv = parseFloat(document.getElementById("pvInput").value);
@@ -180,6 +179,7 @@ function savePV() {
   let history = getHistory();
 
   history = history.filter(d => d.date !== date);
+
   history.push({ date, kwh: pv });
 
   localStorage.setItem("pvHistory", JSON.stringify(history));
@@ -192,7 +192,7 @@ function savePV() {
   renderHistory();
   renderCalibration();
 
-  alert("Saved + Learning Updated");
+  alert("Saved");
 }
 
 // ---------------- WEATHER ----------------
@@ -203,7 +203,7 @@ async function getWeather() {
   return await res.json();
 }
 
-// ---------------- MAIN ----------------
+// ---------------- MAIN AI ----------------
 async function runAI() {
 
   document.getElementById("loading").innerText = "Loading...";
@@ -287,7 +287,7 @@ function renderPVHistory() {
   el.innerHTML = html;
 }
 
-// ---------------- HISTORY TAB ----------------
+// ---------------- HISTORY ----------------
 function renderHistory() {
 
   let history = getHistory();
@@ -313,7 +313,7 @@ function renderHistory() {
   el.innerHTML = html;
 }
 
-// ---------------- CALIBRATION TABLE ----------------
+// ---------------- CALIBRATION ----------------
 function renderCalibration() {
 
   let map = JSON.parse(localStorage.getItem("calibrationMap")) || {};
@@ -347,9 +347,11 @@ function showTab(tab) {
 }
 
 // ---------------- INIT ----------------
-renderPVHistory();
-renderHistory();
-renderCalibration();
+window.addEventListener("load", () => {
+  renderPVHistory();
+  renderHistory();
+  renderCalibration();
+});
 
 </script>
 
