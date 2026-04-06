@@ -16,7 +16,6 @@
     button {
       padding: 10px;
       margin: 6px;
-      font-size: 14px;
     }
 
     input {
@@ -59,16 +58,10 @@
 
 <!-- MAIN -->
 <div id="main" class="tab active">
-
-  <div class="card">
-    📍 Location: NR7 0WZ
-  </div>
-
+  <div class="card">📍 NR7 0WZ (Norwich)</div>
   <button onclick="runAI()">Plan Next 3 Days</button>
-
   <p id="loading"></p>
   <div id="output"></div>
-
 </div>
 
 <!-- SETTINGS -->
@@ -84,7 +77,7 @@
     <input id="direction" placeholder="Direction"><br>
     <input id="elevation" placeholder="Elevation"><br>
 
-    <button onclick="saveSettings()">Save</button>
+    <button onclick="saveSettings()">Save Settings</button>
   </div>
 
   <div class="card">
@@ -96,6 +89,12 @@
     <button onclick="savePV()">Save PV</button>
 
     <div id="pvHistoryTable"></div>
+  </div>
+
+  <div class="card">
+    <h3>📊 Monthly Calibration</h3>
+    <canvas id="calibrationChart" width="300" height="200"></canvas>
+    <div id="calibrationTable"></div>
   </div>
 
 </div>
@@ -143,32 +142,6 @@ function saveSettings() {
   alert("Saved");
 }
 
-// ---------------- PV ----------------
-function savePV() {
-
-  let pv = parseFloat(document.getElementById("pvInput").value);
-  let date = document.getElementById("pvDate").value;
-
-  if (!date || isNaN(pv)) return alert("Invalid input");
-
-  let history = getHistory();
-
-  history = history.filter(d => d.date !== date);
-  history.push({ date, kwh: pv });
-
-  localStorage.setItem("pvHistory", JSON.stringify(history));
-
-  // calibration update
-  if (lastPredictedPV) {
-    updateCalibration(date, lastPredictedPV, pv);
-  }
-
-  renderPVHistory();
-  renderHistory();
-
-  alert("Saved");
-}
-
 // ---------------- CALIBRATION ----------------
 function updateCalibration(date, predicted, actual) {
 
@@ -192,7 +165,33 @@ function getCalibration(date) {
   return map[month] || 1;
 }
 
-// ---------------- WEATHER MODEL ----------------
+// ---------------- PV ----------------
+function savePV() {
+
+  let pv = parseFloat(document.getElementById("pvInput").value);
+  let date = document.getElementById("pvDate").value;
+
+  if (!date || isNaN(pv)) return alert("Invalid input");
+
+  let history = getHistory();
+
+  history = history.filter(d => d.date !== date);
+  history.push({ date, kwh: pv });
+
+  localStorage.setItem("pvHistory", JSON.stringify(history));
+
+  if (lastPredictedPV) {
+    updateCalibration(date, lastPredictedPV, pv);
+  }
+
+  renderPVHistory();
+  renderHistory();
+  renderCalibration();
+
+  alert("Saved");
+}
+
+// ---------------- WEATHER ----------------
 function enhancedWeatherScore(cloud, rad, precip) {
 
   let cloudFactor = 1 - (cloud / 100);
@@ -245,7 +244,7 @@ function seasonalSOC(score, elev, date) {
   return Math.round(Math.min(95, Math.max(20, soc))) + "%";
 }
 
-// ---------------- MAIN AI ----------------
+// ---------------- MAIN ----------------
 async function runAI() {
 
   document.getElementById("loading").innerText = "Loading...";
@@ -297,19 +296,18 @@ async function runAI() {
       if (e > maxElev) maxElev = e;
     }
 
-    let predictedPV = avg * 30; // simple scaling
+    let predictedPV = avg * 30;
     if (d === 0) lastPredictedPV = predictedPV;
 
-    let sunshineHours = cloud.slice(start, start+24).filter(c => c < 50).length;
+    let sunshineHours = cloud.slice(start,start+24).filter(c => c < 50).length;
 
     output += `
       <div class="card">
         <b>${d===0?"Today":d===1?"Tomorrow":"Day +2"}</b><br><br>
 
         ⚡ Solar Score: ${(avg*100).toFixed(0)}%<br>
-        ☀️ Max Elevation: ${maxElev.toFixed(1)}°<br>
         ☀️ Sunshine Hours: ${sunshineHours}<br>
-        🌧️ Precipitation Avg: ${(precip.slice(start,start+24).reduce((a,b)=>a+b,0)/24).toFixed(2)} mm<br><br>
+        🌧️ Rain Avg: ${(precip.slice(start,start+24).reduce((a,b)=>a+b,0)/24).toFixed(2)} mm<br><br>
 
         🔋 Predicted PV: ${predictedPV.toFixed(1)} kWh<br>
         🔋 Recommended SOC: <b>${seasonalSOC(avg, maxElev, dateObj)}</b>
@@ -321,7 +319,7 @@ async function runAI() {
   document.getElementById("loading").innerText = "";
 }
 
-// ---------------- RENDER ----------------
+// ---------------- RENDER PV ----------------
 function renderPVHistory() {
 
   let history = getHistory();
@@ -330,7 +328,7 @@ function renderPVHistory() {
   if (!el) return;
 
   if (history.length === 0) {
-    el.innerHTML = "No data";
+    el.innerHTML = "No PV data";
     return;
   }
 
@@ -347,23 +345,79 @@ function renderPVHistory() {
   el.innerHTML = html;
 }
 
+// ---------------- HISTORY TAB ----------------
 function renderHistory() {
-  renderPVHistory();
-  let el = document.getElementById("historyTable");
-  if (el) el.innerHTML = document.getElementById("pvHistoryTable").innerHTML;
+  document.getElementById("historyTable").innerHTML =
+    document.getElementById("pvHistoryTable").innerHTML;
 }
 
-// ---------------- UI ----------------
+// ---------------- CALIBRATION ----------------
+function renderCalibration() {
+
+  let map = getCalibrationMap();
+
+  let table = "<table><tr><th>Month</th><th>Factor</th></tr>";
+
+  for (let m = 1; m <= 12; m++) {
+    let val = map[m] ? map[m].toFixed(2) : "-";
+    table += `<tr><td>${m}</td><td>${val}</td></tr>`;
+  }
+
+  table += "</table>";
+  document.getElementById("calibrationTable").innerHTML = table;
+
+  let canvas = document.getElementById("calibrationChart");
+  let ctx = canvas.getContext("2d");
+
+  ctx.clearRect(0,0,300,200);
+
+  let x = 20;
+
+  for (let m = 1; m <= 12; m++) {
+    let val = map[m] || 0;
+    let h = val * 80;
+
+    ctx.fillStyle = "#38bdf8";
+    ctx.fillRect(x, 150 - h, 15, h);
+
+    ctx.fillStyle = "white";
+    ctx.fillText(m, x, 170);
+
+    x += 20;
+  }
+}
+
+// ---------------- SETTINGS UI ----------------
+function loadSettingsUI() {
+  let s = JSON.parse(localStorage.getItem("settings")) || {};
+
+  document.getElementById("postcode").value = s.postcode || "";
+  document.getElementById("inverter").value = s.inverter || "";
+  document.getElementById("battery").value = s.battery || "";
+  document.getElementById("pvSize").value = s.pvSize || "";
+  document.getElementById("direction").value = s.direction || "";
+  document.getElementById("elevation").value = s.elevation || "";
+}
+
+// ---------------- TABS ----------------
 function showTab(tab) {
   document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
   document.getElementById(tab).classList.add("active");
 
-  if (tab === "settings") renderPVHistory();
-  if (tab === "history") renderHistory();
+  if (tab === "settings") {
+    loadSettingsUI();
+    renderPVHistory();
+    renderCalibration();
+  }
+
+  if (tab === "history") {
+    renderHistory();
+  }
 }
 
 // init
 renderPVHistory();
+renderCalibration();
 
 </script>
 
