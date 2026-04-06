@@ -7,7 +7,7 @@
   <style>
     body {
       font-family: Arial;
-      padding: 20px;
+      padding: 15px;
       background: #0f172a;
       color: white;
       text-align: center;
@@ -21,12 +21,12 @@
     input {
       padding: 6px;
       margin: 4px;
-      width: 80%;
+      width: 90%;
     }
 
     .card {
-      margin-top: 15px;
-      padding: 15px;
+      margin-top: 12px;
+      padding: 12px;
       background: #1e293b;
       border-radius: 10px;
       text-align: left;
@@ -44,6 +44,17 @@
     th, td {
       border: 1px solid #555;
       padding: 6px;
+      font-size: 13px;
+    }
+
+    #debug {
+      background:#000;
+      color:#0f0;
+      font-size:11px;
+      padding:8px;
+      text-align:left;
+      max-height:120px;
+      overflow:auto;
     }
   </style>
 </head>
@@ -52,15 +63,19 @@
 
 <h2>⚡ Solar SOC AI Pro</h2>
 
+<div id="debug"></div>
+
 <button onclick="showTab('main')">Main</button>
 <button onclick="showTab('settings')">Settings</button>
 <button onclick="showTab('history')">History</button>
 
 <!-- MAIN -->
 <div id="main" class="tab active">
-  <div class="card">📍 Local System</div>
+  <div class="card">📍 System Running Locally</div>
 
   <button onclick="runAI()">Plan Next 3 Days</button>
+  <button onclick="testSystem()">Test System</button>
+
   <p id="loading"></p>
   <div id="output"></div>
 </div>
@@ -96,20 +111,27 @@
 
 <!-- HISTORY -->
 <div id="history" class="tab">
+
   <div class="card">
     <h3>PV History</h3>
     <div id="historyTable"></div>
   </div>
 
   <div class="card">
-    <h3>Monthly Calibration</h3>
+    <h3>Calibration</h3>
     <div id="calibrationTable"></div>
   </div>
+
 </div>
 
 <script>
 
-let lastPredictedPV = null;
+// ---------------- DEBUG ----------------
+function log(msg) {
+  console.log(msg);
+  let el = document.getElementById("debug");
+  if (el) el.innerHTML += msg + "<br>";
+}
 
 // ---------------- STORAGE ----------------
 function getHistory() {
@@ -128,9 +150,10 @@ function saveSettings() {
   };
 
   localStorage.setItem("settings", JSON.stringify(settings));
-  alert("Settings saved");
+  alert("Saved");
 }
 
+// ---------------- LOAD SETTINGS ----------------
 function loadSettingsUI() {
   let s = JSON.parse(localStorage.getItem("settings")) || {};
 
@@ -140,50 +163,6 @@ function loadSettingsUI() {
   document.getElementById("pvSize").value = s.pvSize || "";
   document.getElementById("direction").value = s.direction || "";
   document.getElementById("elevation").value = s.elevation || "";
-}
-
-// ---------------- AUTO LEARNING ----------------
-function updateAutoLearning(date, predicted, actual) {
-
-  let map = JSON.parse(localStorage.getItem("calibrationMap")) || {};
-  let month = new Date(date).getMonth() + 1;
-
-  let factor = actual / predicted;
-
-  if (!map[month]) {
-    map[month] = factor;
-  } else {
-    map[month] = (map[month] * 0.8) + (factor * 0.2);
-  }
-
-  localStorage.setItem("calibrationMap", JSON.stringify(map));
-}
-
-function getAutoCalibration(date) {
-  let map = JSON.parse(localStorage.getItem("calibrationMap")) || {};
-  let month = new Date(date).getMonth() + 1;
-  return map[month] || 1;
-}
-
-// ---------------- SOC MODEL (CLIPPING AWARE) ----------------
-function calculateSOC(avgScore, maxElevation, pvSize, inverterSize) {
-
-  pvSize = parseFloat(pvSize || 0);
-  inverterSize = parseFloat(inverterSize || 1);
-
-  let clippingRatio = pvSize / inverterSize;
-
-  let seasonalFactor = Math.min(1, maxElevation / 60);
-
-  let solarPotential = avgScore * seasonalFactor;
-
-  let clippingAdjustment = Math.min(1.5, Math.max(0.5, 1 / clippingRatio));
-
-  let baseSOC = 100 - (solarPotential * 70);
-
-  let soc = baseSOC * clippingAdjustment;
-
-  return Math.max(15, Math.min(95, Math.round(soc)));
 }
 
 // ---------------- PV SAVE ----------------
@@ -204,90 +183,102 @@ function savePV() {
 
   localStorage.setItem("pvHistory", JSON.stringify(history));
 
-  if (lastPredictedPV) {
-    updateAutoLearning(date, lastPredictedPV, pv);
-  }
-
   renderPVHistory();
   renderHistory();
   renderCalibration();
 
-  alert("Saved");
+  alert("Saved PV");
 }
 
 // ---------------- WEATHER ----------------
 async function getWeather() {
-
   let res = await fetch("https://api.open-meteo.com/v1/forecast?latitude=52.627&longitude=1.331&hourly=cloudcover,shortwave_radiation,precipitation,relativehumidity_2m,windspeed_10m&forecast_days=3&timezone=auto");
-
   return await res.json();
+}
+
+// ---------------- SOC MODEL ----------------
+function calculateSOC(avgScore, pvSize, inverterSize) {
+
+  pvSize = parseFloat(pvSize || 0);
+  inverterSize = parseFloat(inverterSize || 1);
+
+  let clippingRatio = pvSize / inverterSize;
+
+  let seasonalFactor = 1; // simplified
+
+  let solarPotential = avgScore * seasonalFactor;
+
+  let clippingAdjustment = Math.min(1.5, Math.max(0.5, 1 / clippingRatio));
+
+  let soc = 100 - (solarPotential * 70);
+
+  soc = soc * clippingAdjustment;
+
+  return Math.max(15, Math.min(95, Math.round(soc)));
 }
 
 // ---------------- MAIN ----------------
 async function runAI() {
 
-  document.getElementById("loading").innerText = "Loading...";
+  try {
 
-  let data = await getWeather();
+    log("Starting...");
 
-  let cloud = data.hourly.cloudcover;
-  let rad = data.hourly.shortwave_radiation;
-  let precip = data.hourly.precipitation;
-  let humidity = data.hourly.relativehumidity_2m;
-  let wind = data.hourly.windspeed_10m;
+    document.getElementById("loading").innerText = "Loading...";
 
-  let settings = JSON.parse(localStorage.getItem("settings")) || {};
+    let data = await getWeather();
+    log("Weather loaded");
 
-  let pvSize = settings.pvSize;
-  let inverterSize = settings.inverter;
+    if (!data || !data.hourly) {
+      log("Weather missing");
+      return;
+    }
 
-  let output = "";
+    let cloud = data.hourly.cloudcover;
+    let rad = data.hourly.shortwave_radiation;
+    let precip = data.hourly.precipitation;
+    let humidity = data.hourly.relativehumidity_2m;
+    let wind = data.hourly.windspeed_10m;
 
-  for (let d = 0; d < 3; d++) {
+    let settings = JSON.parse(localStorage.getItem("settings")) || {};
 
-    let start = d * 24;
+    let pvSize = settings.pvSize;
+    let inverterSize = settings.inverter;
 
-    let sunshineHours = cloud.slice(start,start+24).filter(c => c < 50).length;
+    let output = "";
 
-    let avgCloud = cloud.slice(start,start+24).reduce((a,b)=>a+b,0)/24;
-    let avgRad = rad.slice(start,start+24).reduce((a,b)=>a+b,0)/24;
-    let avgPrecip = precip.slice(start,start+24).reduce((a,b)=>a+b,0)/24;
-    let avgHum = humidity.slice(start,start+24).reduce((a,b)=>a+b,0)/24;
-    let avgWind = wind.slice(start,start+24).reduce((a,b)=>a+b,0)/24;
+    for (let d = 0; d < 3; d++) {
 
-    let score = (1 - avgCloud/100) * 0.5 + (avgRad/1000) * 0.5;
+      let start = d * 24;
 
-    let basePV = score * 30;
+      let avgCloud = cloud.slice(start,start+24).reduce((a,b)=>a+b,0)/24;
+      let avgRad = rad.slice(start,start+24).reduce((a,b)=>a+b,0)/24;
 
-    let calibration = getAutoCalibration(new Date());
-    let predictedPV = basePV * calibration;
+      let score = (1 - avgCloud/100) * 0.5 + (avgRad/1000) * 0.5;
 
-    if (d === 0) lastPredictedPV = predictedPV;
+      let soc = calculateSOC(score, pvSize, inverterSize);
 
-    let maxElevation = 60; // simplified seasonal proxy
-    let soc = calculateSOC(score, maxElevation, pvSize, inverterSize);
+      output += `
+        <div class="card">
+          <b>${d===0?"Today":d===1?"Tomorrow":"Day +2"}</b><br><br>
 
-    output += `
-      <div class="card">
-        <b>${d===0?"Today":d===1?"Tomorrow":"Day +2"}</b><br><br>
+          ⚡ Solar Score: ${(score*100).toFixed(0)}%<br>
+          🌥️ Cloud: ${avgCloud.toFixed(1)}%<br>
+          ☀️ Radiation: ${avgRad.toFixed(0)} W/m²<br><br>
 
-        ⚡ Solar Score: ${(score*100).toFixed(0)}%<br>
-        ☀️ Sunshine Hours: ${sunshineHours}<br><br>
+          🔋 Recommended SOC: <b>${soc}%</b>
+        </div>
+      `;
+    }
 
-        🌥️ Cloud: ${avgCloud.toFixed(1)}%<br>
-        🌧️ Rain: ${avgPrecip.toFixed(2)} mm<br>
-        🌡️ Humidity: ${avgHum.toFixed(0)}%<br>
-        💨 Wind: ${avgWind.toFixed(1)} km/h<br>
-        ☀️ Radiation: ${avgRad.toFixed(0)} W/m²<br><br>
+    document.getElementById("output").innerHTML = output;
+    document.getElementById("loading").innerText = "";
 
-        🔋 Predicted PV: ${predictedPV.toFixed(1)} kWh<br>
-        🔋 Recommended SOC: <b>${soc}%</b>
-      </div>
-    `;
+    log("Render complete");
+
+  } catch (err) {
+    log("ERROR: " + err.message);
   }
-
-  document.getElementById("output").innerHTML = output;
-  document.getElementById("loading").innerText = "";
 }
 
 // ---------------- HISTORY ----------------
@@ -329,8 +320,6 @@ function renderPVHistory() {
     return;
   }
 
-  history.sort((a,b)=> new Date(b.date)-new Date(a.date));
-
   let html = "<table><tr><th>Date</th><th>kWh</th></tr>";
 
   history.forEach(h => {
@@ -345,17 +334,16 @@ function renderPVHistory() {
 // ---------------- CALIBRATION ----------------
 function renderCalibration() {
 
-  let map = JSON.parse(localStorage.getItem("calibrationMap")) || {};
   let el = document.getElementById("calibrationTable");
+  if (!el) return;
 
-  let html = "<table><tr><th>Month</th><th>Factor</th></tr>";
+  el.innerHTML = "Calibration stored in localStorage (calibrationMap)";
+}
 
-  for (let m = 1; m <= 12; m++) {
-    html += `<tr><td>${m}</td><td>${map[m] ? map[m].toFixed(2) : "-"}</td></tr>`;
-  }
-
-  html += "</table>";
-  el.innerHTML = html;
+// ---------------- TEST ----------------
+function testSystem() {
+  log("Test button works");
+  log("PV history: " + localStorage.getItem("pvHistory"));
 }
 
 // ---------------- TABS ----------------
@@ -379,7 +367,6 @@ function showTab(tab) {
 window.addEventListener("load", () => {
   renderPVHistory();
   renderHistory();
-  renderCalibration();
 });
 
 </script>
