@@ -389,33 +389,7 @@ async function runAI(){
     let pv=estimatePV(avgScore,sun,midTemp,s);
     let soc=recommendedSOC(pv,s);
 
-    let isTomorrow = d === 1;
-
-let socStyle = isTomorrow 
-  ? "color:red; font-size:22px; font-weight:bold;" 
-  : "";
-
-let cardStyle = isTomorrow 
-  ? 'border:3px solid red; box-shadow:0 0 20px rgba(255,0,0,0.5);' 
-  : '';
-
-html+=`
-  <div class="card" style="${cardStyle}">
-    <h3>${label}</h3>
-
-    ${weatherSummary(weightedCloudAverage(cloud,start),avgRad,midTemp,hum[start+12],precip[start+12])}
-
-    <br><b>🔆 Usable Solar Window:</b> ${split.morning + split.afternoon} hours
-
-    <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
-
-    <br>
-    <div style="${socStyle}">
-      🔴 Recommended SOC${isTomorrow ? " (Tomorrow)" : ""}: ${soc}%
-    </div>
-  </div>
-`;
-
+    let label=d===0?"Today":d===1?"Tomorrow":"The day after tomorrow";
 
     html+=`
       <div class="card">
