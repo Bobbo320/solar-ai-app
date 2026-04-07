@@ -127,7 +127,7 @@ function saveSettings() {
 
   localStorage.setItem("settings", JSON.stringify(settings));
 
-  preloadWeather(); // 🔥 refresh cache after save
+  preloadWeather(); // refresh cache
 
   alert("Saved");
   toggleSettings();
@@ -176,56 +176,89 @@ async function preloadWeather() {
 // -------------------- GEOCODING --------------------
 async function getCoordinates(postcode) {
 
-  let cacheKey = "coords_" + postcode;
-  let cached = getCache(cacheKey);
+  try {
+    let cacheKey = "coords_" + postcode;
+    let cached = getCache(cacheKey);
 
-  if (cached) return cached;
+    if (cached) return cached;
 
-  let res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(postcode)}&count=1`);
-  let data = await res.json();
+    let res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(postcode)}&count=1`);
 
-  if (!data.results || data.results.length === 0) {
-    throw new Error("Location not found");
+    if (!res.ok) throw new Error("Geocoding failed");
+
+    let data = await res.json();
+
+    if (!data.results || data.results.length === 0) {
+      throw new Error("Location not found");
+    }
+
+    let coords = {
+      lat: data.results[0].latitude,
+      lon: data.results[0].longitude
+    };
+
+    setCache(cacheKey, coords);
+
+    return coords;
+
+  } catch (e) {
+    console.error("Coord error:", e);
+
+    // fallback Norwich
+    return {
+      lat: 52.6309,
+      lon: 1.2974
+    };
   }
-
-  let coords = {
-    lat: data.results[0].latitude,
-    lon: data.results[0].longitude
-  };
-
-  setCache(cacheKey, coords);
-  return coords;
 }
 
 // -------------------- WEATHER --------------------
 async function getWeather(postcode) {
 
-  let cacheKey = "weather_" + postcode;
-  let cached = getCache(cacheKey);
+  try {
+    let cacheKey = "weather_" + postcode;
+    let cached = getCache(cacheKey);
 
-  let now = Date.now();
-  let cacheDuration = 30 * 60 * 1000;
+    let now = Date.now();
+    let cacheDuration = 30 * 60 * 1000;
 
-  if (cached && (now - cached.timestamp < cacheDuration)) {
-    return cached.data;
+    if (cached && (now - cached.timestamp < cacheDuration)) {
+      return cached.data;
+    }
+
+    let c = await getCoordinates(postcode);
+
+    let res = await fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}&hourly=cloudcover,temperature_2m,shortwave_radiation,relativehumidity_2m,precipitation&forecast_days=3&timezone=auto`
+    );
+
+    if (!res.ok) throw new Error("Weather fetch failed");
+
+    let data = await res.json();
+
+    setCache(cacheKey, {
+      timestamp: now,
+      data: data
+    });
+
+    return data;
+
+  } catch (e) {
+    console.error("Weather error:", e);
+
+    document.getElementById("loading").innerText = "Weather fallback mode";
+
+    // fallback synthetic data
+    return {
+      hourly: {
+        cloudcover: new Array(72).fill(50),
+        shortwave_radiation: new Array(72).fill(200),
+        temperature_2m: new Array(72).fill(15),
+        relativehumidity_2m: new Array(72).fill(70),
+        precipitation: new Array(72).fill(0)
+      }
+    };
   }
-
-  let c = await getCoordinates(postcode);
-
-  let res = await fetch(
-    `https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}&hourly=cloudcover,temperature_2m,shortwave_radiation,relativehumidity_2m,precipitation&forecast_days=3&timezone=auto`
-  );
-
-  if (!res.ok) throw new Error("Weather fetch failed");
-
-  let data = await res.json();
-
-  setCache(cacheKey, {
-    timestamp: now,
-    data: data
-  });
-
-  return data;
 }
 
 // -------------------- SOLAR LOGIC --------------------
@@ -251,8 +284,7 @@ function temperatureEfficiency(t) {
 }
 
 function sunshineSplit(r,start){
-  let morning=0;
-  let afternoon=0;
+  let morning=0, afternoon=0;
 
   for(let i=0;i<24;i++){
     if(r[start+i] > 120){
