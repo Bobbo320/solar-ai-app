@@ -167,23 +167,30 @@ function applyOrientationToSun(morning, afternoon, orientation) {
   return morning + afternoon;
 }
 
-// -------------------- POSTCODE --------------------
+// -------------------- POSTCODE (PROXY FIX) --------------------
 async function getCoordinates(postcode) {
-  let res = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(postcode)}`);
+  let url = `https://api.allorigins.win/raw?url=${encodeURIComponent(
+    "https://api.postcodes.io/postcodes/" + postcode
+  )}`;
+
+  let res = await fetch(url);
   let data = await res.json();
-  return { lat: data.result.latitude, lon: data.result.longitude };
+
+  return {
+    lat: data.result.latitude,
+    lon: data.result.longitude
+  };
 }
 
 // -------------------- WEATHER (PROXY FIX) --------------------
 async function getWeather(postcode) {
   let c = await getCoordinates(postcode);
 
-  let res = await fetch(
-    `https://YOUR-WORKER-URL.workers.dev?lat=${c.lat}&lon=${c.lon}`
-  );
+  let url = `https://api.allorigins.win/raw?url=${encodeURIComponent(
+    `https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}&hourly=cloudcover,temperature_2m,shortwave_radiation,relativehumidity_2m,precipitation&forecast_days=3&timezone=auto`
+  )}`;
 
-  if (!res.ok) throw new Error("Weather proxy failed");
-
+  let res = await fetch(url);
   return await res.json();
 }
 
@@ -193,7 +200,7 @@ function temperatureEfficiency(t) {
   return Math.min(1.05, Math.max(0.8, f));
 }
 
-// -------------------- SUNSHINE SPLIT --------------------
+// -------------------- SUN SPLIT --------------------
 function sunshineSplit(r,start){
   let morning=0;
   let afternoon=0;
@@ -268,14 +275,7 @@ async function runAI(){
   let s=getSettings();
   document.getElementById("loading").innerText="Loading...";
 
-  let data;
-  try {
-    data = await getWeather(s.postcode);
-  } catch (e) {
-    console.error(e);
-    document.getElementById("loading").innerText="Weather error";
-    return;
-  }
+  let data=await getWeather(s.postcode);
 
   let cloud=data.hourly.cloudcover;
   let rad=data.hourly.shortwave_radiation;
