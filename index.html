@@ -180,9 +180,27 @@ function applyOrientationToSun(morning, afternoon, orientation) {
 
 // -------------------- POSTCODE --------------------
 async function getCoordinates(postcode) {
-  let res = await fetch(`https://api.postcodes.io/postcodes/${postcode}`);
+
+  let cache = JSON.parse(localStorage.getItem("coordsCache") || "{}");
+
+  if (cache[postcode]) {
+    return cache[postcode]; // ⚡ instant
+  }
+
+  let res = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(postcode)}`);
   let data = await res.json();
-  return { lat: data.result.latitude, lon: data.result.longitude };
+
+  if (!data.result) throw new Error("Invalid postcode");
+
+  let coords = {
+    lat: data.result.latitude,
+    lon: data.result.longitude
+  };
+
+  cache[postcode] = coords;
+  localStorage.setItem("coordsCache", JSON.stringify(cache));
+
+  return coords;
 }
 
 // -------------------- WEATHER --------------------
