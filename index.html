@@ -1,24 +1,97 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Solar SOC AI Pro</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body {
+      font-family: Arial;
+      padding: 20px;
+      background: #0f172a;
+      color: white;
+      text-align: center;
+    }
+    button {
+      padding: 12px;
+      margin: 10px;
+      font-size: 16px;
+    }
+    .card {
+      margin-top: 15px;
+      padding: 15px;
+      background: #1e293b;
+      border-radius: 10px;
+      text-align: left;
+    }
+    input, select {
+      padding: 8px;
+      width: 180px;
+      margin-bottom: 10px;
+    }
+    .hidden { display: none; }
+  </style>
+</head>
+
+<body>
+
+<h2>⚡ Solar SOC AI Pro</h2>
+
+<button onclick="toggleSettings()">⚙️ Settings</button>
+<button onclick="runAI()">Plan Next 3 Days</button>
+
+<div id="settingsPanel" class="card hidden">
+  <h3>Settings</h3>
+
+  <label>Place:</label><br>
+  <input id="postcode"><br>
+
+  <label>PV Size (kWp):</label><br>
+  <input id="pvSize" type="number"><br>
+
+  <label>Inverter Size (kW):</label><br>
+  <input id="inverter" type="number"><br>
+
+  <label>Battery Capacity (kWh):</label><br>
+  <input id="battery" type="number"><br>
+
+  <label>PV Orientation:</label><br>
+  <select id="orientation">
+    <option value="south">South (100% output)</option>
+    <option value="se_sw">SE / SW (92% output)</option>
+    <option value="east_west">East / West (85% output)</option>
+    <option value="north">North (65% output)</option>
+  </select><br>
+
+  <label>Shading:</label><br>
+  <select id="shading">
+    <option value="100">None (100% output)</option>
+    <option value="90">Very light (90%)</option>
+    <option value="80">Light (80%)</option>
+    <option value="70">Moderate (70%)</option>
+    <option value="50">Heavy (50%)</option>
+  </select><br>
+
+  <label>Daily Load (kWh):</label><br>
+  <input id="dailyLoad" type="number"><br>
+
+  <label>Efficiency (%):</label><br>
+  <input id="efficiency" type="number"><br>
+
+  <label>SOC Low (%):</label><br>
+  <input id="socLow" type="number"><br>
+
+  <label>SOC High (%):</label><br>
+  <input id="socHigh" type="number"><br>
+
+  <button onclick="saveSettings()">Save</button>
+</div>
+
+<p id="loading"></p>
+<div id="output"></div>
+
 <script>
 
 let preloadedWeather = null;
-
-// -------------------- MODEL CONFIG --------------------
-const MODEL = {
-  daylightThreshold: 100,
-  cloudWeight: 0.6,
-  radiationWeight: 0.4,
-  tempCoeff: -0.004,
-  minTempFactor: 0.8,
-  maxTempFactor: 1.05,
-  socBuffer: 1.15,       // reserve margin
-  systemLoss: 0.92       // inverter + wiring losses
-};
-
-// -------------------- HELPERS --------------------
-function safeParse(value, fallback) {
-  const n = parseFloat(value);
-  return isNaN(n) ? fallback : n;
-}
 
 // -------------------- SETTINGS --------------------
 function getSettings() {
@@ -41,23 +114,19 @@ function getSettings() {
 function saveSettings() {
   let settings = {
     postcode: document.getElementById("postcode").value,
-    pvSize: safeParse(document.getElementById("pvSize").value, 6.5),
-    inverter: safeParse(document.getElementById("inverter").value, 5),
-    battery: safeParse(document.getElementById("battery").value, 10.64),
+    pvSize: parseFloat(document.getElementById("pvSize").value),
+    inverter: parseFloat(document.getElementById("inverter").value),
+    battery: parseFloat(document.getElementById("battery").value),
     orientation: document.getElementById("orientation").value,
-    shading: safeParse(document.getElementById("shading").value, 100),
-    dailyLoad: safeParse(document.getElementById("dailyLoad").value, 10),
-    efficiency: safeParse(document.getElementById("efficiency").value, 85),
-    socLow: safeParse(document.getElementById("socLow").value, 20),
-    socHigh: safeParse(document.getElementById("socHigh").value, 95)
+    shading: parseFloat(document.getElementById("shading").value),
+    dailyLoad: parseFloat(document.getElementById("dailyLoad").value),
+    efficiency: parseFloat(document.getElementById("efficiency").value),
+    socLow: parseFloat(document.getElementById("socLow").value),
+    socHigh: parseFloat(document.getElementById("socHigh").value)
   };
 
-  if (!settings.postcode) {
-    alert("Please enter a location");
-    return;
-  }
-
   localStorage.setItem("settings", JSON.stringify(settings));
+
   preloadWeather();
 
   alert("Saved");
@@ -67,10 +136,16 @@ function saveSettings() {
 function loadSettingsToUI() {
   let s = getSettings();
 
-  Object.keys(s).forEach(k => {
-    let el = document.getElementById(k);
-    if (el) el.value = s[k];
-  });
+  document.getElementById("postcode").value = s.postcode;
+  document.getElementById("pvSize").value = s.pvSize;
+  document.getElementById("inverter").value = s.inverter;
+  document.getElementById("battery").value = s.battery;
+  document.getElementById("orientation").value = s.orientation;
+  document.getElementById("shading").value = s.shading;
+  document.getElementById("dailyLoad").value = s.dailyLoad;
+  document.getElementById("efficiency").value = s.efficiency;
+  document.getElementById("socLow").value = s.socLow;
+  document.getElementById("socHigh").value = s.socHigh;
 }
 
 function toggleSettings() {
@@ -92,6 +167,7 @@ async function preloadWeather() {
   try {
     let s = getSettings();
     preloadedWeather = await getWeather(s.postcode);
+    console.log("Weather preloaded");
   } catch (e) {
     console.log("Preload failed:", e);
   }
@@ -99,18 +175,20 @@ async function preloadWeather() {
 
 // -------------------- GEOCODING --------------------
 async function getCoordinates(postcode) {
-  let cacheKey = "coords_" + postcode;
-  let cached = getCache(cacheKey);
-  if (cached) return cached;
-
   try {
+    let cacheKey = "coords_" + postcode;
+    let cached = getCache(cacheKey);
+
+    if (cached) return cached;
+
     let res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(postcode)}&count=1`);
-    if (!res.ok) throw new Error();
+
+    if (!res.ok) throw new Error("Geocoding failed");
 
     let data = await res.json();
 
     if (!data.results || data.results.length === 0) {
-      throw new Error();
+      throw new Error("Location not found");
     }
 
     let coords = {
@@ -119,34 +197,34 @@ async function getCoordinates(postcode) {
     };
 
     setCache(cacheKey, coords);
+
     return coords;
 
-  } catch {
-    document.getElementById("loading").innerText = "⚠️ Location not found, using last known/default";
-    return getCache(cacheKey) || { lat: 52.6309, lon: 1.2974 };
+  } catch (e) {
+    return { lat: 52.6309, lon: 1.2974 };
   }
 }
 
 // -------------------- WEATHER --------------------
 async function getWeather(postcode) {
-  let cacheKey = "weather_" + postcode;
-  let cached = getCache(cacheKey);
-
-  let now = Date.now();
-  let cacheDuration = 30 * 60 * 1000;
-
-  if (cached && (now - cached.timestamp < cacheDuration)) {
-    return cached.data;
-  }
-
   try {
+    let cacheKey = "weather_" + postcode;
+    let cached = getCache(cacheKey);
+
+    let now = Date.now();
+    let cacheDuration = 30 * 60 * 1000;
+
+    if (cached && (now - cached.timestamp < cacheDuration)) {
+      return cached.data;
+    }
+
     let c = await getCoordinates(postcode);
 
     let res = await fetch(
       `https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}&hourly=cloudcover,temperature_2m,shortwave_radiation,relativehumidity_2m,precipitation&forecast_days=3&timezone=auto`
     );
 
-    if (!res.ok) throw new Error();
+    if (!res.ok) throw new Error("Weather fetch failed");
 
     let data = await res.json();
 
@@ -157,8 +235,7 @@ async function getWeather(postcode) {
 
     return data;
 
-  } catch {
-    document.getElementById("loading").innerText = "⚠️ Using fallback weather data";
+  } catch (e) {
     return {
       hourly: {
         cloudcover: new Array(72).fill(50),
@@ -171,69 +248,85 @@ async function getWeather(postcode) {
   }
 }
 
-// -------------------- SOLAR MODEL --------------------
+// -------------------- SOLAR LOGIC --------------------
 function getOrientationFactor(o) {
-  return {
-    south: 1,
-    se_sw: 0.92,
-    east_west: 0.85,
-    north: 0.65
-  }[o] || 1;
+  if (o==="south") return 1;
+  if (o==="se_sw") return 0.92;
+  if (o==="east_west") return 0.85;
+  if (o==="north") return 0.65;
+  return 1;
+}
+
+function applyOrientationToSun(morning, afternoon, orientation) {
+  if (orientation === "south") return morning + afternoon;
+  if (orientation === "se_sw") return (morning * 0.95) + (afternoon * 0.95);
+  if (orientation === "east_west") return (morning * 1.2) + (afternoon * 0.8);
+  if (orientation === "north") return (morning + afternoon) * 0.65;
+  return morning + afternoon;
 }
 
 function temperatureEfficiency(t) {
-  let f = 1 + ((t - 25) * MODEL.tempCoeff);
-  return Math.min(MODEL.maxTempFactor, Math.max(MODEL.minTempFactor, f));
+  let f = 1 + ((t - 25) * -0.004);
+  return Math.min(1.05, Math.max(0.8, f));
 }
 
-function hourlySolarScore(c, r) {
-  return (1 - c / 100) * MODEL.cloudWeight +
-         (r / 1000) * MODEL.radiationWeight;
+// ✅ NEW: daylight-only filter
+function daylightHours(radSlice, threshold = 100) {
+  return radSlice.filter(r => r > threshold);
 }
 
-// ✅ NEW unified energy-based PV
-function estimatePV(dayCloud, dayRad, dayTemp, s) {
-  let totalScore = 0;
+function sunshineSplit(r,start){
+  let morning=0, afternoon=0;
 
-  for (let i = 0; i < dayRad.length; i++) {
-    if (dayRad[i] > MODEL.daylightThreshold) {
-      totalScore += hourlySolarScore(dayCloud[i], dayRad[i]);
+  for(let i=0;i<24;i++){
+    if(r[start+i] > 120){
+      if(i < 12) morning++;
+      else afternoon++;
     }
   }
 
-  let avgScore = totalScore / 24;
-
-  let totalRadiation = dayRad.reduce((a, b) => a + b, 0) / 1000; // kWh proxy
-
-  let pv =
-    s.pvSize *
-    totalRadiation *
-    avgScore *
-    (s.efficiency / 100) *
-    MODEL.systemLoss *
-    temperatureEfficiency(dayTemp) *
-    getOrientationFactor(s.orientation) *
-    (s.shading / 100);
-
-  let inverterCap = s.inverter * 5; // approx usable window
-
-  return Math.min(pv, inverterCap);
+  return {morning, afternoon};
 }
 
-// -------------------- SOC --------------------
-function recommendedSOC(pv, s) {
-  let netLoad = s.dailyLoad / MODEL.systemLoss;
-
-  let shortfall = Math.max(0, netLoad - pv);
-
-  let required = shortfall * MODEL.socBuffer;
-
-  let soc = (required / s.battery) * 100;
-
-  return Math.max(s.socLow, Math.min(s.socHigh, Math.round(soc)));
+function hourlySolarScore(c, r) {
+  return Math.min(1, Math.max(0, (1-c/100)*0.6 + (r/1000)*0.4));
 }
 
-// -------------------- UI --------------------
+function weightedCloudAverage(c,start){
+  let s=0,w=0;
+  for(let i=0;i<24;i++){
+    let wt=Math.exp(-Math.pow((i-12)/6,2));
+    s+=c[start+i]*wt; w+=wt;
+  }
+  return s/w;
+}
+
+function estimatePV(avgScore, sun, temp, s) {
+  let orientationFactor = getOrientationFactor(s.orientation);
+  let shadingFactor = s.shading / 100;
+
+  let raw = s.pvSize * sun * avgScore *
+            (s.efficiency/100) *
+            temperatureEfficiency(temp) *
+            orientationFactor *
+            shadingFactor;
+
+  let limit = s.inverter * sun;
+
+  return Math.min(raw, limit);
+}
+
+function recommendedSOC(pv,s){
+  let shortfall=Math.max(0,s.dailyLoad-pv);
+  let required=shortfall*1.2;
+  let soc=(required/s.battery)*100;
+
+  if(soc<s.socLow) soc=s.socLow;
+  if(soc>s.socHigh) soc=s.socHigh;
+
+  return Math.round(soc);
+}
+
 function weatherSummary(c,r,t,h,p){
   return `
     🌤️ Cloud: ${c.toFixed(0)}%<br>
@@ -244,24 +337,10 @@ function weatherSummary(c,r,t,h,p){
   `;
 }
 
-function renderDayCard(label, summary, pv, soc) {
-  return `
-    <div class="card">
-      <h3>${label}</h3>
-      ${summary}
-      <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
-      <br><b>🔋 Recommended SOC:</b> ${soc}%
-    </div>
-  `;
-}
-
 // -------------------- MAIN --------------------
 async function runAI(){
 
-  let btn = document.querySelector("button[onclick='runAI()']");
-  btn.disabled = true;
-
-  let s = getSettings();
+  let s=getSettings();
   document.getElementById("loading").innerText="Loading...";
 
   let data = preloadedWeather || await getWeather(s.postcode);
@@ -278,34 +357,55 @@ async function runAI(){
 
     let start=d*24;
 
-    let dayCloud = cloud.slice(start, start + 24);
-    let dayRad = rad.slice(start, start + 24);
+    // ✅ DAYLIGHT-ONLY radiation
+    let dayRad = daylightHours(rad.slice(start, start + 24));
 
-    let midTemp = temp[start+12];
+    let avgRad = dayRad.length
+      ? dayRad.reduce((a,b)=>a+b) / dayRad.length
+      : 0;
 
-    let avgRad = dayRad.reduce((a,b)=>a+b)/24;
+    let daylightScores = [];
 
-    let pv = estimatePV(dayCloud, dayRad, midTemp, s);
-    let soc = recommendedSOC(pv, s);
+    rad.slice(start, start + 24).forEach((r, i) => {
+      if (r > 100) {
+        daylightScores.push(hourlySolarScore(cloud[start + i], r));
+      }
+    });
 
-    let date = new Date();
-    date.setDate(date.getDate() + d);
-    let label = date.toLocaleDateString();
+    let avgScore = daylightScores.length
+      ? daylightScores.reduce((a,b)=>a+b) / daylightScores.length
+      : 0;
 
-    let summary = weatherSummary(
-      dayCloud.reduce((a,b)=>a+b)/24,
-      avgRad,
-      midTemp,
-      hum[start+12],
-      precip[start+12]
+    let split = sunshineSplit(rad,start);
+
+    let sun = applyOrientationToSun(
+      split.morning,
+      split.afternoon,
+      s.orientation
     );
 
-    html += renderDayCard(label, summary, pv, soc);
+    let midTemp=temp[start+12];
+
+    let pv=estimatePV(avgScore,sun,midTemp,s);
+    let soc=recommendedSOC(pv,s);
+
+    let label=d===0?"Today":d===1?"Tomorrow":"The day after tomorrow";
+
+    html+=`
+      <div class="card">
+        <h3>${label}</h3>
+        ${weatherSummary(weightedCloudAverage(cloud,start),avgRad,midTemp,hum[start+12],precip[start+12])}
+
+        <br><b>🔆 Usable Solar Window:</b> ${split.morning + split.afternoon} hours
+
+        <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
+        <br><b>🔋 Recommended SOC:</b> ${soc}%
+      </div>
+    `;
   }
 
   document.getElementById("output").innerHTML=html;
   document.getElementById("loading").innerText="";
-  btn.disabled = false;
 }
 
 // -------------------- INIT --------------------
@@ -314,3 +414,6 @@ window.onload = () => {
 };
 
 </script>
+
+</body>
+</html>
