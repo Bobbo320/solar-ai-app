@@ -111,7 +111,7 @@ function getSettings() {
 
 function saveSettings() {
   let settings = {
-    postcode: document.getElementById("postcode").value,
+    postcode: document.getElementById("postcode").value.trim(),
     pvSize: parseFloat(document.getElementById("pvSize").value),
     inverter: parseFloat(document.getElementById("inverter").value),
     battery: parseFloat(document.getElementById("battery").value),
@@ -159,21 +159,13 @@ function getOrientationFactor(o) {
 
 function applyOrientationToSun(morning, afternoon, orientation) {
 
-  if (orientation === "south") {
-    return morning + afternoon;
-  }
+  if (orientation === "south") return morning + afternoon;
 
-  if (orientation === "se_sw") {
-    return (morning * 0.95) + (afternoon * 0.95);
-  }
+  if (orientation === "se_sw") return (morning * 0.95) + (afternoon * 0.95);
 
-  if (orientation === "east_west") {
-    return (morning * 1.2) + (afternoon * 0.8);
-  }
+  if (orientation === "east_west") return (morning * 1.2) + (afternoon * 0.8);
 
-  if (orientation === "north") {
-    return (morning + afternoon) * 0.65;
-  }
+  if (orientation === "north") return (morning + afternoon) * 0.65;
 
   return morning + afternoon;
 }
@@ -184,7 +176,7 @@ async function getCoordinates(postcode) {
   let cache = JSON.parse(localStorage.getItem("coordsCache") || "{}");
 
   if (cache[postcode]) {
-    return cache[postcode]; // ⚡ instant
+    return cache[postcode];
   }
 
   let res = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(postcode)}`);
@@ -203,12 +195,26 @@ async function getCoordinates(postcode) {
   return coords;
 }
 
-// -------------------- WEATHER --------------------
+// -------------------- WEATHER (FIXED) --------------------
 async function getWeather(postcode) {
-  let c = await getCoordinates(postcode);
+
+  let lat = 52.627;
+  let lon = 1.331;
+
+  try {
+    let c = await getCoordinates(postcode);
+
+    if (c && c.lat && c.lon) {
+      lat = c.lat;
+      lon = c.lon;
+    }
+
+  } catch (e) {
+    console.warn("Postcode failed - using default location");
+  }
 
   let res = await fetch(
-    `https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}&hourly=cloudcover,temperature_2m,shortwave_radiation,relativehumidity_2m,precipitation&forecast_days=3&timezone=auto`
+    `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=cloudcover,temperature_2m,shortwave_radiation,relativehumidity_2m,precipitation&forecast_days=3&timezone=auto`
   );
 
   return await res.json();
@@ -296,14 +302,14 @@ async function runAI(){
   document.getElementById("loading").innerText="Loading...";
 
   let data;
-try {
-  data = await getWeather(s.postcode);
-  console.log("Weather data:", data);
-} catch (e) {
-  console.error("Weather error:", e);
-  document.getElementById("loading").innerText = "Weather error";
-  return;
-}
+  try {
+    data = await getWeather(s.postcode);
+    console.log("Weather data:", data);
+  } catch (e) {
+    console.error("Weather error:", e);
+    document.getElementById("loading").innerText = "Weather error";
+    return;
+  }
 
   let cloud=data.hourly.cloudcover;
   let rad=data.hourly.shortwave_radiation;
@@ -320,11 +326,6 @@ try {
     let wc=weightedCloudAverage(cloud,start);
     let avgRad=rad.slice(start,start+24).reduce((a,b)=>a+b)/24;
 
-    let scores=rad.slice(start,start+24)
-      .map((r,i)=>hourlySolarScore(cloud[start+i],r));
-
-    let avgScore=scores.reduce((a,b)=>a+b)/scores.length;
-
     let split = sunshineSplit(rad,start);
 
     let sun = applyOrientationToSun(
@@ -332,6 +333,10 @@ try {
       split.afternoon,
       s.orientation
     );
+
+    let avgScore = rad.slice(start,start+24)
+      .map((r,i)=>hourlySolarScore(cloud[start+i],r))
+      .reduce((a,b)=>a+b)/24;
 
     let midTemp=temp[start+12];
 
