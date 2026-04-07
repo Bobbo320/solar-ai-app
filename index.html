@@ -127,7 +127,7 @@ function saveSettings() {
 
   localStorage.setItem("settings", JSON.stringify(settings));
 
-  preloadWeather(); // refresh cache
+  preloadWeather();
 
   alert("Saved");
   toggleSettings();
@@ -167,7 +167,6 @@ async function preloadWeather() {
   try {
     let s = getSettings();
     preloadedWeather = await getWeather(s.postcode);
-    console.log("Weather preloaded");
   } catch (e) {
     console.log("Preload failed:", e);
   }
@@ -184,13 +183,11 @@ async function getCoordinates(postcode) {
 
     let res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(postcode)}&count=1`);
 
-    if (!res.ok) throw new Error("Geocoding failed");
+    if (!res.ok) throw new Error();
 
     let data = await res.json();
 
-    if (!data.results || data.results.length === 0) {
-      throw new Error("Location not found");
-    }
+    if (!data.results || data.results.length === 0) throw new Error();
 
     let coords = {
       lat: data.results[0].latitude,
@@ -198,17 +195,10 @@ async function getCoordinates(postcode) {
     };
 
     setCache(cacheKey, coords);
-
     return coords;
 
   } catch (e) {
-    console.error("Coord error:", e);
-
-    // fallback Norwich
-    return {
-      lat: 52.6309,
-      lon: 1.2974
-    };
+    return { lat: 52.6309, lon: 1.2974 };
   }
 }
 
@@ -232,8 +222,6 @@ async function getWeather(postcode) {
       `https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}&hourly=cloudcover,temperature_2m,shortwave_radiation,relativehumidity_2m,precipitation&forecast_days=3&timezone=auto`
     );
 
-    if (!res.ok) throw new Error("Weather fetch failed");
-
     let data = await res.json();
 
     setCache(cacheKey, {
@@ -244,11 +232,9 @@ async function getWeather(postcode) {
     return data;
 
   } catch (e) {
-    console.error("Weather error:", e);
 
-    document.getElementById("loading").innerText = "Weather fallback mode";
+    document.getElementById("loading").innerText = "Fallback mode";
 
-    // fallback synthetic data
     return {
       hourly: {
         cloudcover: new Array(72).fill(50),
@@ -261,7 +247,7 @@ async function getWeather(postcode) {
   }
 }
 
-// -------------------- SOLAR LOGIC --------------------
+// -------------------- SOLAR --------------------
 function getOrientationFactor(o) {
   if (o==="south") return 1;
   if (o==="se_sw") return 0.92;
@@ -270,17 +256,33 @@ function getOrientationFactor(o) {
   return 1;
 }
 
-function applyOrientationToSun(morning, afternoon, orientation) {
-  if (orientation === "south") return morning + afternoon;
-  if (orientation === "se_sw") return (morning * 0.95) + (afternoon * 0.95);
-  if (orientation === "east_west") return (morning * 1.2) + (afternoon * 0.8);
-  if (orientation === "north") return (morning + afternoon) * 0.65;
-  return morning + afternoon;
+// 🌞 Solar elevation weighting
+function solarElevationWeight(hour){
+  let x = (hour - 12) / 6;
+  return Math.exp(-x * x);
 }
 
-function temperatureEfficiency(t) {
-  let f = 1 + ((t - 25) * -0.004);
-  return Math.min(1.05, Math.max(0.8, f));
+// 🌤️ Cloud weighted by solar position
+function weightedSolarCloudAverage(cloud, rad, start){
+
+  let s = 0;
+  let w = 0;
+
+  for(let i = 0; i < 24; i++){
+
+    let r = rad[start + i];
+
+    if (r > 120) {
+
+      let solarWeight = solarElevationWeight(i);
+      let wt = solarWeight * (r / 1000);
+
+      s += cloud[start + i] * wt;
+      w += wt;
+    }
+  }
+
+  return w === 0 ? 0 : (s / w);
 }
 
 function sunshineSplit(r,start){
@@ -300,13 +302,17 @@ function hourlySolarScore(c, r) {
   return Math.min(1, Math.max(0, (1-c/100)*0.6 + (r/1000)*0.4));
 }
 
-function weightedCloudAverage(c,start){
-  let s=0,w=0;
-  for(let i=0;i<24;i++){
-    let wt=Math.exp(-Math.pow((i-12)/6,2));
-    s+=c[start+i]*wt; w+=wt;
-  }
-  return s/w;
+function temperatureEfficiency(t) {
+  let f = 1 + ((t - 25) * -0.004);
+  return Math.min(1.05, Math.max(0.8, f));
+}
+
+function applyOrientationToSun(morning, afternoon, orientation) {
+  if (orientation === "south") return morning + afternoon;
+  if (orientation === "se_sw") return (morning * 0.95) + (afternoon * 0.95);
+  if (orientation === "east_west") return (morning * 1.2) + (afternoon * 0.8);
+  if (orientation === "north") return (morning + afternoon) * 0.65;
+  return morning + afternoon;
 }
 
 function estimatePV(avgScore, sun, temp, s) {
@@ -365,7 +371,8 @@ async function runAI(){
 
     let start=d*24;
 
-    let wc=weightedCloudAverage(cloud,start);
+    let wc=weightedSolarCloudAverage(cloud, rad, start);
+
     let avgRad=rad.slice(start,start+24).reduce((a,b)=>a+b)/24;
 
     let scores=rad.slice(start,start+24)
@@ -394,7 +401,6 @@ async function runAI(){
         ${weatherSummary(wc,avgRad,midTemp,hum[start+12],precip[start+12])}
 
         <br><b>🔆 Usable Solar Window:</b> ${split.morning + split.afternoon} hours
-
         <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
         <br><b>🔋 Recommended SOC:</b> ${soc}%
       </div>
