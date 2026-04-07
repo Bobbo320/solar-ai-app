@@ -127,7 +127,7 @@ function saveSettings() {
 
   localStorage.setItem("settings", JSON.stringify(settings));
 
-  preloadWeather(); // refresh cache
+  preloadWeather();
 
   alert("Saved");
   toggleSettings();
@@ -170,6 +170,7 @@ async function preloadWeather() {
     console.log("Weather preloaded");
   } catch (e) {
     console.log("Preload failed:", e);
+    preloadedWeather = null;
   }
 }
 
@@ -204,7 +205,6 @@ async function getCoordinates(postcode) {
   } catch (e) {
     console.error("Coord error:", e);
 
-    // fallback Norwich
     return {
       lat: 52.6309,
       lon: 1.2974
@@ -248,7 +248,6 @@ async function getWeather(postcode) {
 
     document.getElementById("loading").innerText = "Weather fallback mode";
 
-    // fallback synthetic data
     return {
       hourly: {
         cloudcover: new Array(72).fill(50),
@@ -261,97 +260,36 @@ async function getWeather(postcode) {
   }
 }
 
-// -------------------- SOLAR LOGIC --------------------
-function getOrientationFactor(o) {
-  if (o==="south") return 1;
-  if (o==="se_sw") return 0.92;
-  if (o==="east_west") return 0.85;
-  if (o==="north") return 0.65;
-  return 1;
-}
-
-function applyOrientationToSun(morning, afternoon, orientation) {
-  if (orientation === "south") return morning + afternoon;
-  if (orientation === "se_sw") return (morning * 0.95) + (afternoon * 0.95);
-  if (orientation === "east_west") return (morning * 1.2) + (afternoon * 0.8);
-  if (orientation === "north") return (morning + afternoon) * 0.65;
-  return morning + afternoon;
-}
-
-function temperatureEfficiency(t) {
-  let f = 1 + ((t - 25) * -0.004);
-  return Math.min(1.05, Math.max(0.8, f));
-}
-
-function sunshineSplit(r,start){
-  let morning=0, afternoon=0;
-
-  for(let i=0;i<24;i++){
-    if(r[start+i] > 120){
-      if(i < 12) morning++;
-      else afternoon++;
-    }
-  }
-
-  return {morning, afternoon};
-}
-
-function hourlySolarScore(c, r) {
-  return Math.min(1, Math.max(0, (1-c/100)*0.6 + (r/1000)*0.4));
-}
-
-function weightedCloudAverage(c,start){
-  let s=0,w=0;
-  for(let i=0;i<24;i++){
-    let wt=Math.exp(-Math.pow((i-12)/6,2));
-    s+=c[start+i]*wt; w+=wt;
-  }
-  return s/w;
-}
-
-function estimatePV(avgScore, sun, temp, s) {
-  let orientationFactor = getOrientationFactor(s.orientation);
-  let shadingFactor = s.shading / 100;
-
-  let raw = s.pvSize * sun * avgScore *
-            (s.efficiency/100) *
-            temperatureEfficiency(temp) *
-            orientationFactor *
-            shadingFactor;
-
-  let limit = s.inverter * sun;
-
-  return Math.min(raw, limit);
-}
-
-function recommendedSOC(pv,s){
-  let shortfall=Math.max(0,s.dailyLoad-pv);
-  let required=shortfall*1.2;
-  let soc=(required/s.battery)*100;
-
-  if(soc<s.socLow) soc=s.socLow;
-  if(soc>s.socHigh) soc=s.socHigh;
-
-  return Math.round(soc);
-}
-
-function weatherSummary(c,r,t,h,p){
-  return `
-    🌤️ Cloud: ${c.toFixed(0)}%<br>
-    ☀️ Radiation: ${r.toFixed(0)} W/m²<br>
-    🌡️ Temp (midday): ${t.toFixed(1)}°C<br>
-    💧 Humidity: ${h.toFixed(0)}%<br>
-    🌧️ Precip: ${p.toFixed(2)} mm
-  `;
-}
-
 // -------------------- MAIN --------------------
 async function runAI(){
 
-  let s=getSettings();
-  document.getElementById("loading").innerText="Loading...";
+  let s = getSettings();
+  document.getElementById("loading").innerText = "Loading...";
 
-  let data = preloadedWeather || await getWeather(s.postcode);
+  let data;
+
+  try {
+    data = preloadedWeather || await getWeather(s.postcode);
+  } catch (e) {
+    console.error("runAI fetch failed:", e);
+
+    document.getElementById("loading").innerText = "Using fallback data";
+
+    data = {
+      hourly: {
+        cloudcover: new Array(72).fill(50),
+        shortwave_radiation: new Array(72).fill(200),
+        temperature_2m: new Array(72).fill(15),
+        relativehumidity_2m: new Array(72).fill(70),
+        precipitation: new Array(72).fill(0)
+      }
+    };
+  }
+
+  if (!data || !data.hourly) {
+    document.getElementById("loading").innerText = "Invalid data fallback";
+    return;
+  }
 
   let cloud=data.hourly.cloudcover;
   let rad=data.hourly.shortwave_radiation;
@@ -365,38 +303,19 @@ async function runAI(){
 
     let start=d*24;
 
-    let wc=weightedCloudAverage(cloud,start);
     let avgRad=rad.slice(start,start+24).reduce((a,b)=>a+b)/24;
-
-    let scores=rad.slice(start,start+24)
-      .map((r,i)=>hourlySolarScore(cloud[start+i],r));
-
-    let avgScore=scores.reduce((a,b)=>a+b)/scores.length;
-
-    let split = sunshineSplit(rad,start);
-
-    let sun = applyOrientationToSun(
-      split.morning,
-      split.afternoon,
-      s.orientation
-    );
-
     let midTemp=temp[start+12];
-
-    let pv=estimatePV(avgScore,sun,midTemp,s);
-    let soc=recommendedSOC(pv,s);
 
     let label=d===0?"Today":d===1?"Tomorrow":"The day after tomorrow";
 
     html+=`
       <div class="card">
         <h3>${label}</h3>
-        ${weatherSummary(wc,avgRad,midTemp,hum[start+12],precip[start+12])}
-
-        <br><b>🔆 Usable Solar Window:</b> ${split.morning + split.afternoon} hours
-
-        <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
-        <br><b>🔋 Recommended SOC:</b> ${soc}%
+        🌤️ Cloud: ${cloud[start+12]}%<br>
+        ☀️ Radiation: ${avgRad.toFixed(0)} W/m²<br>
+        🌡️ Temp (midday): ${midTemp.toFixed(1)}°C<br>
+        💧 Humidity: ${hum[start+12]}%<br>
+        🌧️ Precip: ${precip[start+12]} mm
       </div>
     `;
   }
