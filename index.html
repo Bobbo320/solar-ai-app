@@ -93,7 +93,7 @@
 
 let preloadedWeather = null;
 
-// -------------------- SETTINGS --------------------
+// ---------------- SETTINGS ----------------
 function getSettings() {
   let s = JSON.parse(localStorage.getItem("settings") || "{}");
 
@@ -128,7 +128,6 @@ function saveSettings() {
   localStorage.setItem("settings", JSON.stringify(settings));
 
   preloadWeather();
-
   alert("Saved");
   toggleSettings();
 }
@@ -153,7 +152,7 @@ function toggleSettings() {
   loadSettingsToUI();
 }
 
-// -------------------- CACHE --------------------
+// ---------------- CACHE ----------------
 function getCache(key) {
   return JSON.parse(localStorage.getItem(key) || "null");
 }
@@ -162,17 +161,22 @@ function setCache(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
-// -------------------- PRELOAD --------------------
+// ---------------- PRELOAD ----------------
 async function preloadWeather() {
   try {
     let s = getSettings();
     preloadedWeather = await getWeather(s.place);
+
+    if (!preloadedWeather || !preloadedWeather.hourly) {
+      preloadedWeather = null;
+    }
+
   } catch (e) {
     preloadedWeather = null;
   }
 }
 
-// -------------------- GEOCODING --------------------
+// ---------------- GEOCODING ----------------
 async function getCoordinates(place) {
 
   try {
@@ -182,7 +186,6 @@ async function getCoordinates(place) {
     if (cached) return cached;
 
     let res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(place)}&count=1`);
-
     let data = await res.json();
 
     if (!data.results || data.results.length === 0) {
@@ -195,26 +198,24 @@ async function getCoordinates(place) {
     };
 
     setCache(cacheKey, coords);
-
     return coords;
 
   } catch (e) {
-    return { lat: 52.6309, lon: 1.2974 }; // Norwich fallback
+    return { lat: 52.6309, lon: 1.2974 };
   }
 }
 
-// -------------------- WEATHER --------------------
+// ---------------- WEATHER ----------------
 async function getWeather(place) {
 
   try {
     let cacheKey = "weather_" + place;
     let cached = getCache(cacheKey);
 
-    let now = Date.now();
-    let cacheDuration = 30 * 60 * 1000;
-
-    if (cached && (now - cached.timestamp < cacheDuration)) {
+    if (cached && cached.data && cached.data.hourly) {
       return cached.data;
+    } else if (cached) {
+      localStorage.removeItem(cacheKey);
     }
 
     let c = await getCoordinates(place);
@@ -225,14 +226,22 @@ async function getWeather(place) {
 
     let data = await res.json();
 
+    if (!data || !data.hourly) {
+      throw new Error("Invalid API response");
+    }
+
     setCache(cacheKey, {
-      timestamp: now,
+      timestamp: Date.now(),
       data: data
     });
 
     return data;
 
   } catch (e) {
+    console.error("Weather error:", e);
+
+    document.getElementById("loading").innerText = "Using fallback data";
+
     return {
       hourly: {
         cloudcover: new Array(72).fill(50),
@@ -245,13 +254,31 @@ async function getWeather(place) {
   }
 }
 
-// -------------------- MAIN --------------------
+// ---------------- MAIN ----------------
 async function runAI(){
 
   let s = getSettings();
   document.getElementById("loading").innerText="Loading...";
 
-  let data = preloadedWeather || await getWeather(s.place);
+  let data;
+
+  try {
+    data = preloadedWeather && preloadedWeather.hourly
+      ? preloadedWeather
+      : await getWeather(s.place);
+  } catch (e) {
+    console.error(e);
+
+    data = {
+      hourly: {
+        cloudcover: new Array(72).fill(50),
+        shortwave_radiation: new Array(72).fill(200),
+        temperature_2m: new Array(72).fill(15),
+        relativehumidity_2m: new Array(72).fill(70),
+        precipitation: new Array(72).fill(0)
+      }
+    };
+  }
 
   if (!data || !data.hourly) {
     document.getElementById("loading").innerText = "Invalid data fallback";
@@ -291,7 +318,7 @@ async function runAI(){
   document.getElementById("loading").innerText="";
 }
 
-// -------------------- INIT --------------------
+// ---------------- INIT ----------------
 window.onload = () => {
   preloadWeather();
 };
