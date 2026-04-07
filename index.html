@@ -160,11 +160,8 @@ function getOrientationFactor(o) {
 function applyOrientationToSun(morning, afternoon, orientation) {
 
   if (orientation === "south") return morning + afternoon;
-
   if (orientation === "se_sw") return (morning * 0.95) + (afternoon * 0.95);
-
   if (orientation === "east_west") return (morning * 1.2) + (afternoon * 0.8);
-
   if (orientation === "north") return (morning + afternoon) * 0.65;
 
   return morning + afternoon;
@@ -195,7 +192,7 @@ async function getCoordinates(postcode) {
   return coords;
 }
 
-// -------------------- WEATHER (FIXED) --------------------
+// -------------------- WEATHER (FAIL SAFE) --------------------
 async function getWeather(postcode) {
 
   let lat = 52.627;
@@ -203,21 +200,36 @@ async function getWeather(postcode) {
 
   try {
     let c = await getCoordinates(postcode);
-
     if (c && c.lat && c.lon) {
       lat = c.lat;
       lon = c.lon;
     }
-
   } catch (e) {
-    console.warn("Postcode failed - using default location");
+    console.warn("Postcode failed, using fallback location");
   }
 
-  let res = await fetch(
-    `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=cloudcover,temperature_2m,shortwave_radiation,relativehumidity_2m,precipitation&forecast_days=3&timezone=auto`
-  );
+  try {
+    let res = await fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=cloudcover,temperature_2m,shortwave_radiation,relativehumidity_2m,precipitation&forecast_days=3&timezone=auto`
+    );
 
-  return await res.json();
+    if (!res.ok) throw new Error("Weather API failed");
+
+    return await res.json();
+
+  } catch (e) {
+    console.error("Weather fetch failed, using synthetic fallback", e);
+
+    return {
+      hourly: {
+        cloudcover: new Array(72).fill(50),
+        temperature_2m: new Array(72).fill(20),
+        shortwave_radiation: new Array(72).fill(200),
+        relativehumidity_2m: new Array(72).fill(60),
+        precipitation: new Array(72).fill(0)
+      }
+    };
+  }
 }
 
 // -------------------- TEMP --------------------
@@ -301,15 +313,7 @@ async function runAI(){
   let s=getSettings();
   document.getElementById("loading").innerText="Loading...";
 
-  let data;
-  try {
-    data = await getWeather(s.postcode);
-    console.log("Weather data:", data);
-  } catch (e) {
-    console.error("Weather error:", e);
-    document.getElementById("loading").innerText = "Weather error";
-    return;
-  }
+  let data = await getWeather(s.postcode);
 
   let cloud=data.hourly.cloudcover;
   let rad=data.hourly.shortwave_radiation;
