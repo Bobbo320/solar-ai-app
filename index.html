@@ -91,6 +91,8 @@
 
 <script>
 
+let preloadedWeather = null;
+
 // -------------------- SETTINGS --------------------
 function getSettings() {
   let s = JSON.parse(localStorage.getItem("settings") || "{}");
@@ -124,6 +126,9 @@ function saveSettings() {
   };
 
   localStorage.setItem("settings", JSON.stringify(settings));
+
+  preloadWeather(); // 🔥 refresh cache after save
+
   alert("Saved");
   toggleSettings();
 }
@@ -148,49 +153,82 @@ function toggleSettings() {
   loadSettingsToUI();
 }
 
+// -------------------- CACHE --------------------
+function getCache(key) {
+  return JSON.parse(localStorage.getItem(key) || "null");
+}
+
+function setCache(key, value) {
+  localStorage.setItem(key, JSON.stringify(value));
+}
+
+// -------------------- PRELOAD --------------------
+async function preloadWeather() {
+  try {
+    let s = getSettings();
+    preloadedWeather = await getWeather(s.postcode);
+    console.log("Weather preloaded");
+  } catch (e) {
+    console.log("Preload failed:", e);
+  }
+}
+
 // -------------------- GEOCODING --------------------
 async function getCoordinates(postcode) {
+
+  let cacheKey = "coords_" + postcode;
+  let cached = getCache(cacheKey);
+
+  if (cached) return cached;
+
   let res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(postcode)}&count=1`);
   let data = await res.json();
 
   if (!data.results || data.results.length === 0) {
-    let fallback = postcode.split(" ")[0];
-
-    let res2 = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(fallback)}&count=1`);
-    let data2 = await res2.json();
-
-    if (!data2.results || data2.results.length === 0) {
-      throw new Error("Location not found");
-    }
-
-    return {
-      lat: data2.results[0].latitude,
-      lon: data2.results[0].longitude
-    };
+    throw new Error("Location not found");
   }
 
-  return {
+  let coords = {
     lat: data.results[0].latitude,
     lon: data.results[0].longitude
   };
+
+  setCache(cacheKey, coords);
+  return coords;
 }
 
 // -------------------- WEATHER --------------------
 async function getWeather(postcode) {
+
+  let cacheKey = "weather_" + postcode;
+  let cached = getCache(cacheKey);
+
+  let now = Date.now();
+  let cacheDuration = 30 * 60 * 1000;
+
+  if (cached && (now - cached.timestamp < cacheDuration)) {
+    return cached.data;
+  }
+
   let c = await getCoordinates(postcode);
 
   let res = await fetch(
     `https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}&hourly=cloudcover,temperature_2m,shortwave_radiation,relativehumidity_2m,precipitation&forecast_days=3&timezone=auto`
   );
 
-  if (!res.ok) {
-    throw new Error("Weather fetch failed");
-  }
+  if (!res.ok) throw new Error("Weather fetch failed");
 
-  return await res.json();
+  let data = await res.json();
+
+  setCache(cacheKey, {
+    timestamp: now,
+    data: data
+  });
+
+  return data;
 }
 
-// -------------------- REMAINING CODE (UNCHANGED) --------------------
+// -------------------- SOLAR LOGIC --------------------
 function getOrientationFactor(o) {
   if (o==="south") return 1;
   if (o==="se_sw") return 0.92;
@@ -275,12 +313,13 @@ function weatherSummary(c,r,t,h,p){
   `;
 }
 
+// -------------------- MAIN --------------------
 async function runAI(){
 
   let s=getSettings();
   document.getElementById("loading").innerText="Loading...";
 
-  let data=await getWeather(s.postcode);
+  let data = preloadedWeather || await getWeather(s.postcode);
 
   let cloud=data.hourly.cloudcover;
   let rad=data.hourly.shortwave_radiation;
@@ -316,7 +355,6 @@ async function runAI(){
     let soc=recommendedSOC(pv,s);
 
     let label=d===0?"Today":d===1?"Tomorrow":"The day after tomorrow";
-    let style=d===1?"style='color:red;font-weight:bold;font-size:20px'":"";
 
     html+=`
       <div class="card">
@@ -326,7 +364,7 @@ async function runAI(){
         <br><b>🔆 Usable Solar Window:</b> ${split.morning + split.afternoon} hours
 
         <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
-        <br><span ${style}>🔋 Recommended SOC: ${soc}%</span>
+        <br><b>🔋 Recommended SOC:</b> ${soc}%
       </div>
     `;
   }
@@ -334,6 +372,11 @@ async function runAI(){
   document.getElementById("output").innerHTML=html;
   document.getElementById("loading").innerText="";
 }
+
+// -------------------- INIT --------------------
+window.onload = () => {
+  preloadWeather();
+};
 
 </script>
 
