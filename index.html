@@ -43,7 +43,7 @@
   <h3>Settings</h3>
 
   <label>Place:</label><br>
-  <input id="postcode"><br>
+  <input id="place"><br>
 
   <label>PV Size (kWp):</label><br>
   <input id="pvSize" type="number"><br>
@@ -98,7 +98,7 @@ function getSettings() {
   let s = JSON.parse(localStorage.getItem("settings") || "{}");
 
   return {
-    postcode: s.postcode || "Norwich",
+    place: s.place || "Norwich",
     pvSize: s.pvSize ?? 6.5,
     inverter: s.inverter ?? 5,
     battery: s.battery ?? 10.64,
@@ -113,7 +113,7 @@ function getSettings() {
 
 function saveSettings() {
   let settings = {
-    postcode: document.getElementById("postcode").value,
+    place: document.getElementById("place").value,
     pvSize: parseFloat(document.getElementById("pvSize").value),
     inverter: parseFloat(document.getElementById("inverter").value),
     battery: parseFloat(document.getElementById("battery").value),
@@ -136,7 +136,7 @@ function saveSettings() {
 function loadSettingsToUI() {
   let s = getSettings();
 
-  document.getElementById("postcode").value = s.postcode;
+  document.getElementById("place").value = s.place;
   document.getElementById("pvSize").value = s.pvSize;
   document.getElementById("inverter").value = s.inverter;
   document.getElementById("battery").value = s.battery;
@@ -166,26 +166,22 @@ function setCache(key, value) {
 async function preloadWeather() {
   try {
     let s = getSettings();
-    preloadedWeather = await getWeather(s.postcode);
-    console.log("Weather preloaded");
+    preloadedWeather = await getWeather(s.place);
   } catch (e) {
-    console.log("Preload failed:", e);
     preloadedWeather = null;
   }
 }
 
 // -------------------- GEOCODING --------------------
-async function getCoordinates(postcode) {
+async function getCoordinates(place) {
 
   try {
-    let cacheKey = "coords_" + postcode;
+    let cacheKey = "coords_" + place;
     let cached = getCache(cacheKey);
 
     if (cached) return cached;
 
-    let res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(postcode)}&count=1`);
-
-    if (!res.ok) throw new Error("Geocoding failed");
+    let res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(place)}&count=1`);
 
     let data = await res.json();
 
@@ -203,20 +199,15 @@ async function getCoordinates(postcode) {
     return coords;
 
   } catch (e) {
-    console.error("Coord error:", e);
-
-    return {
-      lat: 52.6309,
-      lon: 1.2974
-    };
+    return { lat: 52.6309, lon: 1.2974 }; // Norwich fallback
   }
 }
 
 // -------------------- WEATHER --------------------
-async function getWeather(postcode) {
+async function getWeather(place) {
 
   try {
-    let cacheKey = "weather_" + postcode;
+    let cacheKey = "weather_" + place;
     let cached = getCache(cacheKey);
 
     let now = Date.now();
@@ -226,13 +217,11 @@ async function getWeather(postcode) {
       return cached.data;
     }
 
-    let c = await getCoordinates(postcode);
+    let c = await getCoordinates(place);
 
     let res = await fetch(
       `https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}&hourly=cloudcover,temperature_2m,shortwave_radiation,relativehumidity_2m,precipitation&forecast_days=3&timezone=auto`
     );
-
-    if (!res.ok) throw new Error("Weather fetch failed");
 
     let data = await res.json();
 
@@ -244,10 +233,6 @@ async function getWeather(postcode) {
     return data;
 
   } catch (e) {
-    console.error("Weather error:", e);
-
-    document.getElementById("loading").innerText = "Weather fallback mode";
-
     return {
       hourly: {
         cloudcover: new Array(72).fill(50),
@@ -264,27 +249,9 @@ async function getWeather(postcode) {
 async function runAI(){
 
   let s = getSettings();
-  document.getElementById("loading").innerText = "Loading...";
+  document.getElementById("loading").innerText="Loading...";
 
-  let data;
-
-  try {
-    data = preloadedWeather || await getWeather(s.postcode);
-  } catch (e) {
-    console.error("runAI fetch failed:", e);
-
-    document.getElementById("loading").innerText = "Using fallback data";
-
-    data = {
-      hourly: {
-        cloudcover: new Array(72).fill(50),
-        shortwave_radiation: new Array(72).fill(200),
-        temperature_2m: new Array(72).fill(15),
-        relativehumidity_2m: new Array(72).fill(70),
-        precipitation: new Array(72).fill(0)
-      }
-    };
-  }
+  let data = preloadedWeather || await getWeather(s.place);
 
   if (!data || !data.hourly) {
     document.getElementById("loading").innerText = "Invalid data fallback";
