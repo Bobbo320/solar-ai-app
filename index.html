@@ -111,7 +111,7 @@ function getSettings() {
 
 function saveSettings() {
   let settings = {
-    postcode: document.getElementById("postcode").value.trim(),
+    postcode: document.getElementById("postcode").value,
     pvSize: parseFloat(document.getElementById("pvSize").value),
     inverter: parseFloat(document.getElementById("inverter").value),
     battery: parseFloat(document.getElementById("battery").value),
@@ -159,77 +159,41 @@ function getOrientationFactor(o) {
 
 function applyOrientationToSun(morning, afternoon, orientation) {
 
-  if (orientation === "south") return morning + afternoon;
-  if (orientation === "se_sw") return (morning * 0.95) + (afternoon * 0.95);
-  if (orientation === "east_west") return (morning * 1.2) + (afternoon * 0.8);
-  if (orientation === "north") return (morning + afternoon) * 0.65;
+  if (orientation === "south") {
+    return morning + afternoon;
+  }
+
+  if (orientation === "se_sw") {
+    return (morning * 0.95) + (afternoon * 0.95);
+  }
+
+  if (orientation === "east_west") {
+    return (morning * 1.2) + (afternoon * 0.8);
+  }
+
+  if (orientation === "north") {
+    return (morning + afternoon) * 0.65;
+  }
 
   return morning + afternoon;
 }
 
 // -------------------- POSTCODE --------------------
 async function getCoordinates(postcode) {
-
-  let cache = JSON.parse(localStorage.getItem("coordsCache") || "{}");
-
-  if (cache[postcode]) {
-    return cache[postcode];
-  }
-
-  let res = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(postcode)}`);
+  let res = await fetch(`https://api.postcodes.io/postcodes/${postcode}`);
   let data = await res.json();
-
-  if (!data.result) throw new Error("Invalid postcode");
-
-  let coords = {
-    lat: data.result.latitude,
-    lon: data.result.longitude
-  };
-
-  cache[postcode] = coords;
-  localStorage.setItem("coordsCache", JSON.stringify(cache));
-
-  return coords;
+  return { lat: data.result.latitude, lon: data.result.longitude };
 }
 
-// -------------------- WEATHER (FAIL SAFE) --------------------
+// -------------------- WEATHER --------------------
 async function getWeather(postcode) {
+  let c = await getCoordinates(postcode);
 
-  let lat = 52.627;
-  let lon = 1.331;
+  let res = await fetch(
+    `https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}&hourly=cloudcover,temperature_2m,shortwave_radiation,relativehumidity_2m,precipitation&forecast_days=3&timezone=auto`
+  );
 
-  try {
-    let c = await getCoordinates(postcode);
-    if (c && c.lat && c.lon) {
-      lat = c.lat;
-      lon = c.lon;
-    }
-  } catch (e) {
-    console.warn("Postcode failed, using fallback location");
-  }
-
-  try {
-    let res = await fetch(
-      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=cloudcover,temperature_2m,shortwave_radiation,relativehumidity_2m,precipitation&forecast_days=3&timezone=auto`
-    );
-
-    if (!res.ok) throw new Error("Weather API failed");
-
-    return await res.json();
-
-  } catch (e) {
-    console.error("Weather fetch failed, using synthetic fallback", e);
-
-    return {
-      hourly: {
-        cloudcover: new Array(72).fill(50),
-        temperature_2m: new Array(72).fill(20),
-        shortwave_radiation: new Array(72).fill(200),
-        relativehumidity_2m: new Array(72).fill(60),
-        precipitation: new Array(72).fill(0)
-      }
-    };
-  }
+  return await res.json();
 }
 
 // -------------------- TEMP --------------------
@@ -313,7 +277,7 @@ async function runAI(){
   let s=getSettings();
   document.getElementById("loading").innerText="Loading...";
 
-  let data = await getWeather(s.postcode);
+  let data=await getWeather(s.postcode);
 
   let cloud=data.hourly.cloudcover;
   let rad=data.hourly.shortwave_radiation;
@@ -330,6 +294,11 @@ async function runAI(){
     let wc=weightedCloudAverage(cloud,start);
     let avgRad=rad.slice(start,start+24).reduce((a,b)=>a+b)/24;
 
+    let scores=rad.slice(start,start+24)
+      .map((r,i)=>hourlySolarScore(cloud[start+i],r));
+
+    let avgScore=scores.reduce((a,b)=>a+b)/scores.length;
+
     let split = sunshineSplit(rad,start);
 
     let sun = applyOrientationToSun(
@@ -337,10 +306,6 @@ async function runAI(){
       split.afternoon,
       s.orientation
     );
-
-    let avgScore = rad.slice(start,start+24)
-      .map((r,i)=>hourlySolarScore(cloud[start+i],r))
-      .reduce((a,b)=>a+b)/24;
 
     let midTemp=temp[start+12];
 
