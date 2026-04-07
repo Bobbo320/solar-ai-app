@@ -399,25 +399,7 @@ async function runAI(){
         <br><b>🔆 Usable Solar Window:</b> ${split.morning + split.afternoon} hours
 
         <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
-       let socStyle = d === 1 
-  ? "color:red; font-size:20px; font-weight:bold;" 
-  : "";
-
-html += `
-  <div class="card">
-    <h3>${label}</h3>
-    ${weatherSummary(weightedCloudAverage(cloud,start),avgRad,midTemp,hum[start+12],precip[start+12])}
-
-    <br><b>🔆 Usable Solar Window:</b> ${split.morning + split.afternoon} hours
-
-    <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
-
-    <br>
-    <span style="${socStyle}">
-      🔋 Recommended SOC: ${soc}%
-    </span>
-  </div>
-`;
+        <br><b>🔋 Recommended SOC:</b> ${soc}%
       </div>
     `;
   }
