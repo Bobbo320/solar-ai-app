@@ -277,7 +277,15 @@ async function runAI(){
   let s=getSettings();
   document.getElementById("loading").innerText="Loading...";
 
-  let data=await getWeather(s.postcode);
+  let data;
+try {
+  data = await getWeather(s.postcode);
+  console.log("Weather data:", data);
+} catch (e) {
+  console.error("Weather error:", e);
+  document.getElementById("loading").innerText = "Weather error";
+  return;
+}
 
   let cloud=data.hourly.cloudcover;
   let rad=data.hourly.shortwave_radiation;
