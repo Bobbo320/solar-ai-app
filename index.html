@@ -148,6 +148,36 @@ function toggleSettings() {
   loadSettingsToUI();
 }
 
+// -------------------- GEOCODING (FIXED) --------------------
+async function getCoordinates(postcode) {
+  let res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(postcode)}&count=1`);
+  let data = await res.json();
+
+  if (!data.results || data.results.length === 0) {
+    throw new Error("Postcode not found");
+  }
+
+  return {
+    lat: data.results[0].latitude,
+    lon: data.results[0].longitude
+  };
+}
+
+// -------------------- WEATHER (FIXED) --------------------
+async function getWeather(postcode) {
+  let c = await getCoordinates(postcode);
+
+  let res = await fetch(
+    `https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}&hourly=cloudcover,temperature_2m,shortwave_radiation,relativehumidity_2m,precipitation&forecast_days=3&timezone=auto`
+  );
+
+  if (!res.ok) {
+    throw new Error("Weather fetch failed");
+  }
+
+  return await res.json();
+}
+
 // -------------------- ORIENTATION --------------------
 function getOrientationFactor(o) {
   if (o==="south") return 1;
@@ -158,40 +188,11 @@ function getOrientationFactor(o) {
 }
 
 function applyOrientationToSun(morning, afternoon, orientation) {
-
   if (orientation === "south") return morning + afternoon;
   if (orientation === "se_sw") return (morning * 0.95) + (afternoon * 0.95);
   if (orientation === "east_west") return (morning * 1.2) + (afternoon * 0.8);
   if (orientation === "north") return (morning + afternoon) * 0.65;
-
   return morning + afternoon;
-}
-
-// -------------------- POSTCODE (PROXY FIX) --------------------
-async function getCoordinates(postcode) {
-  let url = `https://api.allorigins.win/raw?url=${encodeURIComponent(
-    "https://api.postcodes.io/postcodes/" + postcode
-  )}`;
-
-  let res = await fetch(url);
-  let data = await res.json();
-
-  return {
-    lat: data.result.latitude,
-    lon: data.result.longitude
-  };
-}
-
-// -------------------- WEATHER (PROXY FIX) --------------------
-async function getWeather(postcode) {
-  let c = await getCoordinates(postcode);
-
-  let url = `https://api.allorigins.win/raw?url=${encodeURIComponent(
-    `https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}&hourly=cloudcover,temperature_2m,shortwave_radiation,relativehumidity_2m,precipitation&forecast_days=3&timezone=auto`
-  )}`;
-
-  let res = await fetch(url);
-  return await res.json();
 }
 
 // -------------------- TEMP --------------------
@@ -231,7 +232,6 @@ function weightedCloudAverage(c,start){
 
 // -------------------- PV --------------------
 function estimatePV(avgScore, sun, temp, s) {
-
   let orientationFactor = getOrientationFactor(s.orientation);
   let shadingFactor = s.shading / 100;
 
