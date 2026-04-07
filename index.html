@@ -159,39 +159,30 @@ function getOrientationFactor(o) {
 
 function applyOrientationToSun(morning, afternoon, orientation) {
 
-  if (orientation === "south") {
-    return morning + afternoon;
-  }
-
-  if (orientation === "se_sw") {
-    return (morning * 0.95) + (afternoon * 0.95);
-  }
-
-  if (orientation === "east_west") {
-    return (morning * 1.2) + (afternoon * 0.8);
-  }
-
-  if (orientation === "north") {
-    return (morning + afternoon) * 0.65;
-  }
+  if (orientation === "south") return morning + afternoon;
+  if (orientation === "se_sw") return (morning * 0.95) + (afternoon * 0.95);
+  if (orientation === "east_west") return (morning * 1.2) + (afternoon * 0.8);
+  if (orientation === "north") return (morning + afternoon) * 0.65;
 
   return morning + afternoon;
 }
 
 // -------------------- POSTCODE --------------------
 async function getCoordinates(postcode) {
-  let res = await fetch(`https://api.postcodes.io/postcodes/${postcode}`);
+  let res = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(postcode)}`);
   let data = await res.json();
   return { lat: data.result.latitude, lon: data.result.longitude };
 }
 
-// -------------------- WEATHER --------------------
+// -------------------- WEATHER (PROXY FIX) --------------------
 async function getWeather(postcode) {
   let c = await getCoordinates(postcode);
 
   let res = await fetch(
-    `https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}&hourly=cloudcover,temperature_2m,shortwave_radiation,relativehumidity_2m,precipitation&forecast_days=3&timezone=auto`
+    `https://YOUR-WORKER-URL.workers.dev?lat=${c.lat}&lon=${c.lon}`
   );
+
+  if (!res.ok) throw new Error("Weather proxy failed");
 
   return await res.json();
 }
@@ -277,7 +268,14 @@ async function runAI(){
   let s=getSettings();
   document.getElementById("loading").innerText="Loading...";
 
-  let data=await getWeather(s.postcode);
+  let data;
+  try {
+    data = await getWeather(s.postcode);
+  } catch (e) {
+    console.error(e);
+    document.getElementById("loading").innerText="Weather error";
+    return;
+  }
 
   let cloud=data.hourly.cloudcover;
   let rad=data.hourly.shortwave_radiation;
