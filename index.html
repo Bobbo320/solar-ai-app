@@ -232,7 +232,18 @@ function estimatePV(avgScore,sun,temp,s){
   return Math.min(raw,s.inverter*sun);
 }
 
-// ✅ NEW ADAPTIVE SOC
+// ---------------- WEATHER DISPLAY ----------------
+function weatherSummary(c,r,t,h,p){
+  return `
+    🌤️ Cloud: ${c.toFixed(0)}%<br>
+    ☀️ Radiation: ${r.toFixed(0)} W/m²<br>
+    🌡️ Temp (midday): ${t.toFixed(1)}°C<br>
+    💧 Humidity: ${h.toFixed(0)}%<br>
+    🌧️ Precip: ${p.toFixed(2)} mm
+  `;
+}
+
+// ---------------- ADAPTIVE SOC ----------------
 function recommendedSOC(pv,s,avgScore,cloudAvg){
   let shortfall=Math.max(0,s.dailyLoad-pv);
 
@@ -263,6 +274,8 @@ async function runAI(){
   let cloud=data.hourly.cloudcover;
   let rad=data.hourly.shortwave_radiation;
   let temp=data.hourly.temperature_2m;
+  let hum=data.hourly.relativehumidity_2m;
+  let precip=data.hourly.precipitation;
 
   let html="";
 
@@ -284,11 +297,9 @@ async function runAI(){
     let sun=split.morning+split.afternoon;
 
     let midTemp=temp[start+12];
-
-    let pv=estimatePV(avgScore,sun,midTemp,s);
-
     let cloudAvg=weightedCloudAverage(cloud,start);
 
+    let pv=estimatePV(avgScore,sun,midTemp,s);
     let soc=recommendedSOC(pv,s,avgScore,cloudAvg);
 
     let label=d===0?"Today":d===1?"Tomorrow":"Day 3";
@@ -296,10 +307,19 @@ async function runAI(){
     html+=`
       <div class="card">
         <h3>${label}</h3>
-        ☀️ ${avgRad.toFixed(0)} W/m²<br>
-        🌤️ ${cloudAvg.toFixed(0)}% cloud<br>
-        ⚡ PV: ${pv.toFixed(1)} kWh<br>
-        🔋 SOC: ${soc}%
+
+        ${weatherSummary(
+          cloudAvg,
+          avgRad,
+          midTemp,
+          hum[start+12],
+          precip[start+12]
+        )}
+
+        <br><b>🔆 Usable Solar Window:</b> ${split.morning + split.afternoon} hours
+
+        <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
+        <br><b>🔋 Recommended SOC:</b> ${soc}%
       </div>
     `;
   }
