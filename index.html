@@ -361,24 +361,30 @@ function getSolarTimeRange(radSlice, timeSlice) {
 
 function daylightAverages(start, rad, temp, hum, precip){
 
-  let tSum=0, hSum=0, pSum=0, count=0;
+  let tSum=0, hSum=0, pSum=0, wSum=0;
 
   for(let i=0;i<24;i++){
-    if(rad[start+i] > 100){
-      tSum += temp[start+i];
-      hSum += hum[start+i];
-      pSum += precip[start+i];
-      count++;
+    let r = rad[start+i];
+
+    // Only daylight hours
+    if(r > 100){
+      let weight = r; // weight by radiation intensity
+
+      tSum += temp[start+i] * weight;
+      hSum += hum[start+i] * weight;
+      pSum += precip[start+i] * weight;
+      wSum += weight;
     }
   }
-  if(count === 0) count = 1;
+
+  if(wSum === 0) wSum = 1;
 
   return {
-    temp: tSum / count,
-    hum: hSum / count,
-    precip: pSum
-    };
-  }
+    temp: tSum / wSum,
+    hum: hSum / wSum,
+    precip: pSum / wSum
+  };
+}
   
 // -------------------- MAIN --------------------
 async function runAI(){
