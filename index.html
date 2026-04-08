@@ -329,11 +329,11 @@ function recommendedSOC(pv, s){
 
 function weatherSummary(c,r,t,h,p){
   return `
-    🌤️ Cloud: ${c.toFixed(0)}%<br>
-    ☀️ Radiation: ${r.toFixed(0)} W/m²<br>
-    🌡️ Temp (midday): ${t.toFixed(1)}°C<br>
-    💧 Humidity: ${h.toFixed(0)}%<br>
-    🌧️ Precip: ${p.toFixed(2)} mm
+    🌤️ Cloud (daylight): ${c.toFixed(0)}%<br>
+    ☀️ Radiation (daylight avg): ${r.toFixed(0)} W/m²<br>
+    🌡️ Temp (daylight avg): ${t.toFixed(1)}°C<br>
+    💧 Humidity (daylight avg): ${h.toFixed(0)}%<br>
+    🌧️ Precip (daylight total): ${p.toFixed(2)} mm
   `;
 }
 
@@ -358,6 +358,27 @@ function getSolarTimeRange(radSlice, timeSlice) {
 
   return `${start} – ${end}`;
 }
+
+function daylightAverages(start, rad, temp, hum, precip){
+
+  let tSum=0, hSum=0, pSum=0, count=0;
+
+  for(let i=0;i<24;i++){
+    if(rad[start+i] > 100){
+      tSum += temp[start+i];
+      hSum += hum[start+i];
+      pSum += precip[start+i];
+      count++;
+    }
+  }
+  if(count === 0) count = 1;
+
+  return {
+    temp: tSum / count,
+    hum: hSum / count,
+    precip: pSum
+    };
+  }
   
 // -------------------- MAIN --------------------
 async function runAI(){
@@ -413,7 +434,9 @@ async function runAI(){
       s.orientation
     );
 
-    let midTemp=temp[start+12];
+   let daylight = daylightAverages(start, rad, temp, hum, precip);
+
+    let midTemp = daylight.temp;
 
     let pv=estimatePV(avgScore,sun,midTemp,s);
     let soc=recommendedSOC(pv,s);
@@ -427,7 +450,13 @@ async function runAI(){
     html+=`
       <div class="card">
         <h3>${label}</h3>
-        ${weatherSummary(weightedCloudAverage(cloud,start),avgRad,midTemp,hum[start+12],precip[start+12])}
+        ${weatherSummary(
+  weightedCloudAverage(cloud,start),
+  avgRad,
+  daylight.temp,
+  daylight.hum,
+  daylight.precip
+)}
 
        <br><b>🔆 Usable Solar Window:</b> ${split.morning + split.afternoon} hours
 <br><b>⏱️ Time Range:</b> ${timeRange}
