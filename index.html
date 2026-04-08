@@ -29,22 +29,6 @@
       margin-bottom: 10px;
     }
     .hidden { display: none; }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 10px;
-    }
-
-    td, th {
-      border: 1px solid #444;
-      padding: 6px;
-      text-align: center;
-    }
-
-    th {
-      background: #334155;
-    }
   </style>
 </head>
 
@@ -54,7 +38,6 @@
 
 <button onclick="toggleSettings()">⚙️ Settings</button>
 <button onclick="runAI()">Plan Next 3 Days</button>
-<button onclick="toggleManual()">📊 Manual PV</button>
 
 <div id="settingsPanel" class="card hidden">
   <h3>Settings</h3>
@@ -103,119 +86,14 @@
   <button onclick="saveSettings()">Save</button>
 </div>
 
-<!-- Manual PV TAB -->
-<div id="manualPanel" class="card hidden">
-  <h3>📊 Manual PV Data</h3>
-
-  <input type="date" id="manualDate"><br>
-  <input type="number" id="manualExpected" placeholder="Expected PV"><br>
-  <input type="number" id="manualActual" placeholder="Actual PV"><br>
-
-  <button onclick="addManualEntry()">Save</button>
-
-  <table>
-    <tbody id="manualTable"></tbody>
-  </table>
-</div>
-
 <p id="loading"></p>
 <div id="output"></div>
 
 <script>
 
 const SOLAR_THRESHOLD = 120;
+
 let preloadedWeather = null;
-
-// -------------------- MANUAL STORAGE --------------------
-function getManualData(){
-  return JSON.parse(localStorage.getItem("manualPV") || "[]");
-}
-
-function saveManualData(data){
-  localStorage.setItem("manualPV", JSON.stringify(data));
-}
-
-function storeExpectedPV(date, pv){
-  let data = getManualData();
-
-  let existing = data.find(d => d.date === date);
-
-  if(existing){
-    existing.expected = pv;
-  } else {
-    data.push({ date, expected: pv, actual: null });
-  }
-
-  saveManualData(data);
-}
-
-function getCalibrationFactor(){
-  let data = getManualData();
-
-  let ratios = [];
-
-  data.forEach(d=>{
-    if(d.expected && d.actual && d.expected > 0){
-      ratios.push(d.actual / d.expected);
-    }
-  });
-
-  if(ratios.length === 0) return 1;
-
-  return ratios.reduce((a,b)=>a+b,0) / ratios.length;
-}
-
-// -------------------- MANUAL UI --------------------
-function toggleManual(){
-  manualPanel.classList.toggle("hidden");
-  renderManualTable();
-}
-
-function addManualEntry(){
-  let date = manualDate.value;
-  let expected = parseFloat(manualExpected.value);
-  let actual = parseFloat(manualActual.value);
-
-  if(!date) return alert("Select date");
-
-  let data = getManualData();
-  let existing = data.find(d => d.date === date);
-
-  if(existing){
-    existing.expected = isNaN(expected) ? existing.expected : expected;
-    existing.actual = isNaN(actual) ? existing.actual : actual;
-  } else {
-    data.push({date, expected, actual});
-  }
-
-  saveManualData(data);
-  renderManualTable();
-}
-
-function deleteEntry(i){
-  let data = getManualData();
-  data.splice(i,1);
-  saveManualData(data);
-  renderManualTable();
-}
-
-function renderManualTable(){
-  let data = getManualData();
-  let tbody = document.getElementById("manualTable");
-
-  tbody.innerHTML = "";
-
-  data.forEach((d,i)=>{
-    tbody.innerHTML += `
-      <tr>
-        <td>${d.date}</td>
-        <td>${d.expected ?? ""}</td>
-        <td>${d.actual ?? ""}</td>
-        <td><button onclick="deleteEntry(${i})">Delete</button></td>
-      </tr>
-    `;
-  });
-}
 
 // -------------------- SETTINGS --------------------
 function getSettings() {
@@ -285,7 +163,7 @@ function setCache(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
-// -------------------- WEATHER --------------------
+// -------------------- PRELOAD --------------------
 async function preloadWeather() {
   try {
     let s = getSettings();
@@ -293,6 +171,7 @@ async function preloadWeather() {
   } catch {}
 }
 
+// -------------------- GEOCODING --------------------
 async function getCoordinates(postcode) {
   try {
     let cacheKey = "coords_" + postcode;
@@ -302,6 +181,8 @@ async function getCoordinates(postcode) {
 
     let res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(postcode)}&count=1`);
     let data = await res.json();
+
+    if (!data.results || data.results.length === 0) throw new Error();
 
     let coords = {
       lat: data.results[0].latitude,
@@ -316,15 +197,27 @@ async function getCoordinates(postcode) {
   }
 }
 
+// -------------------- WEATHER --------------------
 async function getWeather(postcode) {
   try {
+    let cacheKey = "weather_" + postcode;
+    let cached = getCache(cacheKey);
+    let now = Date.now();
+
+    if (cached && (now - cached.timestamp < 1800000)) {
+      return cached.data;
+    }
+
     let c = await getCoordinates(postcode);
 
     let res = await fetch(
       `https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}&hourly=cloudcover,temperature_2m,shortwave_radiation,relativehumidity_2m,precipitation&forecast_days=3&timezone=auto`
     );
 
-    return await res.json();
+    let data = await res.json();
+
+    setCache(cacheKey, { timestamp: now, data });
+    return data;
 
   } catch {
     return {
@@ -393,7 +286,7 @@ function weightedCloudAverage(c, r, start){
 
   return sum / wSum;
 }
-
+  
 function estimatePV(avgScore, sun, temp, s) {
   let orientationFactor = getOrientationFactor(s.orientation);
   let shadingFactor = s.shading / 100;
@@ -409,7 +302,46 @@ function estimatePV(avgScore, sun, temp, s) {
   return Math.min(raw, limit);
 }
 
-// -------------------- WEATHER UI --------------------
+// -------------------- SOC --------------------
+function recommendedSOC(pv, s){
+
+  let shortfall = Math.max(0, s.dailyLoad - pv);
+
+  let buffer = 1.15;
+  if (shortfall > 5) buffer = 1.25;
+  if (shortfall > 10) buffer = 1.35;
+
+  let required = shortfall * buffer;
+
+  let soc = (required / s.battery) * 100;
+
+  if(soc < s.socLow) soc = s.socLow;
+  if(soc > s.socHigh) soc = s.socHigh;
+
+  return Math.round(soc);
+}
+
+function getSolarTimeRange(radSlice, timeSlice) {
+  let startTime = null;
+  let endTime = null;
+
+  for (let i = 0; i < 24; i++) {
+    if (radSlice[i] > SOLAR_THRESHOLD) {
+      if (startTime === null) {
+        startTime = timeSlice[i];
+      }
+      endTime = timeSlice[i];
+    }
+  }
+
+  if (!startTime || !endTime) return "No data";
+
+  let start = new Date(startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  let end = new Date(endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  return `${start} – ${end}`;
+}
+
 function weatherSummary(c,r,t,h,p){
   return `
     🌤️ Cloud (daylight): ${c.toFixed(0)}%<br>
@@ -436,7 +368,6 @@ async function runAI(){
   let time = data.hourly.time;
 
   let html="";
-  let calibration = getCalibrationFactor();
 
   for(let d=0;d<3;d++){
 
@@ -466,21 +397,17 @@ async function runAI(){
 
     let split = sunshineSplit(rad,start);
 
+    let timeRange = getSolarTimeRange(
+      rad.slice(start, start + 24),
+      time.slice(start, start + 24)
+    );
+
     let sun = split.morning + split.afternoon;
 
     let midTemp = temp[start+12];
 
-    let pv=estimatePV(avgScore,sun,midTemp,s) * calibration;
-
-    // store expected PV
-    let today = new Date();
-    let targetDate = new Date(today);
-    targetDate.setDate(today.getDate()+d);
-    let isoDate = targetDate.toISOString().split("T")[0];
-
-    storeExpectedPV(isoDate, pv);
-
-    let soc = Math.max(0, Math.min(100, s.socLow)); // kept simple fallback
+    let pv=estimatePV(avgScore,sun,midTemp,s);
+    let soc=recommendedSOC(pv,s);
 
     let label = d===0
       ? "Today"
@@ -500,11 +427,14 @@ async function runAI(){
           precip[start+12]
         )}
 
-        <br><b>🔆 Solar Window:</b> ${sun} hrs
+        <br><b>🔆 Usable Solar Window:</b> ${sun} hours
+        <br><b>⏱️ Time Range:</b> ${timeRange}
 
         <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
 
-        <br><b>🔋 SOC:</b> ${soc}%
+        <br><b>🔋 Recommended SOC for prior night grid charge:</b> ${d===1
+          ? `<span style="color:red;font-weight:bold">${soc}%</span>`
+          : `${soc}%`}
       </div>
     `;
   }
