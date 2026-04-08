@@ -92,6 +92,7 @@
 <script>
 
 let preloadedWeather = null;
+let radGlobal = null; // used for daylight cloud filtering
 
 // -------------------- SETTINGS --------------------
 function getSettings() {
@@ -126,7 +127,6 @@ function saveSettings() {
   };
 
   localStorage.setItem("settings", JSON.stringify(settings));
-
   preloadWeather();
 
   alert("Saved");
@@ -167,7 +167,7 @@ async function preloadWeather() {
   try {
     let s = getSettings();
     preloadedWeather = await getWeather(s.postcode);
-  } catch (e) {}
+  } catch {}
 }
 
 // -------------------- GEOCODING --------------------
@@ -231,7 +231,7 @@ async function getWeather(postcode) {
   }
 }
 
-// -------------------- SOLAR LOGIC --------------------
+// -------------------- SOLAR --------------------
 function getOrientationFactor(o) {
   if (o==="south") return 1;
   if (o==="se_sw") return 0.92;
@@ -274,13 +274,23 @@ function hourlySolarScore(c, r) {
   return Math.min(1, Math.max(0, (1-c/100)*0.6 + (r/1000)*0.4));
 }
 
+// ✅ UPDATED: daylight-only cloud average
 function weightedCloudAverage(c,start){
-  let s=0,w=0;
+
+  let sum = 0;
+  let count = 0;
+
   for(let i=0;i<24;i++){
-    let wt=Math.exp(-Math.pow((i-12)/6,2));
-    s+=c[start+i]*wt; w+=wt;
+    let cloud = c[start+i];
+    let rad = radGlobal[start+i];
+
+    if(rad > 100){
+      sum += cloud;
+      count++;
+    }
   }
-  return s/w;
+
+  return count ? (sum / count) : c[start+12];
 }
 
 function estimatePV(avgScore, sun, temp, s) {
@@ -298,13 +308,12 @@ function estimatePV(avgScore, sun, temp, s) {
   return Math.min(raw, limit);
 }
 
-// ✅ ONLY CHANGE: SOC BUFFER ADDED
+// ✅ SOC BUFFER ADDED
 function recommendedSOC(pv, s){
 
   let shortfall = Math.max(0, s.dailyLoad - pv);
 
   let buffer = 1.15;
-
   if (shortfall > 5) buffer = 1.25;
   if (shortfall > 10) buffer = 1.35;
 
@@ -341,6 +350,8 @@ async function runAI(){
   let temp=data.hourly.temperature_2m;
   let hum=data.hourly.relativehumidity_2m;
   let precip=data.hourly.precipitation;
+
+  radGlobal = rad; // store globally for cloud filtering
 
   let html="";
 
