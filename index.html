@@ -231,7 +231,15 @@ async function getWeather(postcode) {
   }
 }
 
-// -------------------- SOLAR --------------------
+// -------------------- HELPERS --------------------
+function getOrientationFactor(o) {
+  if (o==="south") return 1;
+  if (o==="se_sw") return 0.92;
+  if (o==="east_west") return 0.85;
+  if (o==="north") return 0.65;
+  return 1;
+}
+
 function temperatureEfficiency(t) {
   let f = 1 + ((t - 25) * -0.004);
   return Math.min(1.05, Math.max(0.8, f));
@@ -250,7 +258,7 @@ function weightedCloudAverage(c,start){
   return s/w;
 }
 
-// -------------------- SOC BUFFER (UPDATED) --------------------
+// -------------------- SOC BUFFER --------------------
 function recommendedSOC(pv, s, avgScore, cloudAvg){
 
   let shortfall = Math.max(0, s.dailyLoad - pv);
@@ -302,7 +310,7 @@ async function runAI(){
 
     rad.slice(start, start + 24).forEach((r, i) => {
       if (r > 100) {
-        daylightScores.push((1 - cloud[start + i]/100));
+        daylightScores.push(1 - cloud[start + i]/100);
       }
     });
 
@@ -312,7 +320,21 @@ async function runAI(){
 
     let cloudAvg = weightedCloudAverage(cloud,start);
 
-    let pv = s.pvSize; // simplified (unchanged from your original logic flow)
+    // ✅ FIXED PV CALCULATION
+    let avgTemp = temp[start + 12];
+    let orientationFactor = getOrientationFactor(s.orientation);
+    let shadingFactor = s.shading / 100;
+    let radiationFactor = avgRad / 1000;
+    let tempFactor = temperatureEfficiency(avgTemp);
+
+    let pvRaw = s.pvSize * radiationFactor * tempFactor *
+                orientationFactor * shadingFactor *
+                (s.efficiency / 100);
+
+    let inverterLimit = s.inverter * radiationFactor;
+
+    let pv = Math.min(pvRaw, inverterLimit);
+
     let soc = recommendedSOC(pv, s, avgScore, cloudAvg);
 
     let label=d===0?"Today":d===1?"Tomorrow":"The day after tomorrow";
@@ -323,7 +345,7 @@ async function runAI(){
 
         🌤️ Cloud: ${cloudAvg.toFixed(0)}%<br>
         ☀️ Radiation: ${avgRad.toFixed(0)} W/m²<br>
-        🌡️ Temp: ${temp[start+12].toFixed(1)}°C<br>
+        🌡️ Temp: ${avgTemp.toFixed(1)}°C<br>
         💧 Humidity: ${hum[start+12].toFixed(0)}%<br>
         🌧️ Precip: ${precip[start+12].toFixed(2)} mm<br>
 
