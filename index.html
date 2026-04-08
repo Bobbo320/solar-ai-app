@@ -167,7 +167,10 @@ async function preloadWeather() {
   try {
     let s = getSettings();
     preloadedWeather = await getWeather(s.postcode);
-  } catch (e) {}
+    console.log("Weather preloaded");
+  } catch (e) {
+    console.log("Preload failed:", e);
+  }
 }
 
 // -------------------- GEOCODING --------------------
@@ -179,9 +182,14 @@ async function getCoordinates(postcode) {
     if (cached) return cached;
 
     let res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(postcode)}&count=1`);
+
+    if (!res.ok) throw new Error("Geocoding failed");
+
     let data = await res.json();
 
-    if (!data.results || data.results.length === 0) throw new Error();
+    if (!data.results || data.results.length === 0) {
+      throw new Error("Location not found");
+    }
 
     let coords = {
       lat: data.results[0].latitude,
@@ -189,9 +197,10 @@ async function getCoordinates(postcode) {
     };
 
     setCache(cacheKey, coords);
+
     return coords;
 
-  } catch {
+  } catch (e) {
     return { lat: 52.6309, lon: 1.2974 };
   }
 }
@@ -201,9 +210,11 @@ async function getWeather(postcode) {
   try {
     let cacheKey = "weather_" + postcode;
     let cached = getCache(cacheKey);
-    let now = Date.now();
 
-    if (cached && (now - cached.timestamp < 1800000)) {
+    let now = Date.now();
+    let cacheDuration = 30 * 60 * 1000;
+
+    if (cached && (now - cached.timestamp < cacheDuration)) {
       return cached.data;
     }
 
@@ -213,12 +224,18 @@ async function getWeather(postcode) {
       `https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}&hourly=cloudcover,temperature_2m,shortwave_radiation,relativehumidity_2m,precipitation&forecast_days=3&timezone=auto`
     );
 
+    if (!res.ok) throw new Error("Weather fetch failed");
+
     let data = await res.json();
 
-    setCache(cacheKey, { timestamp: now, data });
+    setCache(cacheKey, {
+      timestamp: now,
+      data: data
+    });
+
     return data;
 
-  } catch {
+  } catch (e) {
     return {
       hourly: {
         cloudcover: new Array(72).fill(50),
@@ -231,14 +248,48 @@ async function getWeather(postcode) {
   }
 }
 
-// -------------------- SOLAR --------------------
+// -------------------- SOLAR LOGIC --------------------
+function getOrientationFactor(o) {
+  if (o==="south") return 1;
+  if (o==="se_sw") return 0.92;
+  if (o==="east_west") return 0.85;
+  if (o==="north") return 0.65;
+  return 1;
+}
+
+function applyOrientationToSun(morning, afternoon, orientation) {
+  if (orientation === "south") return morning + afternoon;
+  if (orientation === "se_sw") return (morning * 0.95) + (afternoon * 0.95);
+  if (orientation === "east_west") return (morning * 1.2) + (afternoon * 0.8);
+  if (orientation === "north") return (morning + afternoon) * 0.65;
+  return morning + afternoon;
+}
+
 function temperatureEfficiency(t) {
   let f = 1 + ((t - 25) * -0.004);
   return Math.min(1.05, Math.max(0.8, f));
 }
 
+// ✅ NEW: daylight-only filter
 function daylightHours(radSlice, threshold = 100) {
   return radSlice.filter(r => r > threshold);
+}
+
+function sunshineSplit(r,start){
+  let morning=0, afternoon=0;
+
+  for(let i=0;i<24;i++){
+    if(r[start+i] > 120){
+      if(i < 12) morning++;
+      else afternoon++;
+    }
+  }
+
+  return {morning, afternoon};
+}
+
+function hourlySolarScore(c, r) {
+  return Math.min(1, Math.max(0, (1-c/100)*0.6 + (r/1000)*0.4));
 }
 
 function weightedCloudAverage(c,start){
@@ -250,26 +301,40 @@ function weightedCloudAverage(c,start){
   return s/w;
 }
 
-// ✅ UPDATED SOC BUFFER
-function recommendedSOC(pv, s, avgScore, cloudAvg){
+function estimatePV(avgScore, sun, temp, s) {
+  let orientationFactor = getOrientationFactor(s.orientation);
+  let shadingFactor = s.shading / 100;
 
-  let shortfall = Math.max(0, s.dailyLoad - pv);
+  let raw = s.pvSize * sun * avgScore *
+            (s.efficiency/100) *
+            temperatureEfficiency(temp) *
+            orientationFactor *
+            shadingFactor;
 
-  let buffer = 1.15;
+  let limit = s.inverter * sun;
 
-  if (avgScore < 0.4) buffer = 1.35;
-  else if (avgScore < 0.6) buffer = 1.25;
-  else if (avgScore > 0.8) buffer = 1.10;
+  return Math.min(raw, limit);
+}
 
-  if (cloudAvg > 70) buffer += 0.05;
+function recommendedSOC(pv,s){
+  let shortfall=Math.max(0,s.dailyLoad-pv);
+  let required=shortfall*1.2;
+  let soc=(required/s.battery)*100;
 
-  let required = shortfall * buffer;
-  let soc = (required / s.battery) * 100;
-
-  if(soc < s.socLow) soc = s.socLow;
-  if(soc > s.socHigh) soc = s.socHigh;
+  if(soc<s.socLow) soc=s.socLow;
+  if(soc>s.socHigh) soc=s.socHigh;
 
   return Math.round(soc);
+}
+
+function weatherSummary(c,r,t,h,p){
+  return `
+    🌤️ Cloud: ${c.toFixed(0)}%<br>
+    ☀️ Radiation: ${r.toFixed(0)} W/m²<br>
+    🌡️ Temp (midday): ${t.toFixed(1)}°C<br>
+    💧 Humidity: ${h.toFixed(0)}%<br>
+    🌧️ Precip: ${p.toFixed(2)} mm
+  `;
 }
 
 // -------------------- MAIN --------------------
@@ -283,6 +348,8 @@ async function runAI(){
   let cloud=data.hourly.cloudcover;
   let rad=data.hourly.shortwave_radiation;
   let temp=data.hourly.temperature_2m;
+  let hum=data.hourly.relativehumidity_2m;
+  let precip=data.hourly.precipitation;
 
   let html="";
 
@@ -290,29 +357,46 @@ async function runAI(){
 
     let start=d*24;
 
+    // ✅ DAYLIGHT-ONLY radiation
     let dayRad = daylightHours(rad.slice(start, start + 24));
-    let avgRad = dayRad.length ? dayRad.reduce((a,b)=>a+b)/dayRad.length : 0;
 
-    let avgScore = rad.slice(start,start+24)
-      .filter(r => r > 100)
-      .map((r,i)=> (1 - cloud[start+i]/100))
-      .reduce((a,b)=>a+b,0) / 24;
+    let avgRad = dayRad.length
+      ? dayRad.reduce((a,b)=>a+b) / dayRad.length
+      : 0;
 
-    let pv = s.pvSize * (avgRad/1000) * avgScore *
-      (s.efficiency/100) *
-      temperatureEfficiency(temp[start+12]);
+    let daylightScores = [];
 
-    let cloudAvg = weightedCloudAverage(cloud,start);
-    let soc = recommendedSOC(pv, s, avgScore, cloudAvg);
+    rad.slice(start, start + 24).forEach((r, i) => {
+      if (r > 100) {
+        daylightScores.push(hourlySolarScore(cloud[start + i], r));
+      }
+    });
 
-    let label = d===0?"Today":d===1?"Tomorrow":"The day after tomorrow";
+    let avgScore = daylightScores.length
+      ? daylightScores.reduce((a,b)=>a+b) / daylightScores.length
+      : 0;
 
-    html += `
+    let split = sunshineSplit(rad,start);
+
+    let sun = applyOrientationToSun(
+      split.morning,
+      split.afternoon,
+      s.orientation
+    );
+
+    let midTemp=temp[start+12];
+
+    let pv=estimatePV(avgScore,sun,midTemp,s);
+    let soc=recommendedSOC(pv,s);
+
+    let label=d===0?"Today":d===1?"Tomorrow":"The day after tomorrow";
+
+    html+=`
       <div class="card">
         <h3>${label}</h3>
-        🌤️ Cloud: ${cloudAvg.toFixed(0)}%<br>
-        ☀️ Radiation: ${avgRad.toFixed(0)} W/m²<br>
-        🌡️ Temp: ${temp[start+12].toFixed(1)}°C<br>
+        ${weatherSummary(weightedCloudAverage(cloud,start),avgRad,midTemp,hum[start+12],precip[start+12])}
+
+        <br><b>🔆 Usable Solar Window:</b> ${split.morning + split.afternoon} hours
 
         <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
         <br><b>🔋 Recommended SOC:</b> ${soc}%
@@ -324,7 +408,10 @@ async function runAI(){
   document.getElementById("loading").innerText="";
 }
 
-window.onload = () => preloadWeather();
+// -------------------- INIT --------------------
+window.onload = () => {
+  preloadWeather();
+};
 
 </script>
 
