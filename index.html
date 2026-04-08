@@ -89,7 +89,8 @@
 
  <div id="pvPanel" class="card hidden">
   <h3>📊 PV Data</h3>
-
+<p><b>Calibration Factor:</b> <span id="calFactor">1.00</span></p>
+   
   <table border="1" style="width:100%; color:white; border-collapse:collapse;">
     <thead>
       <tr>
@@ -174,7 +175,20 @@ Object.keys(data).sort().forEach(date => {
 
     let tr = document.createElement("tr");
 
-    tr.innerHTML = `
+    tr.setAttribute("data-date", date);
+
+tr.innerHTML = `
+  <td>${date}</td>
+  <td>${row.expected ? row.expected.toFixed(1) : "-"}</td>
+  <td>
+    <input type="number" value="${row.manual || ""}" 
+      onchange="updateManualPV('${date}', this.value)">
+  </td>
+  <td>
+    <button onclick="deletePVRow('${date}')">Delete</button>
+    <span class="saveTick" style="margin-left:10px; color:lightgreen;"></span>
+  </td>
+`;
       <th>Today (${new Date().toISOString().split("T")[0]})</th>
       <td>${row.expected ? row.expected.toFixed(1) : "-"}</td>
       <td>
@@ -187,6 +201,9 @@ Object.keys(data).sort().forEach(date => {
     `;
 
     tbody.appendChild(tr);
+
+    let factor = getCalibrationFactor();
+document.getElementById("calFactor").innerText = factor.toFixed(2);
   });
 }
 
@@ -197,6 +214,16 @@ function updateManualPV(date, value) {
   data[date].manual = parseFloat(value);
 
   savePVData(data);
+
+  // show tick
+  let row = document.querySelector(`tr[data-date="${date}"]`);
+  if (row) {
+    let tick = row.querySelector(".saveTick");
+    if (tick) {
+      tick.innerText = "✔️ Saved";
+      setTimeout(() => tick.innerText = "", 1500);
+    }
+  }
 }
 
 function deletePVRow(date) {
