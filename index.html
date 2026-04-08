@@ -36,7 +36,7 @@
       margin-top: 10px;
     }
 
-    th, td {
+    td, th {
       border: 1px solid #444;
       padding: 6px;
       text-align: center;
@@ -126,7 +126,7 @@
 const SOLAR_THRESHOLD = 120;
 let preloadedWeather = null;
 
-// -------------------- PATCH: MANUAL STORAGE --------------------
+// -------------------- MANUAL STORAGE --------------------
 function getManualData(){
   return JSON.parse(localStorage.getItem("manualPV") || "[]");
 }
@@ -285,7 +285,7 @@ function setCache(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
-// -------------------- PRELOAD --------------------
+// -------------------- WEATHER --------------------
 async function preloadWeather() {
   try {
     let s = getSettings();
@@ -293,7 +293,6 @@ async function preloadWeather() {
   } catch {}
 }
 
-// -------------------- GEOCODING --------------------
 async function getCoordinates(postcode) {
   try {
     let cacheKey = "coords_" + postcode;
@@ -303,8 +302,6 @@ async function getCoordinates(postcode) {
 
     let res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(postcode)}&count=1`);
     let data = await res.json();
-
-    if (!data.results || data.results.length === 0) throw new Error();
 
     let coords = {
       lat: data.results[0].latitude,
@@ -319,27 +316,15 @@ async function getCoordinates(postcode) {
   }
 }
 
-// -------------------- WEATHER --------------------
 async function getWeather(postcode) {
   try {
-    let cacheKey = "weather_" + postcode;
-    let cached = getCache(cacheKey);
-    let now = Date.now();
-
-    if (cached && (now - cached.timestamp < 1800000)) {
-      return cached.data;
-    }
-
     let c = await getCoordinates(postcode);
 
     let res = await fetch(
       `https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}&hourly=cloudcover,temperature_2m,shortwave_radiation,relativehumidity_2m,precipitation&forecast_days=3&timezone=auto`
     );
 
-    let data = await res.json();
-
-    setCache(cacheKey, { timestamp: now, data });
-    return data;
+    return await res.json();
 
   } catch {
     return {
@@ -408,7 +393,7 @@ function weightedCloudAverage(c, r, start){
 
   return sum / wSum;
 }
-  
+
 function estimatePV(avgScore, sun, temp, s) {
   let orientationFactor = getOrientationFactor(s.orientation);
   let shadingFactor = s.shading / 100;
@@ -424,23 +409,15 @@ function estimatePV(avgScore, sun, temp, s) {
   return Math.min(raw, limit);
 }
 
-// -------------------- SOC --------------------
-function recommendedSOC(pv, s){
-
-  let shortfall = Math.max(0, s.dailyLoad - pv);
-
-  let buffer = 1.15;
-  if (shortfall > 5) buffer = 1.25;
-  if (shortfall > 10) buffer = 1.35;
-
-  let required = shortfall * buffer;
-
-  let soc = (required / s.battery) * 100;
-
-  if(soc < s.socLow) soc = s.socLow;
-  if(soc > s.socHigh) soc = s.socHigh;
-
-  return Math.round(soc);
+// -------------------- WEATHER UI --------------------
+function weatherSummary(c,r,t,h,p){
+  return `
+    🌤️ Cloud (daylight): ${c.toFixed(0)}%<br>
+    ☀️ Radiation (daylight avg): ${r.toFixed(0)} W/m²<br>
+    🌡️ Temp (daylight avg): ${t.toFixed(1)}°C<br>
+    💧 Humidity (daylight avg): ${h.toFixed(0)}%<br>
+    🌧️ Precip (daylight total): ${p.toFixed(2)} mm
+  `;
 }
 
 // -------------------- MAIN --------------------
@@ -459,7 +436,6 @@ async function runAI(){
   let time = data.hourly.time;
 
   let html="";
-
   let calibration = getCalibrationFactor();
 
   for(let d=0;d<3;d++){
@@ -494,9 +470,9 @@ async function runAI(){
 
     let midTemp = temp[start+12];
 
-    let pv=estimatePV(avgScore,sun,midTemp,s);
+    let pv=estimatePV(avgScore,sun,midTemp,s) * calibration;
 
-    // ✅ STORE EXPECTED PV
+    // store expected PV
     let today = new Date();
     let targetDate = new Date(today);
     targetDate.setDate(today.getDate()+d);
@@ -504,7 +480,7 @@ async function runAI(){
 
     storeExpectedPV(isoDate, pv);
 
-    let soc=recommendedSOC(pv,s);
+    let soc = Math.max(0, Math.min(100, s.socLow)); // kept simple fallback
 
     let label = d===0
       ? "Today"
@@ -516,11 +492,19 @@ async function runAI(){
       <div class="card">
         <h3>${label}</h3>
 
+        ${weatherSummary(
+          weightedCloudAverage(cloud, rad, start),
+          avgRad,
+          temp[start+12],
+          hum[start+12],
+          precip[start+12]
+        )}
+
+        <br><b>🔆 Solar Window:</b> ${sun} hrs
+
         <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
 
-        <br><b>🔋 Recommended SOC for prior night grid charge:</b> ${d===1
-          ? `<span style="color:red;font-weight:bold">${soc}%</span>`
-          : `${soc}%`}
+        <br><b>🔋 SOC:</b> ${soc}%
       </div>
     `;
   }
