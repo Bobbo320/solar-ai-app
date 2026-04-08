@@ -126,7 +126,9 @@ function saveSettings() {
   };
 
   localStorage.setItem("settings", JSON.stringify(settings));
+
   preloadWeather();
+
   alert("Saved");
   toggleSettings();
 }
@@ -281,7 +283,22 @@ function weightedCloudAverage(c,start){
   return s/w;
 }
 
-// -------------------- ✅ SOC BUFFER ONLY --------------------
+function estimatePV(avgScore, sun, temp, s) {
+  let orientationFactor = getOrientationFactor(s.orientation);
+  let shadingFactor = s.shading / 100;
+
+  let raw = s.pvSize * sun * avgScore *
+            (s.efficiency/100) *
+            temperatureEfficiency(temp) *
+            orientationFactor *
+            shadingFactor;
+
+  let limit = s.inverter * sun;
+
+  return Math.min(raw, limit);
+}
+
+// ✅ ONLY CHANGE: SOC BUFFER ADDED
 function recommendedSOC(pv, s){
 
   let shortfall = Math.max(0, s.dailyLoad - pv);
@@ -299,6 +316,16 @@ function recommendedSOC(pv, s){
   if(soc > s.socHigh) soc = s.socHigh;
 
   return Math.round(soc);
+}
+
+function weatherSummary(c,r,t,h,p){
+  return `
+    🌤️ Cloud: ${c.toFixed(0)}%<br>
+    ☀️ Radiation: ${r.toFixed(0)} W/m²<br>
+    🌡️ Temp (midday): ${t.toFixed(1)}°C<br>
+    💧 Humidity: ${h.toFixed(0)}%<br>
+    🌧️ Precip: ${p.toFixed(2)} mm
+  `;
 }
 
 // -------------------- MAIN --------------------
@@ -357,12 +384,7 @@ async function runAI(){
     html+=`
       <div class="card">
         <h3>${label}</h3>
-
-        🌤️ Cloud: ${weightedCloudAverage(cloud,start).toFixed(0)}%<br>
-        ☀️ Radiation: ${avgRad.toFixed(0)} W/m²<br>
-        🌡️ Temp: ${midTemp.toFixed(1)}°C<br>
-        💧 Humidity: ${hum[start+12].toFixed(0)}%<br>
-        🌧️ Precip: ${precip[start+12].toFixed(2)} mm<br>
+        ${weatherSummary(weightedCloudAverage(cloud,start),avgRad,midTemp,hum[start+12],precip[start+12])}
 
         <br><b>🔆 Usable Solar Window:</b> ${split.morning + split.afternoon} hours
 
@@ -376,6 +398,7 @@ async function runAI(){
   document.getElementById("loading").innerText="";
 }
 
+// -------------------- INIT --------------------
 window.onload = () => {
   preloadWeather();
 };
