@@ -91,8 +91,9 @@
 
 <script>
 
+const SOLAR_THRESHOLD = 120;
+
 let preloadedWeather = null;
-let radGlobal = null; // used for daylight cloud filtering
 
 // -------------------- SETTINGS --------------------
 function getSettings() {
@@ -114,16 +115,16 @@ function getSettings() {
 
 function saveSettings() {
   let settings = {
-    postcode: document.getElementById("postcode").value,
-    pvSize: parseFloat(document.getElementById("pvSize").value),
-    inverter: parseFloat(document.getElementById("inverter").value),
-    battery: parseFloat(document.getElementById("battery").value),
-    orientation: document.getElementById("orientation").value,
-    shading: parseFloat(document.getElementById("shading").value),
-    dailyLoad: parseFloat(document.getElementById("dailyLoad").value),
-    efficiency: parseFloat(document.getElementById("efficiency").value),
-    socLow: parseFloat(document.getElementById("socLow").value),
-    socHigh: parseFloat(document.getElementById("socHigh").value)
+    postcode: postcode.value,
+    pvSize: +pvSize.value,
+    inverter: +inverter.value,
+    battery: +battery.value,
+    orientation: orientation.value,
+    shading: +shading.value,
+    dailyLoad: +dailyLoad.value,
+    efficiency: +efficiency.value,
+    socLow: +socLow.value,
+    socHigh: +socHigh.value
   };
 
   localStorage.setItem("settings", JSON.stringify(settings));
@@ -136,20 +137,20 @@ function saveSettings() {
 function loadSettingsToUI() {
   let s = getSettings();
 
-  document.getElementById("postcode").value = s.postcode;
-  document.getElementById("pvSize").value = s.pvSize;
-  document.getElementById("inverter").value = s.inverter;
-  document.getElementById("battery").value = s.battery;
-  document.getElementById("orientation").value = s.orientation;
-  document.getElementById("shading").value = s.shading;
-  document.getElementById("dailyLoad").value = s.dailyLoad;
-  document.getElementById("efficiency").value = s.efficiency;
-  document.getElementById("socLow").value = s.socLow;
-  document.getElementById("socHigh").value = s.socHigh;
+  postcode.value = s.postcode;
+  pvSize.value = s.pvSize;
+  inverter.value = s.inverter;
+  battery.value = s.battery;
+  orientation.value = s.orientation;
+  shading.value = s.shading;
+  dailyLoad.value = s.dailyLoad;
+  efficiency.value = s.efficiency;
+  socLow.value = s.socLow;
+  socHigh.value = s.socHigh;
 }
 
 function toggleSettings() {
-  document.getElementById("settingsPanel").classList.toggle("hidden");
+  settingsPanel.classList.toggle("hidden");
   loadSettingsToUI();
 }
 
@@ -240,28 +241,20 @@ function getOrientationFactor(o) {
   return 1;
 }
 
-function applyOrientationToSun(morning, afternoon, orientation) {
-  if (orientation === "south") return morning + afternoon;
-  if (orientation === "se_sw") return (morning * 0.95) + (afternoon * 0.95);
-  if (orientation === "east_west") return (morning * 1.2) + (afternoon * 0.8);
-  if (orientation === "north") return (morning + afternoon) * 0.65;
-  return morning + afternoon;
-}
-
 function temperatureEfficiency(t) {
   let f = 1 + ((t - 25) * -0.004);
   return Math.min(1.05, Math.max(0.8, f));
 }
 
-function daylightHours(radSlice, threshold = 100) {
-  return radSlice.filter(r => r > threshold);
+function daylightHours(radSlice) {
+  return radSlice.filter(r => r > SOLAR_THRESHOLD);
 }
 
 function sunshineSplit(r,start){
   let morning=0, afternoon=0;
 
   for(let i=0;i<24;i++){
-    if(r[start+i] > 120){
+    if(r[start+i] > SOLAR_THRESHOLD){
       if(i < 12) morning++;
       else afternoon++;
     }
@@ -281,7 +274,7 @@ function weightedCloudAverage(c, r, start){
   for(let i=0;i<24;i++){
     let radVal = r[start+i];
 
-    if(radVal > 100){
+    if(radVal > SOLAR_THRESHOLD){
       let weight = radVal;
 
       sum += c[start+i] * weight;
@@ -309,7 +302,7 @@ function estimatePV(avgScore, sun, temp, s) {
   return Math.min(raw, limit);
 }
 
-// ✅ SOC BUFFER ADDED
+// -------------------- SOC --------------------
 function recommendedSOC(pv, s){
 
   let shortfall = Math.max(0, s.dailyLoad - pv);
@@ -328,6 +321,27 @@ function recommendedSOC(pv, s){
   return Math.round(soc);
 }
 
+function getSolarTimeRange(radSlice, timeSlice) {
+  let startTime = null;
+  let endTime = null;
+
+  for (let i = 0; i < 24; i++) {
+    if (radSlice[i] > SOLAR_THRESHOLD) {
+      if (startTime === null) {
+        startTime = timeSlice[i];
+      }
+      endTime = timeSlice[i];
+    }
+  }
+
+  if (!startTime || !endTime) return "No data";
+
+  let start = new Date(startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  let end = new Date(endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  return `${start} – ${end}`;
+}
+
 function weatherSummary(c,r,t,h,p){
   return `
     🌤️ Cloud (daylight): ${c.toFixed(0)}%<br>
@@ -338,60 +352,11 @@ function weatherSummary(c,r,t,h,p){
   `;
 }
 
-function getSolarTimeRange(radSlice, timeSlice) {
-  let startTime = null;
-  let endTime = null;
-
-  for (let i = 0; i < 24; i++) {
-    if (radSlice[i] > 120) {
-      if (startTime === null) {
-        startTime = timeSlice[i];
-      }
-      endTime = timeSlice[i];
-    }
-  }
-
-  if (!startTime || !endTime) return "No data";
-
-  // Format to HH:MM
-  let start = new Date(startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  let end = new Date(endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-  return `${start} – ${end}`;
-}
-
-function daylightAverages(start, rad, temp, hum, precip){
-
-  let tSum=0, hSum=0, pSum=0, wSum=0;
-
-  for(let i=0;i<24;i++){
-    let r = rad[start+i];
-
-    // Only daylight hours
-    if(r > 100){
-      let weight = r; // weight by radiation intensity
-
-      tSum += temp[start+i] * weight;
-      hSum += hum[start+i] * weight;
-      pSum += precip[start+i] * weight;
-      wSum += weight;
-    }
-  }
-
-  if(wSum === 0) wSum = 1;
-
-  return {
-    temp: tSum / wSum,
-    hum: hSum / wSum,
-    precip: pSum / wSum
-  };
-}
-  
 // -------------------- MAIN --------------------
 async function runAI(){
 
   let s=getSettings();
-  document.getElementById("loading").innerText="Loading...";
+  loading.innerText="Loading...";
 
   let data = preloadedWeather || await getWeather(s.postcode);
 
@@ -401,8 +366,6 @@ async function runAI(){
   let hum=data.hourly.relativehumidity_2m;
   let precip=data.hourly.precipitation;
   let time = data.hourly.time;
-
-  radGlobal = rad; // store globally for cloud filtering
 
   let html="";
 
@@ -418,69 +381,66 @@ async function runAI(){
 
     let scoreSum = 0, scoreWeight = 0;
 
-for(let i=0;i<24;i++){
-  let rVal = rad[start+i];
+    for(let i=0;i<24;i++){
+      let rVal = rad[start+i];
 
-  if(rVal > 100){
-    let score = hourlySolarScore(cloud[start+i], rVal);
-    let weight = rVal;
+      if(rVal > SOLAR_THRESHOLD){
+        let score = hourlySolarScore(cloud[start+i], rVal);
+        let weight = rVal;
 
-    scoreSum += score * weight;
-    scoreWeight += weight;
-  }
-}
+        scoreSum += score * weight;
+        scoreWeight += weight;
+      }
+    }
 
-let avgScore = scoreWeight ? (scoreSum / scoreWeight) : 0;
+    let avgScore = scoreWeight ? (scoreSum / scoreWeight) : 0;
+
     let split = sunshineSplit(rad,start);
 
     let timeRange = getSolarTimeRange(
-  rad.slice(start, start + 24),
-  time.slice(start, start + 24)
-);
-
-    let sun = applyOrientationToSun(
-      split.morning,
-      split.afternoon,
-      s.orientation
+      rad.slice(start, start + 24),
+      time.slice(start, start + 24)
     );
 
-   let daylight = daylightAverages(start, rad, temp, hum, precip);
+    let sun = split.morning + split.afternoon;
 
-    let midTemp = daylight.temp;
+    let midTemp = temp[start+12];
 
     let pv=estimatePV(avgScore,sun,midTemp,s);
     let soc=recommendedSOC(pv,s);
 
-  let label = d===0
-  ? "Today"
-  : d===1
-    ? "<span style='color:red;font-weight:bold'>Tomorrow</span>"
-    : "The day after tomorrow";
+    let label = d===0
+      ? "Today"
+      : d===1
+        ? "<span style='color:red;font-weight:bold'>Tomorrow</span>"
+        : "The day after tomorrow";
 
     html+=`
       <div class="card">
         <h3>${label}</h3>
-        ${weatherSummary(
- weightedCloudAverage(cloud, rad, start) ,
-  avgRad,
-  daylight.temp,
-  daylight.hum,
-  daylight.precip
-)}
 
-       <br><b>🔆 Usable Solar Window:</b> ${split.morning + split.afternoon} hours
-<br><b>⏱️ Time Range:</b> ${timeRange}
+        ${weatherSummary(
+          weightedCloudAverage(cloud, rad, start),
+          avgRad,
+          temp[start+12],
+          hum[start+12],
+          precip[start+12]
+        )}
+
+        <br><b>🔆 Usable Solar Window:</b> ${sun} hours
+        <br><b>⏱️ Time Range:</b> ${timeRange}
 
         <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
-       <br><b>🔋 Recommended SOC for prior night grid charge:</b> ${d===1
-  ? `<span style="color:red;font-weight:bold">${soc}%</span>`
-  : `${soc}%`}
+
+        <br><b>🔋 Recommended SOC for prior night grid charge:</b> ${d===1
+          ? `<span style="color:red;font-weight:bold">${soc}%</span>`
+          : `${soc}%`}
       </div>
     `;
   }
 
-  document.getElementById("output").innerHTML=html;
-  document.getElementById("loading").innerText="";
+  output.innerHTML=html;
+  loading.innerText="";
 }
 
 // -------------------- INIT --------------------
