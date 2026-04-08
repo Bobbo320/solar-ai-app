@@ -169,27 +169,17 @@ function renderPVTable() {
 
   let today = new Date().toISOString().split("T")[0];
 
-Object.keys(data).sort().forEach(date => {
-  if (date !== today) return;
+  Object.keys(data).sort().forEach(date => {
+    if (date !== today) return;
+
     let row = data[date];
 
     let tr = document.createElement("tr");
 
     tr.setAttribute("data-date", date);
 
-tr.innerHTML = `
-  <td>${date}</td>
-  <td>${row.expected ? row.expected.toFixed(1) : "-"}</td>
-  <td>
-    <input type="number" value="${row.manual || ""}" 
-      onchange="updateManualPV('${date}', this.value)">
-  </td>
-  <td>
-    <button onclick="deletePVRow('${date}')">Delete</button>
-    <span class="saveTick" style="margin-left:10px; color:lightgreen;"></span>
-  </td>
-`;
-      <th>Today (${new Date().toISOString().split("T")[0]})</th>
+    tr.innerHTML = `
+      <td>${date}</td>
       <td>${row.expected ? row.expected.toFixed(1) : "-"}</td>
       <td>
         <input type="number" value="${row.manual || ""}" 
@@ -197,14 +187,16 @@ tr.innerHTML = `
       </td>
       <td>
         <button onclick="deletePVRow('${date}')">Delete</button>
+        <span class="saveTick" style="margin-left:10px; color:lightgreen;"></span>
       </td>
     `;
 
     tbody.appendChild(tr);
-
-    let factor = getCalibrationFactor();
-document.getElementById("calFactor").innerText = factor.toFixed(2);
   });
+
+  // ✅ Calibration factor display (run once)
+  let factor = getCalibrationFactor();
+  document.getElementById("calFactor").innerText = factor.toFixed(2);
 }
 
 function updateManualPV(date, value) {
