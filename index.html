@@ -390,7 +390,11 @@ async function runAI(){
     let pv=estimatePV(avgScore,sun,midTemp,s);
     let soc=recommendedSOC(pv,s);
 
-    let label=d===0?"Today":d===1?"Tomorrow":"The day after tomorrow";
+  let label = d===0
+  ? "Today"
+  : d===1
+    ? "<span style='color:red;font-weight:bold'>Tomorrow</span>"
+    : "The day after tomorrow";
 
     html+=`
       <div class="card">
@@ -400,7 +404,9 @@ async function runAI(){
         <br><b>🔆 Usable Solar Window:</b> ${split.morning + split.afternoon} hours
 
         <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
-        <br><b>🔋 Recommended SOC for prior night grid charge:</b> ${soc}%
+       <br><b>🔋 Recommended SOC for prior night grid charge:</b> ${d===1
+  ? `<span style="color:red;font-weight:bold">${soc}%</span>`
+  : `${soc}%`}
       </div>
     `;
   }
