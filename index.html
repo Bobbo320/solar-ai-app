@@ -337,6 +337,28 @@ function weatherSummary(c,r,t,h,p){
   `;
 }
 
+function getSolarTimeRange(radSlice, timeSlice) {
+  let startTime = null;
+  let endTime = null;
+
+  for (let i = 0; i < 24; i++) {
+    if (radSlice[i] > 120) {
+      if (startTime === null) {
+        startTime = timeSlice[i];
+      }
+      endTime = timeSlice[i];
+    }
+  }
+
+  if (!startTime || !endTime) return "No data";
+
+  // Format to HH:MM
+  let start = new Date(startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  let end = new Date(endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  return `${start} – ${end}`;
+}
+  
 // -------------------- MAIN --------------------
 async function runAI(){
 
@@ -350,6 +372,7 @@ async function runAI(){
   let temp=data.hourly.temperature_2m;
   let hum=data.hourly.relativehumidity_2m;
   let precip=data.hourly.precipitation;
+  let time = data.hourly.time;
 
   radGlobal = rad; // store globally for cloud filtering
 
@@ -379,6 +402,11 @@ async function runAI(){
 
     let split = sunshineSplit(rad,start);
 
+    let timeRange = getSolarTimeRange(
+  rad.slice(start, start + 24),
+  time.slice(start, start + 24)
+);
+
     let sun = applyOrientationToSun(
       split.morning,
       split.afternoon,
@@ -401,7 +429,8 @@ async function runAI(){
         <h3>${label}</h3>
         ${weatherSummary(weightedCloudAverage(cloud,start),avgRad,midTemp,hum[start+12],precip[start+12])}
 
-        <br><b>🔆 Usable Solar Window:</b> ${split.morning + split.afternoon} hours
+       <br><b>🔆 Usable Solar Window:</b> ${split.morning + split.afternoon} hours
+<br><b>⏱️ Time Range:</b> ${timeRange}
 
         <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
        <br><b>🔋 Recommended SOC for prior night grid charge:</b> ${d===1
