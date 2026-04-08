@@ -29,6 +29,33 @@
       margin-bottom: 10px;
     }
     .hidden { display: none; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+
+    th, td {
+      border: 1px solid #444;
+      padding: 8px;
+      text-align: center;
+    }
+
+    th {
+      background: #334155;
+    }
+
+    .tab-btn {
+      background: #334155;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+
+    .tab-btn.active {
+      background: #0ea5e9;
+    }
   </style>
 </head>
 
@@ -38,6 +65,7 @@
 
 <button onclick="toggleSettings()">⚙️ Settings</button>
 <button onclick="runAI()">Plan Next 3 Days</button>
+<button onclick="showManualTab()">📊 Manual PV</button>
 
 <div id="settingsPanel" class="card hidden">
   <h3>Settings</h3>
@@ -86,13 +114,36 @@
   <button onclick="saveSettings()">Save</button>
 </div>
 
+<!-- ================= MANUAL PV TAB ================= -->
+<div id="manualPanel" class="card hidden">
+  <h3>📊 Manual PV Entries</h3>
+
+  <label>Date:</label><br>
+  <input type="date" id="manualDate"><br>
+
+  <label>Expected PV (kWh):</label><br>
+  <input type="number" id="manualPV"><br>
+
+  <button onclick="addManualEntry()">Add Entry</button>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Expected PV (kWh)</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody id="manualTable"></tbody>
+  </table>
+</div>
+
 <p id="loading"></p>
 <div id="output"></div>
 
 <script>
 
 const SOLAR_THRESHOLD = 120;
-
 let preloadedWeather = null;
 
 // -------------------- SETTINGS --------------------
@@ -151,7 +202,66 @@ function loadSettingsToUI() {
 
 function toggleSettings() {
   settingsPanel.classList.toggle("hidden");
+  manualPanel.classList.add("hidden");
   loadSettingsToUI();
+}
+
+function showManualTab() {
+  settingsPanel.classList.add("hidden");
+  manualPanel.classList.toggle("hidden");
+  loadManualTable();
+}
+
+// -------------------- MANUAL PV STORAGE --------------------
+function getManualData() {
+  return JSON.parse(localStorage.getItem("manualPV") || "[]");
+}
+
+function saveManualData(data) {
+  localStorage.setItem("manualPV", JSON.stringify(data));
+}
+
+function addManualEntry() {
+  let date = manualDate.value;
+  let pv = parseFloat(manualPV.value);
+
+  if (!date || isNaN(pv)) {
+    alert("Enter valid data");
+    return;
+  }
+
+  let data = getManualData();
+  data.push({ date, pv });
+
+  saveManualData(data);
+  loadManualTable();
+
+  manualDate.value = "";
+  manualPV.value = "";
+}
+
+function deleteManualEntry(index) {
+  let data = getManualData();
+  data.splice(index, 1);
+  saveManualData(data);
+  loadManualTable();
+}
+
+function loadManualTable() {
+  let data = getManualData();
+  let tbody = document.getElementById("manualTable");
+
+  tbody.innerHTML = "";
+
+  data.forEach((row, i) => {
+    tbody.innerHTML += `
+      <tr>
+        <td>${row.date}</td>
+        <td>${row.pv}</td>
+        <td><button onclick="deleteManualEntry(${i})">Delete</button></td>
+      </tr>
+    `;
+  });
 }
 
 // -------------------- CACHE --------------------
@@ -321,37 +431,6 @@ function recommendedSOC(pv, s){
   return Math.round(soc);
 }
 
-function getSolarTimeRange(radSlice, timeSlice) {
-  let startTime = null;
-  let endTime = null;
-
-  for (let i = 0; i < 24; i++) {
-    if (radSlice[i] > SOLAR_THRESHOLD) {
-      if (startTime === null) {
-        startTime = timeSlice[i];
-      }
-      endTime = timeSlice[i];
-    }
-  }
-
-  if (!startTime || !endTime) return "No data";
-
-  let start = new Date(startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  let end = new Date(endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-  return `${start} – ${end}`;
-}
-
-function weatherSummary(c,r,t,h,p){
-  return `
-    🌤️ Cloud (daylight): ${c.toFixed(0)}%<br>
-    ☀️ Radiation (daylight avg): ${r.toFixed(0)} W/m²<br>
-    🌡️ Temp (daylight avg): ${t.toFixed(1)}°C<br>
-    💧 Humidity (daylight avg): ${h.toFixed(0)}%<br>
-    🌧️ Precip (daylight total): ${p.toFixed(2)} mm
-  `;
-}
-
 // -------------------- MAIN --------------------
 async function runAI(){
 
@@ -397,11 +476,6 @@ async function runAI(){
 
     let split = sunshineSplit(rad,start);
 
-    let timeRange = getSolarTimeRange(
-      rad.slice(start, start + 24),
-      time.slice(start, start + 24)
-    );
-
     let sun = split.morning + split.afternoon;
 
     let midTemp = temp[start+12];
@@ -419,22 +493,9 @@ async function runAI(){
       <div class="card">
         <h3>${label}</h3>
 
-        ${weatherSummary(
-          weightedCloudAverage(cloud, rad, start),
-          avgRad,
-          temp[start+12],
-          hum[start+12],
-          precip[start+12]
-        )}
-
         <br><b>🔆 Usable Solar Window:</b> ${sun} hours
-        <br><b>⏱️ Time Range:</b> ${timeRange}
-
         <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
-
-        <br><b>🔋 Recommended SOC for prior night grid charge:</b> ${d===1
-          ? `<span style="color:red;font-weight:bold">${soc}%</span>`
-          : `${soc}%`}
+        <br><b>🔋 Recommended SOC:</b> ${soc}%
       </div>
     `;
   }
@@ -446,6 +507,7 @@ async function runAI(){
 // -------------------- INIT --------------------
 window.onload = () => {
   preloadWeather();
+  loadManualTable();
 };
 
 </script>
