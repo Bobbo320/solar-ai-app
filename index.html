@@ -38,23 +38,12 @@
 
     th, td {
       border: 1px solid #444;
-      padding: 8px;
+      padding: 6px;
       text-align: center;
     }
 
     th {
       background: #334155;
-    }
-
-    .tab-btn {
-      background: #334155;
-      color: white;
-      border: none;
-      cursor: pointer;
-    }
-
-    .tab-btn.active {
-      background: #0ea5e9;
     }
   </style>
 </head>
@@ -65,7 +54,7 @@
 
 <button onclick="toggleSettings()">⚙️ Settings</button>
 <button onclick="runAI()">Plan Next 3 Days</button>
-<button onclick="showManualTab()">📊 Manual PV</button>
+<button onclick="toggleManual()">📊 Manual PV</button>
 
 <div id="settingsPanel" class="card hidden">
   <h3>Settings</h3>
@@ -114,26 +103,17 @@
   <button onclick="saveSettings()">Save</button>
 </div>
 
-<!-- ================= MANUAL PV TAB ================= -->
+<!-- Manual PV TAB -->
 <div id="manualPanel" class="card hidden">
-  <h3>📊 Manual PV Entries</h3>
+  <h3>📊 Manual PV Data</h3>
 
-  <label>Date:</label><br>
   <input type="date" id="manualDate"><br>
+  <input type="number" id="manualExpected" placeholder="Expected PV"><br>
+  <input type="number" id="manualActual" placeholder="Actual PV"><br>
 
-  <label>Expected PV (kWh):</label><br>
-  <input type="number" id="manualPV"><br>
-
-  <button onclick="addManualEntry()">Add Entry</button>
+  <button onclick="addManualEntry()">Save</button>
 
   <table>
-    <thead>
-      <tr>
-        <th>Date</th>
-        <th>Expected PV (kWh)</th>
-        <th>Action</th>
-      </tr>
-    </thead>
     <tbody id="manualTable"></tbody>
   </table>
 </div>
@@ -145,6 +125,97 @@
 
 const SOLAR_THRESHOLD = 120;
 let preloadedWeather = null;
+
+// -------------------- PATCH: MANUAL STORAGE --------------------
+function getManualData(){
+  return JSON.parse(localStorage.getItem("manualPV") || "[]");
+}
+
+function saveManualData(data){
+  localStorage.setItem("manualPV", JSON.stringify(data));
+}
+
+function storeExpectedPV(date, pv){
+  let data = getManualData();
+
+  let existing = data.find(d => d.date === date);
+
+  if(existing){
+    existing.expected = pv;
+  } else {
+    data.push({ date, expected: pv, actual: null });
+  }
+
+  saveManualData(data);
+}
+
+function getCalibrationFactor(){
+  let data = getManualData();
+
+  let ratios = [];
+
+  data.forEach(d=>{
+    if(d.expected && d.actual && d.expected > 0){
+      ratios.push(d.actual / d.expected);
+    }
+  });
+
+  if(ratios.length === 0) return 1;
+
+  return ratios.reduce((a,b)=>a+b,0) / ratios.length;
+}
+
+// -------------------- MANUAL UI --------------------
+function toggleManual(){
+  manualPanel.classList.toggle("hidden");
+  renderManualTable();
+}
+
+function addManualEntry(){
+  let date = manualDate.value;
+  let expected = parseFloat(manualExpected.value);
+  let actual = parseFloat(manualActual.value);
+
+  if(!date) return alert("Select date");
+
+  let data = getManualData();
+  let existing = data.find(d => d.date === date);
+
+  if(existing){
+    existing.expected = isNaN(expected) ? existing.expected : expected;
+    existing.actual = isNaN(actual) ? existing.actual : actual;
+  } else {
+    data.push({date, expected, actual});
+  }
+
+  saveManualData(data);
+  renderManualTable();
+}
+
+function deleteEntry(i){
+  let data = getManualData();
+  data.splice(i,1);
+  saveManualData(data);
+  renderManualTable();
+}
+
+function renderManualTable(){
+  let data = getManualData();
+  let tbody = document.getElementById("manualTable");
+
+  tbody.innerHTML = "";
+
+  data.forEach((d,i)=>{
+    tbody.innerHTML += `
+      <tr>
+        <td>${d.date}</td>
+        <td>${d.expected ?? ""}</td>
+        <td>${d.actual ?? ""}</td>
+        <td><button onclick="deleteEntry(${i})">Delete</button></td>
+      </tr>
+    `;
+  });
+}
 
 // -------------------- SETTINGS --------------------
 function getSettings() {
@@ -202,66 +273,7 @@ function loadSettingsToUI() {
 
 function toggleSettings() {
   settingsPanel.classList.toggle("hidden");
-  manualPanel.classList.add("hidden");
   loadSettingsToUI();
-}
-
-function showManualTab() {
-  settingsPanel.classList.add("hidden");
-  manualPanel.classList.toggle("hidden");
-  loadManualTable();
-}
-
-// -------------------- MANUAL PV STORAGE --------------------
-function getManualData() {
-  return JSON.parse(localStorage.getItem("manualPV") || "[]");
-}
-
-function saveManualData(data) {
-  localStorage.setItem("manualPV", JSON.stringify(data));
-}
-
-function addManualEntry() {
-  let date = manualDate.value;
-  let pv = parseFloat(manualPV.value);
-
-  if (!date || isNaN(pv)) {
-    alert("Enter valid data");
-    return;
-  }
-
-  let data = getManualData();
-  data.push({ date, pv });
-
-  saveManualData(data);
-  loadManualTable();
-
-  manualDate.value = "";
-  manualPV.value = "";
-}
-
-function deleteManualEntry(index) {
-  let data = getManualData();
-  data.splice(index, 1);
-  saveManualData(data);
-  loadManualTable();
-}
-
-function loadManualTable() {
-  let data = getManualData();
-  let tbody = document.getElementById("manualTable");
-
-  tbody.innerHTML = "";
-
-  data.forEach((row, i) => {
-    tbody.innerHTML += `
-      <tr>
-        <td>${row.date}</td>
-        <td>${row.pv}</td>
-        <td><button onclick="deleteManualEntry(${i})">Delete</button></td>
-      </tr>
-    `;
-  });
 }
 
 // -------------------- CACHE --------------------
@@ -448,6 +460,8 @@ async function runAI(){
 
   let html="";
 
+  let calibration = getCalibrationFactor();
+
   for(let d=0;d<3;d++){
 
     let start=d*24;
@@ -481,6 +495,15 @@ async function runAI(){
     let midTemp = temp[start+12];
 
     let pv=estimatePV(avgScore,sun,midTemp,s);
+
+    // ✅ STORE EXPECTED PV
+    let today = new Date();
+    let targetDate = new Date(today);
+    targetDate.setDate(today.getDate()+d);
+    let isoDate = targetDate.toISOString().split("T")[0];
+
+    storeExpectedPV(isoDate, pv);
+
     let soc=recommendedSOC(pv,s);
 
     let label = d===0
@@ -493,9 +516,11 @@ async function runAI(){
       <div class="card">
         <h3>${label}</h3>
 
-        <br><b>🔆 Usable Solar Window:</b> ${sun} hours
         <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
-        <br><b>🔋 Recommended SOC:</b> ${soc}%
+
+        <br><b>🔋 Recommended SOC for prior night grid charge:</b> ${d===1
+          ? `<span style="color:red;font-weight:bold">${soc}%</span>`
+          : `${soc}%`}
       </div>
     `;
   }
@@ -507,7 +532,6 @@ async function runAI(){
 // -------------------- INIT --------------------
 window.onload = () => {
   preloadWeather();
-  loadManualTable();
 };
 
 </script>
