@@ -56,19 +56,19 @@
 
   <label>PV Orientation:</label><br>
   <select id="orientation">
-    <option value="south">South</option>
-    <option value="se_sw">SE / SW</option>
-    <option value="east_west">East / West</option>
-    <option value="north">North</option>
+    <option value="south">South (100% output)</option>
+    <option value="se_sw">SE / SW (92% output)</option>
+    <option value="east_west">East / West (85% output)</option>
+    <option value="north">North (65% output)</option>
   </select><br>
 
   <label>Shading:</label><br>
   <select id="shading">
-    <option value="100">None</option>
-    <option value="90">Very light</option>
-    <option value="80">Light</option>
-    <option value="70">Moderate</option>
-    <option value="50">Heavy</option>
+    <option value="100">None (100% output)</option>
+    <option value="90">Very light (90%)</option>
+    <option value="80">Light (80%)</option>
+    <option value="70">Moderate (70%)</option>
+    <option value="50">Heavy (50%)</option>
   </select><br>
 
   <label>Daily Load (kWh):</label><br>
@@ -93,9 +93,10 @@
 
 let preloadedWeather = null;
 
-// ---------------- SETTINGS ----------------
+// -------------------- SETTINGS --------------------
 function getSettings() {
   let s = JSON.parse(localStorage.getItem("settings") || "{}");
+
   return {
     postcode: s.postcode || "Norwich",
     pvSize: s.pvSize ?? 6.5,
@@ -112,102 +113,132 @@ function getSettings() {
 
 function saveSettings() {
   let settings = {
-    postcode: postcode.value,
-    pvSize: parseFloat(pvSize.value),
-    inverter: parseFloat(inverter.value),
-    battery: parseFloat(battery.value),
-    orientation: orientation.value,
-    shading: parseFloat(shading.value),
-    dailyLoad: parseFloat(dailyLoad.value),
-    efficiency: parseFloat(efficiency.value),
-    socLow: parseFloat(socLow.value),
-    socHigh: parseFloat(socHigh.value)
+    postcode: document.getElementById("postcode").value,
+    pvSize: parseFloat(document.getElementById("pvSize").value),
+    inverter: parseFloat(document.getElementById("inverter").value),
+    battery: parseFloat(document.getElementById("battery").value),
+    orientation: document.getElementById("orientation").value,
+    shading: parseFloat(document.getElementById("shading").value),
+    dailyLoad: parseFloat(document.getElementById("dailyLoad").value),
+    efficiency: parseFloat(document.getElementById("efficiency").value),
+    socLow: parseFloat(document.getElementById("socLow").value),
+    socHigh: parseFloat(document.getElementById("socHigh").value)
   };
+
   localStorage.setItem("settings", JSON.stringify(settings));
+
   preloadWeather();
+
   alert("Saved");
   toggleSettings();
 }
 
 function loadSettingsToUI() {
   let s = getSettings();
-  postcode.value = s.postcode;
-  pvSize.value = s.pvSize;
-  inverter.value = s.inverter;
-  battery.value = s.battery;
-  orientation.value = s.orientation;
-  shading.value = s.shading;
-  dailyLoad.value = s.dailyLoad;
-  efficiency.value = s.efficiency;
-  socLow.value = s.socLow;
-  socHigh.value = s.socHigh;
+
+  document.getElementById("postcode").value = s.postcode;
+  document.getElementById("pvSize").value = s.pvSize;
+  document.getElementById("inverter").value = s.inverter;
+  document.getElementById("battery").value = s.battery;
+  document.getElementById("orientation").value = s.orientation;
+  document.getElementById("shading").value = s.shading;
+  document.getElementById("dailyLoad").value = s.dailyLoad;
+  document.getElementById("efficiency").value = s.efficiency;
+  document.getElementById("socLow").value = s.socLow;
+  document.getElementById("socHigh").value = s.socHigh;
 }
 
 function toggleSettings() {
-  settingsPanel.classList.toggle("hidden");
+  document.getElementById("settingsPanel").classList.toggle("hidden");
   loadSettingsToUI();
 }
 
-// ---------------- CACHE ----------------
-function getCache(k){ return JSON.parse(localStorage.getItem(k)||"null"); }
-function setCache(k,v){ localStorage.setItem(k,JSON.stringify(v)); }
-
-// ---------------- WEATHER ----------------
-async function preloadWeather(){
-  try{
-    let s=getSettings();
-    preloadedWeather=await getWeather(s.postcode);
-  }catch{}
+// -------------------- CACHE --------------------
+function getCache(key) {
+  return JSON.parse(localStorage.getItem(key) || "null");
 }
 
-async function getCoordinates(postcode){
-  try{
-    let c=getCache("coords_"+postcode);
-    if(c) return c;
+function setCache(key, value) {
+  localStorage.setItem(key, JSON.stringify(value));
+}
 
-    let res=await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(postcode)}&count=1`);
-    let d=await res.json();
+// -------------------- PRELOAD --------------------
+async function preloadWeather() {
+  try {
+    let s = getSettings();
+    preloadedWeather = await getWeather(s.postcode);
+  } catch (e) {}
+}
 
-    let coords={lat:d.results[0].latitude, lon:d.results[0].longitude};
-    setCache("coords_"+postcode,coords);
+// -------------------- GEOCODING --------------------
+async function getCoordinates(postcode) {
+  try {
+    let cacheKey = "coords_" + postcode;
+    let cached = getCache(cacheKey);
+
+    if (cached) return cached;
+
+    let res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(postcode)}&count=1`);
+    let data = await res.json();
+
+    if (!data.results || data.results.length === 0) throw new Error();
+
+    let coords = {
+      lat: data.results[0].latitude,
+      lon: data.results[0].longitude
+    };
+
+    setCache(cacheKey, coords);
     return coords;
-  }catch{
-    return {lat:52.63,lon:1.29};
+
+  } catch {
+    return { lat: 52.6309, lon: 1.2974 };
   }
 }
 
-async function getWeather(postcode){
-  try{
-    let c=getCache("weather_"+postcode);
-    if(c && Date.now()-c.timestamp<1800000) return c.data;
+// -------------------- WEATHER --------------------
+async function getWeather(postcode) {
+  try {
+    let cacheKey = "weather_" + postcode;
+    let cached = getCache(cacheKey);
+    let now = Date.now();
 
-    let coord=await getCoordinates(postcode);
+    if (cached && (now - cached.timestamp < 1800000)) {
+      return cached.data;
+    }
 
-    let res=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${coord.lat}&longitude=${coord.lon}&hourly=cloudcover,temperature_2m,shortwave_radiation,relativehumidity_2m,precipitation&forecast_days=3&timezone=auto`);
-    let data=await res.json();
+    let c = await getCoordinates(postcode);
 
-    setCache("weather_"+postcode,{timestamp:Date.now(),data});
+    let res = await fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}&hourly=cloudcover,temperature_2m,shortwave_radiation,relativehumidity_2m,precipitation&forecast_days=3&timezone=auto`
+    );
+
+    let data = await res.json();
+
+    setCache(cacheKey, { timestamp: now, data });
     return data;
-  }catch{
-    return {hourly:{
-      cloudcover:Array(72).fill(50),
-      shortwave_radiation:Array(72).fill(200),
-      temperature_2m:Array(72).fill(15),
-      relativehumidity_2m:Array(72).fill(70),
-      precipitation:Array(72).fill(0)
-    }};
+
+  } catch {
+    return {
+      hourly: {
+        cloudcover: new Array(72).fill(50),
+        shortwave_radiation: new Array(72).fill(200),
+        temperature_2m: new Array(72).fill(15),
+        relativehumidity_2m: new Array(72).fill(70),
+        precipitation: new Array(72).fill(0)
+      }
+    };
   }
 }
 
-// ---------------- SOLAR ----------------
-function temperatureEfficiency(t){
-  return Math.min(1.05,Math.max(0.8,1+((t-25)*-0.004)));
+// -------------------- SOLAR --------------------
+function temperatureEfficiency(t) {
+  let f = 1 + ((t - 25) * -0.004);
+  return Math.min(1.05, Math.max(0.8, f));
 }
 
-function daylightHours(r){ return r.filter(x=>x>100); }
-
-function hourlySolarScore(c,r){
-  return Math.min(1,Math.max(0,(1-c/100)*0.6+(r/1000)*0.4));
+function daylightHours(radSlice, threshold = 100) {
+  return radSlice.filter(r => r > threshold);
 }
 
 function weightedCloudAverage(c,start){
@@ -219,63 +250,39 @@ function weightedCloudAverage(c,start){
   return s/w;
 }
 
-function sunshineSplit(r,start){
-  let m=0,a=0;
-  for(let i=0;i<24;i++){
-    if(r[start+i]>120){ i<12?m++:a++; }
-  }
-  return {morning:m,afternoon:a};
-}
+// ✅ UPDATED SOC BUFFER
+function recommendedSOC(pv, s, avgScore, cloudAvg){
 
-function estimatePV(avgScore,sun,temp,s){
-  let raw=s.pvSize*sun*avgScore*(s.efficiency/100)*temperatureEfficiency(temp)*(s.shading/100);
-  return Math.min(raw,s.inverter*sun);
-}
+  let shortfall = Math.max(0, s.dailyLoad - pv);
 
-// ---------------- WEATHER DISPLAY ----------------
-function weatherSummary(c,r,t,h,p){
-  return `
-    🌤️ Cloud: ${c.toFixed(0)}%<br>
-    ☀️ Radiation: ${r.toFixed(0)} W/m²<br>
-    🌡️ Temp (midday): ${t.toFixed(1)}°C<br>
-    💧 Humidity: ${h.toFixed(0)}%<br>
-    🌧️ Precip: ${p.toFixed(2)} mm
-  `;
-}
+  let buffer = 1.15;
 
-// ---------------- ADAPTIVE SOC ----------------
-function recommendedSOC(pv,s,avgScore,cloudAvg){
-  let shortfall=Math.max(0,s.dailyLoad-pv);
+  if (avgScore < 0.4) buffer = 1.35;
+  else if (avgScore < 0.6) buffer = 1.25;
+  else if (avgScore > 0.8) buffer = 1.10;
 
-  let buffer=1.15;
-  if(avgScore<0.4) buffer=1.35;
-  else if(avgScore<0.6) buffer=1.25;
-  else if(avgScore>0.8) buffer=1.1;
+  if (cloudAvg > 70) buffer += 0.05;
 
-  if(cloudAvg>70) buffer+=0.05;
+  let required = shortfall * buffer;
+  let soc = (required / s.battery) * 100;
 
-  let required=shortfall*buffer;
-  let soc=(required/s.battery)*100;
-
-  if(soc<s.socLow) soc=s.socLow;
-  if(soc>s.socHigh) soc=s.socHigh;
+  if(soc < s.socLow) soc = s.socLow;
+  if(soc > s.socHigh) soc = s.socHigh;
 
   return Math.round(soc);
 }
 
-// ---------------- MAIN ----------------
+// -------------------- MAIN --------------------
 async function runAI(){
 
   let s=getSettings();
-  loading.innerText="Loading...";
+  document.getElementById("loading").innerText="Loading...";
 
-  let data=preloadedWeather||await getWeather(s.postcode);
+  let data = preloadedWeather || await getWeather(s.postcode);
 
   let cloud=data.hourly.cloudcover;
   let rad=data.hourly.shortwave_radiation;
   let temp=data.hourly.temperature_2m;
-  let hum=data.hourly.relativehumidity_2m;
-  let precip=data.hourly.precipitation;
 
   let html="";
 
@@ -283,40 +290,29 @@ async function runAI(){
 
     let start=d*24;
 
-    let dayRad=daylightHours(rad.slice(start,start+24));
-    let avgRad=dayRad.length?dayRad.reduce((a,b)=>a+b)/dayRad.length:0;
+    let dayRad = daylightHours(rad.slice(start, start + 24));
+    let avgRad = dayRad.length ? dayRad.reduce((a,b)=>a+b)/dayRad.length : 0;
 
-    let scores=[];
-    rad.slice(start,start+24).forEach((r,i)=>{
-      if(r>100) scores.push(hourlySolarScore(cloud[start+i],r));
-    });
+    let avgScore = rad.slice(start,start+24)
+      .filter(r => r > 100)
+      .map((r,i)=> (1 - cloud[start+i]/100))
+      .reduce((a,b)=>a+b,0) / 24;
 
-    let avgScore=scores.length?scores.reduce((a,b)=>a+b)/scores.length:0;
+    let pv = s.pvSize * (avgRad/1000) * avgScore *
+      (s.efficiency/100) *
+      temperatureEfficiency(temp[start+12]);
 
-    let split=sunshineSplit(rad,start);
-    let sun=split.morning+split.afternoon;
+    let cloudAvg = weightedCloudAverage(cloud,start);
+    let soc = recommendedSOC(pv, s, avgScore, cloudAvg);
 
-    let midTemp=temp[start+12];
-    let cloudAvg=weightedCloudAverage(cloud,start);
+    let label = d===0?"Today":d===1?"Tomorrow":"The day after tomorrow";
 
-    let pv=estimatePV(avgScore,sun,midTemp,s);
-    let soc=recommendedSOC(pv,s,avgScore,cloudAvg);
-
-    let label=d===0?"Today":d===1?"Tomorrow":"Day 3";
-
-    html+=`
+    html += `
       <div class="card">
         <h3>${label}</h3>
-
-        ${weatherSummary(
-          cloudAvg,
-          avgRad,
-          midTemp,
-          hum[start+12],
-          precip[start+12]
-        )}
-
-        <br><b>🔆 Usable Solar Window:</b> ${split.morning + split.afternoon} hours
+        🌤️ Cloud: ${cloudAvg.toFixed(0)}%<br>
+        ☀️ Radiation: ${avgRad.toFixed(0)} W/m²<br>
+        🌡️ Temp: ${temp[start+12].toFixed(1)}°C<br>
 
         <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
         <br><b>🔋 Recommended SOC:</b> ${soc}%
@@ -324,12 +320,11 @@ async function runAI(){
     `;
   }
 
-  output.innerHTML=html;
-  loading.innerText="";
+  document.getElementById("output").innerHTML=html;
+  document.getElementById("loading").innerText="";
 }
 
-// ---------------- INIT ----------------
-window.onload=()=>preloadWeather();
+window.onload = () => preloadWeather();
 
 </script>
 
