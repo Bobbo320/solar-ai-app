@@ -126,9 +126,7 @@ function saveSettings() {
   };
 
   localStorage.setItem("settings", JSON.stringify(settings));
-
   preloadWeather();
-
   alert("Saved");
   toggleSettings();
 }
@@ -320,18 +318,25 @@ async function runAI(){
 
     let cloudAvg = weightedCloudAverage(cloud,start);
 
-    // ✅ FIXED PV CALCULATION
-    let avgTemp = temp[start + 12];
+    // ✅ FIXED PV CALCULATION (correct scaling)
     let orientationFactor = getOrientationFactor(s.orientation);
     let shadingFactor = s.shading / 100;
-    let radiationFactor = avgRad / 1000;
-    let tempFactor = temperatureEfficiency(avgTemp);
+    let effFactor = s.efficiency / 100;
 
-    let pvRaw = s.pvSize * radiationFactor * tempFactor *
-                orientationFactor * shadingFactor *
-                (s.efficiency / 100);
+    let totalRadiation = dayRad.reduce((a,b)=>a+b, 0);
+    let radiationFactor = totalRadiation / (dayRad.length * 1000);
 
-    let inverterLimit = s.inverter * radiationFactor;
+    let tempFactor = temperatureEfficiency(temp[start + 12]);
+
+    let pvRaw = s.pvSize *
+                radiationFactor *
+                tempFactor *
+                orientationFactor *
+                shadingFactor *
+                effFactor *
+                24;
+
+    let inverterLimit = s.inverter * 24;
 
     let pv = Math.min(pvRaw, inverterLimit);
 
@@ -345,7 +350,7 @@ async function runAI(){
 
         🌤️ Cloud: ${cloudAvg.toFixed(0)}%<br>
         ☀️ Radiation: ${avgRad.toFixed(0)} W/m²<br>
-        🌡️ Temp: ${avgTemp.toFixed(1)}°C<br>
+        🌡️ Temp: ${temp[start+12].toFixed(1)}°C<br>
         💧 Humidity: ${hum[start+12].toFixed(0)}%<br>
         🌧️ Precip: ${precip[start+12].toFixed(2)} mm<br>
 
