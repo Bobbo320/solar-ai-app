@@ -89,6 +89,13 @@
 
  <div id="pvPanel" class="card hidden">
   <h3>📊 PV Data</h3>
+   <label>View:</label>
+<select id="pvViewMode" onchange="renderPVTable()">
+  <option value="today">Today</option>
+  <option value="7days">Last 7 Days</option>
+  <option value="all">All</option>
+</select>
+<br><br>
 <p><b>Calibration Factor:</b> <span id="calFactor">1.00</span></p>
    
   <table border="1" style="width:100%; color:white; border-collapse:collapse;">
@@ -146,19 +153,21 @@ function storeExpectedPV(dayIndex, pvValue) {
 function getCalibrationFactor() {
   let data = getPVData();
 
-  let ratios = [];
+  let totalManual = 0;
+  let totalExpected = 0;
 
   Object.keys(data).forEach(date => {
     let row = data[date];
 
     if (row.expected && row.manual && row.expected > 0) {
-      ratios.push(row.manual / row.expected);
+      totalManual += row.manual;
+      totalExpected += row.expected;
     }
   });
 
-  if (ratios.length === 0) return 1;
+  if (totalExpected === 0) return 1;
 
-  return ratios.reduce((a,b)=>a+b,0) / ratios.length;
+  return totalManual / totalExpected;
 }
 
 function renderPVTable() {
@@ -167,10 +176,30 @@ function renderPVTable() {
 
   tbody.innerHTML = "";
 
-  let today = new Date().toISOString().split("T")[0];
+  let mode = document.getElementById("pvViewMode")?.value || "today";
 
-  Object.keys(data).sort().forEach(date => {
-    if (date !== today) return;
+let today = new Date();
+let todayStr = today.toISOString().split("T")[0];
+
+Object.keys(data).sort().forEach(date => {
+
+  let include = false;
+  let entryDate = new Date(date);
+
+  if (mode === "today") {
+    include = (date === todayStr);
+  }
+
+  if (mode === "7days") {
+    let diff = (today - entryDate) / (1000 * 60 * 60 * 24);
+    include = diff >= 0 && diff <= 7;
+  }
+
+  if (mode === "all") {
+    include = true;
+  }
+
+  if (!include) return;
 
     let row = data[date];
 
