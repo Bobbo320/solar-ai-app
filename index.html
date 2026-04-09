@@ -876,6 +876,10 @@ if (d === 1 && tomorrowSOCValue === null) {
 // -------------------- RENDER --------------------
 
 loading.innerText = "";
+
+// ✅ Append forecast cards AFTER SOC section
+html += forecastHtml;
+
 output.innerHTML = html;
   
 };
