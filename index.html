@@ -29,6 +29,20 @@
       margin-bottom: 10px;
     }
     .hidden { display: none; }
+    .cloud-bar {
+  width: 100%;
+  height: 10px;
+  background: #334155;
+  border-radius: 5px;
+  margin-top: 5px;
+  overflow: hidden;
+}
+
+.cloud-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #38bdf8, #0ea5e9);
+  width: 0%;
+}
   </style>
 </head>
 
@@ -522,26 +536,26 @@ function cloudIntensityFactor(cloud, rad) {
 }
 
 function getCloudThicknessLabel(cloud, rad) {
-  let intensity = cloud / 100;
-
-  // Adjust using radiation
   let radFactor = rad / 1000;
 
-  let score = intensity * (1 - radFactor);
+  let score = (cloud / 100) * (1 - radFactor);
+
+  // Normalize score to 0–1 range for UI
+  let intensity = Math.min(1, Math.max(0, score));
 
   if (cloud < 30 && rad > 300) {
-    return { label: "Thin / Broken Cloud ☁️", score };
+    return { label: "Thin / Broken Cloud ☁️", intensity };
   }
 
   if (cloud >= 30 && cloud <= 70) {
-    return { label: "Moderate Cloud 🌥️", score };
+    return { label: "Moderate Cloud 🌥️", intensity };
   }
 
-  if (cloud > 70 && rad < 200) {
-    return { label: "Thick Cloud ☁️☁️", score };
+  if (cloud > 70) {
+    return { label: "Thick Cloud ☁️☁️", intensity };
   }
 
-  return { label: "Clear / Light Cloud ☀️", score };
+  return { label: "Clear / Light Cloud ☀️", intensity: intensity * 0.5 };
 }
   
 function estimatePV(avgScore, sun, temp, s) {
@@ -739,6 +753,10 @@ html += `
     <b>Live PV:</b> ${nowPV.toFixed(2)} kW<br>
     <b>Cloud:</b> ${nowCloud.toFixed(0)}%<br>
     <b>Cloud Type:</b> ${cloudInfo.label}<br>
+
+<div class="cloud-bar">
+  <div class="cloud-bar-fill" style="width:${(cloudInfo.intensity * 100).toFixed(0)}%"></div>
+</div>
     <b>Temp:</b> ${nowTemp.toFixed(1)}°C<br>
 
     <br><b>Status:</b> ${status}
