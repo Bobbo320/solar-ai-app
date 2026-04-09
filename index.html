@@ -156,11 +156,20 @@ function getCalibrationFactor() {
   let weightedManual = 0;
   let weightedExpected = 0;
 
+  let today = new Date();
+
   Object.keys(data).forEach(date => {
     let row = data[date];
 
-    // Ensure both values exist and are valid
+    let entryDate = new Date(date);
+
+    // Calculate age in days
+    let diffDays = (today - entryDate) / (1000 * 60 * 60 * 24);
+
+    // Only include last 14 days
     if (
+      diffDays >= 0 &&
+      diffDays <= 14 &&
       row.expected !== undefined &&
       row.manual !== undefined &&
       row.expected > 0 &&
@@ -168,16 +177,14 @@ function getCalibrationFactor() {
       !isNaN(row.manual)
     ) {
 
-      // Use expected PV as a proxy for solar radiation weighting
+      // Weight using expected PV (radiation proxy)
       let weight = row.expected;
 
-      // Apply weighting
       weightedManual += row.manual * weight;
       weightedExpected += row.expected * weight;
     }
   });
 
-  // Avoid division by zero
   if (weightedExpected === 0) return 1;
 
   return weightedManual / weightedExpected;
