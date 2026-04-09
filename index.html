@@ -131,7 +131,8 @@
 
 <script>
 
-const SOLAR_THRESHOLD = 50;
+const SOLAR_THRESHOLD = 50;        // used for real PV calculations
+const SOLAR_VISIBLE_THRESHOLD = 30; // used for solar time window display
 
 let preloadedWeather = null;
 
@@ -644,8 +645,7 @@ function getSolarTimeRange(radSlice, timeSlice) {
   let startTime = null;
   let endTime = null;
 
-  for (let i = 0; i < 24; i++) {
-    if (radSlice[i] > 30) {
+  for (let i = 0; i < 24; if (radSlice[i] > SOLAR_VISIBLE_THRESHOLD) {
       if (startTime === null) {
         startTime = timeSlice[i];
       }
@@ -713,9 +713,18 @@ let nowTemp = temp[nowIndex];
 // Convert radiation to PV output (kW)
 let cloudFactorLive = cloudIntensityFactor(nowCloud, nowRad);
 
+// 🔧 soften very low radiation (prevents fake tiny PV)
+let effectiveRad = Math.max(0, nowRad - 20);
+
 let nowPV = (
   s.pvSize *
-  (nowRad / 1000) *
+  (effectiveRad / 1000) *
+  (s.efficiency / 100) *
+  temperatureEfficiency(nowTemp) *
+  getOrientationFactor(s.orientation) *
+  (s.shading / 100) *
+  cloudFactorLive
+);
   (s.efficiency / 100) *
   temperatureEfficiency(nowTemp) *
   getOrientationFactor(s.orientation) *
@@ -731,7 +740,7 @@ nowPV *= getCalibrationFactor();
 
  let status = "";
 
-if (nowRad < 50) {
+if (nowRad < 20) {
   status = "🌙 No solar → discharge or grid use";
 } else if (nowPV < 0.3) {
   status = "🌥️ Very weak → minimal charging";
