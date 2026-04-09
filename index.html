@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+she<!DOCTYPE html>
 <html>
 <head>
   <title>Solar SOC AI Pro</title>
@@ -431,7 +431,8 @@ function sunshineSplit(r,start){
 }
 
 function hourlySolarScore(c, r) {
-  return Math.min(1, Math.max(0, (1-c/100)*0.6 + (r/1000)*0.4));
+  // Radiation-driven model
+  return Math.min(1, Math.max(0, r / 800));
 }
 
 function weightedCloudAverage(c, r, start){
@@ -614,7 +615,14 @@ async function runAI(){
 
     let midTemp = temp[start+12];
 
-    let basePV = estimatePV(avgScore,sun,midTemp,s);
+    let basePV = s.pvSize * avgRad / 1000 * 24 *
+             (s.efficiency/100) *
+             temperatureEfficiency(midTemp) *
+             getOrientationFactor(s.orientation) *
+             (s.shading / 100);
+
+// inverter cap
+basePV = Math.min(basePV, s.inverter * sun);
     let calibration = getCalibrationFactor();
     let pv = basePV * calibration;
 
