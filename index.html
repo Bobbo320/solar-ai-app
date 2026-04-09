@@ -498,6 +498,32 @@ function weightedCloudAverage(c, r, start){
 
   return sum / wSum;
 }
+
+function cloudIntensityFactor(cloud, rad) {
+  // Normalize inputs
+  let cloudFactor = cloud / 100;
+  let radFactor = rad / 1000;
+
+  // Base estimate of how "strong" the sun is relative to cloud
+  let score = radFactor * (1 - cloudFactor);
+
+  // Thin cloud (sun bursts) → boost
+  if (cloud < 30 && rad > 200) {
+    return 1.2;
+  }
+
+  // Moderate cloud → slight reduction
+  if (cloud >= 30 && cloud <= 70) {
+    return 0.9 + (score * 0.3);
+  }
+
+  // Thick cloud → strong reduction
+  if (cloud > 70) {
+    return 0.6 + (score * 0.2);
+  }
+
+  return 1;
+}
   
 function estimatePV(avgScore, sun, temp, s) {
   let orientationFactor = getOrientationFactor(s.orientation);
@@ -643,13 +669,16 @@ let nowTemp = temp[nowIndex];
 // -------------------- LIVE PV ESTIMATE --------------------
 
 // Convert radiation to PV output (kW)
+let cloudFactorLive = cloudIntensityFactor(nowCloud, nowRad);
+
 let nowPV = (
   s.pvSize *
   (nowRad / 1000) *
   (s.efficiency / 100) *
   temperatureEfficiency(nowTemp) *
   getOrientationFactor(s.orientation) *
-  (s.shading / 100)
+  (s.shading / 100) *
+  cloudFactorLive
 );
 
 // inverter cap
@@ -724,11 +753,17 @@ let avgScore = validHours ? (scoreSum / validHours) : 0;
 
     let midTemp = temp[start+12];
 
-    let basePV = s.pvSize * avgRad / 1000 * sun *
+    let cloudFactorDay = cloudIntensityFactor(
+  weightedCloudAverage(cloud, rad, start),
+  avgRad
+);
+
+let basePV = s.pvSize * avgRad / 1000 * sun *
              (s.efficiency/100) *
              temperatureEfficiency(midTemp) *
              getOrientationFactor(s.orientation) *
-             (s.shading / 100);
+             (s.shading / 100) *
+             cloudFactorDay;
 
 // inverter cap
 basePV = Math.min(basePV, s.inverter * sun);
