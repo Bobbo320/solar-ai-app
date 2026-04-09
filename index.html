@@ -763,18 +763,7 @@ html += `
     <br><b>Status:</b> ${status}
   </div>
 `;
-// -------------------- TOMORROW SOC SECTION --------------------
 
-html += `
-  <div class="card">
-    <h3>🔋 Tomorrow Grid Charge Target</h3>
-
-    <b>Recommended SOC:</b>
-    <span style="color:red;font-weight:bold; font-size:18px;">
-      ${tomorrowSOCValue !== null ? tomorrowSOCValue + "%" : "N/A"}
-    </span>
-  </div>
-`;
  for (let d = 0; d < 3; d++) {
 
   let start = d * 24;
@@ -871,7 +860,18 @@ if (d === 1 && tomorrowSOCValue === null) {
     </div>
   `;
 }
+// -------------------- TOMORROW SOC SECTION --------------------
 
+html += `
+  <div class="card">
+    <h3>🔋 Tomorrow Grid Charge Target</h3>
+
+    <b>Recommended SOC:</b>
+    <span style="color:red;font-weight:bold; font-size:18px;">
+      ${tomorrowSOCValue !== null ? tomorrowSOCValue + "%" : "N/A"}
+    </span>
+  </div>
+`;
 
 loading.innerText = "";
 output.innerHTML = html;
