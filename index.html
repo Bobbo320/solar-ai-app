@@ -143,9 +143,17 @@ function storeExpectedPV(dayIndex, pvValue) {
 
   let key = date.toISOString().split("T")[0];
 
-  if (!data[key]) data[key] = {};
+  // Create row if it doesn't exist
+if (!data[key]) data[key] = {};
 
-  data[key].expected = pvValue;
+// ❌ Do NOT overwrite if manual already exists
+if (data[key].manual !== undefined) return;
+
+// ❌ Do NOT overwrite existing expected (preserve history)
+if (data[key].expected !== undefined) return;
+
+// ✅ Safe to store
+data[key].expected = pvValue;
 
   savePVData(data);
 }
@@ -159,35 +167,47 @@ function getCalibrationFactor() {
   let today = new Date();
 
   Object.keys(data).forEach(date => {
-    let row = data[date];
+  let row = data[date];
 
-    let entryDate = new Date(date);
+  let entryDate = new Date(date);
+  let diffDays = (today - entryDate) / (1000 * 60 * 60 * 24);
 
-    // Calculate age in days
-    let diffDays = (today - entryDate) / (1000 * 60 * 60 * 24);
+  if (
+    diffDays >= 0 &&
+    diffDays <= 14 &&
+    row.expected !== undefined &&
+    row.manual !== undefined &&
+    row.expected > 0 &&
+    !isNaN(row.expected) &&
+    !isNaN(row.manual)
+  ) {
 
-    // Only include last 14 days
-    if (
-      diffDays >= 0 &&
-      diffDays <= 14 &&
-      row.expected !== undefined &&
-      row.manual !== undefined &&
-      row.expected > 0 &&
-      !isNaN(row.expected) &&
-      !isNaN(row.manual)
-    ) {
+    let baseWeight = row.expected;
+    // ❌ Outlier protection (bad manual entries)
+let ratio = row.manual / row.expected;
 
-      // Weight using expected PV (radiation proxy)
-      let weight = row.expected;
+// Ignore unrealistic values
+if (ratio < 0.3 || ratio > 1.7) return;
 
-      weightedManual += row.manual * weight;
-      weightedExpected += row.expected * weight;
-    }
-  });
+    // ❌ Ignore weak/noisy days
+    if (baseWeight < 2) return;
+
+    // ✅ Boost strong days
+    let weight = Math.pow(baseWeight, 1.3);
+
+    weightedManual += row.manual * weight;
+    weightedExpected += row.expected * weight;
+  }
+});
 
   if (weightedExpected === 0) return 1;
 
-  return weightedManual / weightedExpected;
+let factor = weightedManual / weightedExpected;
+
+// ✅ Stability clamp (prevents crazy swings)
+factor = Math.max(0.75, Math.min(1.25, factor));
+
+return factor;
 }
 
 function renderPVTable() {
