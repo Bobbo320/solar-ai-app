@@ -622,6 +622,37 @@ async function runAI(){
 
   let html="";
 
+  // -------------------- LIVE NOW --------------------
+let now = new Date();
+
+// Find closest hour index
+let nowIndex = time.findIndex(t => {
+  let tDate = new Date(t);
+  return tDate.getHours() === now.getHours() &&
+         tDate.getDate() === now.getDate();
+});
+
+// fallback if not found
+if (nowIndex === -1) nowIndex = 0;
+
+// Extract current conditions
+let nowRad = rad[nowIndex];
+let nowCloud = cloud[nowIndex];
+let nowTemp = temp[nowIndex];
+
+// Format time nicely
+let nowTimeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+// Build UI card
+html += `
+  <div class="card">
+    <h3>☀️ Now (${nowTimeStr})</h3>
+    <b>Radiation:</b> ${nowRad.toFixed(0)} W/m²<br>
+    <b>Cloud:</b> ${nowCloud.toFixed(0)}%<br>
+    <b>Temp:</b> ${nowTemp.toFixed(1)}°C
+  </div>
+`;
+
   for(let d=0;d<3;d++){
 
     let start=d*24;
