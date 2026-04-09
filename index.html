@@ -828,10 +828,9 @@ html += `
   // ✅ SOC calculation
   let soc = recommendedSOC(pv, s);
 
-  // ✅ Capture tomorrow SOC for display
-  if (d === 1) {
-    tomorrowSOCValue = soc;
-  }
+  // ✅ Capture tomorrow SOC for displayif (d === 1 && tomorrowSOCValue === null) {
+  tomorrowSOCValue = soc;
+}
 
   // Label
   let label = d === 0
