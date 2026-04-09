@@ -828,7 +828,8 @@ html += `
   // ✅ SOC calculation
   let soc = recommendedSOC(pv, s);
 
-  // ✅ Capture tomorrow SOC for displayif (d === 1 && tomorrowSOCValue === null) {
+  // ✅ Capture tomorrow SOC for display
+if (d === 1 && tomorrowSOCValue === null) {
   tomorrowSOCValue = soc;
 }
 
