@@ -211,8 +211,12 @@ Object.keys(data).sort().forEach(date => {
       <td>${date}</td>
       <td>${row.expected ? row.expected.toFixed(1) : "-"}</td>
       <td>
-        <input type="number" value="${row.manual || ""}" 
-          onchange="updateManualPV('${date}', this.value)">
+        <select onchange="changeEntryDate('${date}', this.value)">
+  ${generateDateOptions(date)}
+</select>
+<br>
+<input type="number" step="0.1" value="${row.manual || ""}" 
+  onchange="updateManualPV(this.previousElementSibling.value, this.value)">
       </td>
       <td>
         <button onclick="deletePVRow('${date}')">Delete</button>
@@ -291,6 +295,10 @@ function saveSettings() {
 
   alert("Saved");
   toggleSettings();
+
+  if (!localStorage.getItem("firstUseDate")) {
+  localStorage.setItem("firstUseDate", new Date().toISOString().split("T")[0]);
+}
 }
 
 function loadSettingsToUI() {
@@ -461,6 +469,47 @@ function estimatePV(avgScore, sun, temp, s) {
   return Math.min(raw, limit);
 }
 
+function generateDateOptions(selectedDate) {
+  let data = getPVData();
+
+  // earliest stored date
+  let dates = Object.keys(data);
+  let minDate = dates.length ? dates.sort()[0] : new Date().toISOString().split("T")[0];
+
+  let today = new Date();
+
+  let options = "";
+
+  for (let i = 0; i < 14; i++) { // last 14 days window
+    let d = new Date();
+    d.setDate(today.getDate() - i);
+
+    let dStr = d.toISOString().split("T")[0];
+
+    // disable dates before first use
+    let disabled = dStr < minDate ? "disabled" : "";
+
+    let selected = dStr === selectedDate ? "selected" : "";
+
+    options += `<option value="${dStr}" ${selected} ${disabled}>${dStr}</option>`;
+  }
+
+  return options;
+}
+
+function changeEntryDate(oldDate, newDate) {
+  let data = getPVData();
+
+  if (!data[oldDate]) return;
+
+  // move entry
+  data[newDate] = data[oldDate];
+  delete data[oldDate];
+
+  savePVData(data);
+  renderPVTable();
+}
+  
 // -------------------- SOC --------------------
 function recommendedSOC(pv, s){
 
@@ -569,7 +618,9 @@ async function runAI(){
     let calibration = getCalibrationFactor();
     let pv = basePV * calibration;
 
-    storeExpectedPV(d, basePV);
+    if (d === 1) {
+  storeExpectedPV(1, basePV); // only tomorrow
+}
     
     let soc=recommendedSOC(pv,s);
 
