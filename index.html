@@ -569,14 +569,15 @@ function changeEntryDate(oldDate, newDate) {
 
   if (!data[oldDate]) return;
 
-  // move entry
+  // ✅ Prevent overwriting an existing entry
   if (data[newDate]) {
-  alert("Date already exists. Delete it first.");
-  return;
-}
+    alert("Date already exists. Delete it first.");
+    return;
+  }
 
-data[newDate] = data[oldDate];
-delete data[oldDate];
+  // move entry safely
+  data[newDate] = data[oldDate];
+  delete data[oldDate];
 
   savePVData(data);
   renderPVTable();
