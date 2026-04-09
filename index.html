@@ -786,16 +786,7 @@ for(let i=0;i<24;i++){
   }
 }
 
-html += `
-  <div class="card">
-    <h3>🔋 Tomorrow Grid Charge Target</h3>
 
-    <b>Recommended SOC:</b>
-    <span style="color:red;font-weight:bold; font-size:18px;">
-      ${tomorrowSOCValue !== null ? tomorrowSOCValue + "%" : "N/A"}
-    </span>
-  </div>
-`;
     
 let avgScore = validHours ? (scoreSum / validHours) : 0;
 
@@ -868,6 +859,17 @@ if (d === 1) {
   output.innerHTML=html;
   loading.innerText="";
 }
+
+html += `
+  <div class="card">
+    <h3>🔋 Tomorrow Grid Charge Target</h3>
+
+    <b>Recommended SOC:</b>
+    <span style="color:red;font-weight:bold; font-size:18px;">
+      ${tomorrowSOCValue !== null ? tomorrowSOCValue + "%" : "N/A"}
+    </span>
+  </div>
+`;
   
 // -------------------- INIT --------------------
 window.onload = () => {
