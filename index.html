@@ -153,21 +153,34 @@ function storeExpectedPV(dayIndex, pvValue) {
 function getCalibrationFactor() {
   let data = getPVData();
 
-  let totalManual = 0;
-  let totalExpected = 0;
+  let weightedManual = 0;
+  let weightedExpected = 0;
 
   Object.keys(data).forEach(date => {
     let row = data[date];
 
-    if (row.expected && row.manual && row.expected > 0) {
-      totalManual += row.manual;
-      totalExpected += row.expected;
+    // Ensure both values exist and are valid
+    if (
+      row.expected !== undefined &&
+      row.manual !== undefined &&
+      row.expected > 0 &&
+      !isNaN(row.expected) &&
+      !isNaN(row.manual)
+    ) {
+
+      // Use expected PV as a proxy for solar radiation weighting
+      let weight = row.expected;
+
+      // Apply weighting
+      weightedManual += row.manual * weight;
+      weightedExpected += row.expected * weight;
     }
   });
 
-  if (totalExpected === 0) return 1;
+  // Avoid division by zero
+  if (weightedExpected === 0) return 1;
 
-  return totalManual / totalExpected;
+  return weightedManual / weightedExpected;
 }
 
 function renderPVTable() {
