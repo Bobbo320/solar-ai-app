@@ -215,8 +215,8 @@ Object.keys(data).sort().forEach(date => {
   ${generateDateOptions(date)}
 </select>
 <br>
-<input type="number" step="0.1" value="${row.manual || ""}" 
-  onchange="updateManualPV(this.previousElementSibling.value, this.value)">
+<input type="number" step="0.1" value="${row.manual || ""}" id="manual-${date}">
+<button onclick="saveManual('${date}')">Save</button>
       </td>
       <td>
         <button onclick="deletePVRow('${date}')">Delete</button>
@@ -232,6 +232,11 @@ Object.keys(data).sort().forEach(date => {
   document.getElementById("calFactor").innerText = factor.toFixed(2);
 }
 
+function saveManual(date){
+  let input = document.getElementById("manual-"+date);
+  updateManualPV(date, input.value);
+}
+  
 function updateManualPV(date, value) {
   let data = getPVData();
 
