@@ -785,6 +785,7 @@ for(let i=0;i<24;i++){
     validHours++;
   }
 }
+
 html += `
   <div class="card">
     <h3>🔋 Tomorrow Grid Charge Target</h3>
@@ -795,6 +796,7 @@ html += `
     </span>
   </div>
 `;
+    
 let avgScore = validHours ? (scoreSum / validHours) : 0;
 
     let split = sunshineSplit(rad,start);
@@ -834,6 +836,7 @@ basePV = Math.min(basePV, s.inverter * sun);
 if (d === 1) {
   tomorrowSOCValue = soc;
 }
+    
     let label = d===0
       ? "Today"
       : d===1
