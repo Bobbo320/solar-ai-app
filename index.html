@@ -850,15 +850,10 @@ if (d === 1) {
         <br><b>⏱️ Time Range:</b> ${timeRange}
 
         <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
-
         
       </div>
     `;
   }
-
-  output.innerHTML=html;
-  // -------------------- TOMORROW SOC SECTION --------------------
-
 html += `
   <div class="card">
     <h3>🔋 Tomorrow Grid Charge Target</h3>
@@ -869,6 +864,10 @@ html += `
     </span>
   </div>
 `;
+  output.innerHTML=html;
+  // -------------------- TOMORROW SOC SECTION --------------------
+
+
   loading.innerText="";
 }
   
