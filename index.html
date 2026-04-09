@@ -500,26 +500,22 @@ function weightedCloudAverage(c, r, start){
 }
 
 function cloudIntensityFactor(cloud, rad) {
-  // Normalize inputs
   let cloudFactor = cloud / 100;
-  let radFactor = rad / 1000;
 
-  // Base estimate of how "strong" the sun is relative to cloud
-  let score = radFactor * (1 - cloudFactor);
-
-  // Thin cloud (sun bursts) → boost
-  if (cloud < 30 && rad > 200) {
-    return 1.2;
+  // Thin cloud → strong boost (sun breaks)
+  if (cloud < 30) {
+    if (rad > 200) return 1.25;
+    return 1.1;
   }
 
-  // Moderate cloud → slight reduction
+  // Medium cloud → balanced scaling
   if (cloud >= 30 && cloud <= 70) {
-    return 0.9 + (score * 0.3);
+    return 0.85 + (rad / 1000) * 0.2;
   }
 
   // Thick cloud → strong reduction
   if (cloud > 70) {
-    return 0.6 + (score * 0.2);
+    return 0.6 + (rad / 1000) * 0.1;
   }
 
   return 1;
