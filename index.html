@@ -685,7 +685,61 @@ async function runAI(){
   let hum=data.hourly.relativehumidity_2m;
   let precip=data.hourly.precipitation;
   let time = data.hourly.time;
+let tomorrowSOCValue = null;
+  // -------------------- PRE-CALCULATE TOMORROW SOC --------------------
 
+let tomorrowSOCValue = null;
+
+{
+  let d = 1;
+  let start = d * 24;
+
+  let dayRad = daylightHours(rad.slice(start, start + 24));
+
+  let avgRad = dayRad.length
+    ? dayRad.reduce((a, b) => a + b) / dayRad.length
+    : 0;
+
+  let validHours = 0;
+  let scoreSum = 0;
+
+  for (let i = 0; i < 24; i++) {
+    let rVal = rad[start + i];
+
+    if (rVal > SOLAR_THRESHOLD) {
+      scoreSum += hourlySolarScore(cloud[start + i], rVal);
+      validHours++;
+    }
+  }
+
+  let avgScore = validHours ? (scoreSum / validHours) : 0;
+
+  let split = sunshineSplit(rad, start);
+  let sun = split.morning + split.afternoon;
+
+  let midTemp = temp[start + 12] ?? temp[start];
+
+  let cloudFactorDay = cloudIntensityFactor(
+    weightedCloudAverage(cloud, rad, start),
+    avgRad
+  );
+
+  let basePV = s.pvSize *
+    (avgRad / 1000) *
+    sun *
+    (s.efficiency / 100) *
+    temperatureEfficiency(midTemp) *
+    getOrientationFactor(s.orientation) *
+    (s.shading / 100) *
+    cloudFactorDay;
+
+  basePV = Math.min(basePV, s.inverter * sun);
+
+  let calibration = getCalibrationFactor();
+  let pv = basePV * calibration;
+
+  tomorrowSOCValue = recommendedSOC(pv, s);
+}
   let html="";
 
   // -------------------- LIVE NOW --------------------
