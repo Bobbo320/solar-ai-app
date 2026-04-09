@@ -836,10 +836,10 @@ if (d === 1 && tomorrowSOCValue === null) {
 
   // Label
   let label = d === 0
-    ? "Today"
-    : d === 1
-      ? "<span style='color:red;font-weight:bold'>Tomorrow</span>"
-      : "The day after tomorrow";
+  ? "Today"
+  : d === 1
+    ? "<span style='font-weight:bold'>Tomorrow</span>"
+    : "The day after tomorrow";
 
   // Render card
   forecastHtml += `
