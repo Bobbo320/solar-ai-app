@@ -866,7 +866,7 @@ if (d === 1 && tomorrowSOCValue === null) {
 
 loading.innerText = "";
 
-// ✅ 1. Add Tomorrow SOC FIRST
+// 1. Add SOC FIRST
 html += `
   <div class="card">
     <h3>🔋 Tomorrow Grid Charge Target</h3>
@@ -878,7 +878,7 @@ html += `
   </div>
 `;
 
-// ✅ 2. Then add forecast cards
+// 2. Then append forecast cards
 html += forecastHtml;
 
 output.innerHTML = html;
