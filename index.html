@@ -756,7 +756,7 @@ html += `
     <b>Cloud Type:</b> ${cloudInfo.label}<br>
 
 <div class="cloud-bar">
-  <div class="cloud-bar-fill" style="width:${(cloudInfo.intensity * 100).toFixed(0)}%"></div>
+  <div class="cloud-bar-fill" style="width:${(Math.pow(cloudInfo.intensity, 0.7) * 100).toFixed(0)}%"></div>
 </div>
     <b>Temp:</b> ${nowTemp.toFixed(1)}°C<br>
 
