@@ -866,10 +866,10 @@ if (d === 1 && tomorrowSOCValue === null) {
 
 loading.innerText = "";
 
-// ✅ Append forecast cards AFTER SOC section
+// 1. Add forecast cards
 html += forecastHtml;
-// -------------------- TOMORROW SOC (MOVED HERE) --------------------
 
+// 2. Add Tomorrow SOC HERE (after forecast, after calculation)
 html += `
   <div class="card">
     <h3>🔋 Tomorrow Grid Charge Target</h3>
@@ -880,6 +880,7 @@ html += `
     </span>
   </div>
 `;
+
 output.innerHTML = html;
   
 };
