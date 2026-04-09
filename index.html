@@ -431,8 +431,8 @@ function sunshineSplit(r,start){
 }
 
 function hourlySolarScore(c, r) {
-  // Radiation-driven model
-  return Math.min(1, Math.max(0, r / 800));
+  return Math.min(1, r / 1000);
+}
 }
 
 function weightedCloudAverage(c, r, start){
@@ -588,21 +588,19 @@ async function runAI(){
       ? dayRad.reduce((a,b)=>a+b) / dayRad.length
       : 0;
 
-    let scoreSum = 0, scoreWeight = 0;
+    let validHours = 0;
+let scoreSum = 0;
 
-    for(let i=0;i<24;i++){
-      let rVal = rad[start+i];
+for(let i=0;i<24;i++){
+  let rVal = rad[start+i];
 
-      if(rVal > SOLAR_THRESHOLD){
-        let score = hourlySolarScore(cloud[start+i], rVal);
-        let weight = rVal;
+  if(rVal > SOLAR_THRESHOLD){
+    scoreSum += hourlySolarScore(cloud[start+i], rVal);
+    validHours++;
+  }
+}
 
-        scoreSum += score * weight;
-        scoreWeight += weight;
-      }
-    }
-
-    let avgScore = scoreWeight ? (scoreSum / scoreWeight) : 0;
+let avgScore = validHours ? (scoreSum / validHours) : 0;
 
     let split = sunshineSplit(rad,start);
 
