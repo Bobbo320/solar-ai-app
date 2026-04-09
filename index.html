@@ -615,7 +615,7 @@ async function runAI(){
 
     let midTemp = temp[start+12];
 
-    let basePV = s.pvSize * avgRad / 1000 * 24 *
+    let basePV = s.pvSize * avgRad / 1000 * sun *
              (s.efficiency/100) *
              temperatureEfficiency(midTemp) *
              getOrientationFactor(s.orientation) *
@@ -623,6 +623,7 @@ async function runAI(){
 
 // inverter cap
 basePV = Math.min(basePV, s.inverter * sun);
+    
     let calibration = getCalibrationFactor();
     let pv = basePV * calibration;
 
