@@ -640,6 +640,24 @@ let nowRad = rad[nowIndex];
 let nowCloud = cloud[nowIndex];
 let nowTemp = temp[nowIndex];
 
+// -------------------- LIVE PV ESTIMATE --------------------
+
+// Convert radiation to PV output (kW)
+let nowPV = (
+  s.pvSize *
+  (nowRad / 1000) *
+  (s.efficiency / 100) *
+  temperatureEfficiency(nowTemp) *
+  getOrientationFactor(s.orientation) *
+  (s.shading / 100)
+);
+
+// inverter cap
+nowPV = Math.min(nowPV, s.inverter);
+
+// apply calibration
+nowPV *= getCalibrationFactor();
+
 // Format time nicely
 let nowTimeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -647,9 +665,13 @@ let nowTimeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit'
 html += `
   <div class="card">
     <h3>☀️ Now (${nowTimeStr})</h3>
+
     <b>Radiation:</b> ${nowRad.toFixed(0)} W/m²<br>
+    <b>Live PV:</b> ${nowPV.toFixed(2)} kW<br>
     <b>Cloud:</b> ${nowCloud.toFixed(0)}%<br>
-    <b>Temp:</b> ${nowTemp.toFixed(1)}°C
+    <b>Temp:</b> ${nowTemp.toFixed(1)}°C<br>
+
+    <br><b>Status:</b> ${status}
   </div>
 `;
 
@@ -740,6 +762,19 @@ basePV = Math.min(basePV, s.inverter * sun);
   loading.innerText="";
 }
 
+// -------------------- LIVE STATUS --------------------
+let status = "";
+
+if (nowRad < 50) {
+  status = "🌙 No solar → using battery/grid";
+} else if (nowPV < 0.5) {
+  status = "🌥️ Weak solar → slow charging";
+} else if (nowPV < 2) {
+  status = "⚡ Moderate solar → partial charging";
+} else {
+  status = "🔋 Strong solar → charge battery";
+}
+  
 // -------------------- INIT --------------------
 window.onload = () => {
   preloadWeather();
