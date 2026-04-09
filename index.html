@@ -728,18 +728,28 @@ nowPV = Math.min(nowPV, s.inverter);
 
 // apply calibration
 
- let status = "";
+let status = "";
 
 if (nowRad < 20) {
   status = "🌙 No solar → discharge or grid use";
+
 } else if (nowPV < 0.3) {
   status = "🌥️ Very weak → minimal charging";
+
 } else if (nowPV < 1) {
   status = "⚡ Low solar → partial charging";
+
 } else if (nowPV < 3) {
-  status = "☀️ Good solar → charging battery";
+  status = "☀️ Moderate solar → charging battery";
+
+} else if (nowPV < s.inverter * 0.8) {
+  status = "🔋 Strong solar → high charging";
+
+} else if (nowPV < s.inverter) {
+  status = "🚀 Near max → optimising export";
+
 } else {
-  status = "🔋 Peak solar → maximise charging / export";
+  status = "⚠️ Clipping zone → inverter limiting output";
 }
   
 // Format time nicely
