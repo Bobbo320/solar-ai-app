@@ -861,6 +861,13 @@ if (d === 1 && tomorrowSOCValue === null) {
     </div>
   `;
 }
+
+// -------------------- RENDER --------------------
+
+loading.innerText = "";
+
+// ✅ Append forecast cards AFTER SOC section
+html += forecastHtml;
 // -------------------- TOMORROW SOC (MOVED HERE) --------------------
 
 html += `
@@ -873,13 +880,6 @@ html += `
     </span>
   </div>
 `;
-// -------------------- RENDER --------------------
-
-loading.innerText = "";
-
-// ✅ Append forecast cards AFTER SOC section
-html += forecastHtml;
-
 output.innerHTML = html;
   
 };
