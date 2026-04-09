@@ -676,7 +676,7 @@ async function runAI(){
 
   let s=getSettings();
   loading.innerText="Loading...";
-
+  let tomorrowSOCValue = null;
   let data = preloadedWeather || await getWeather(s.postcode);
 
   let cloud=data.hourly.cloudcover;
@@ -763,7 +763,16 @@ html += `
     <br><b>Status:</b> ${status}
   </div>
 `;
+html += `
+  <div class="card">
+    <h3>🔋 Tomorrow Grid Charge Target</h3>
 
+    <b>Recommended SOC:</b>
+    <span style="color:red;font-weight:bold; font-size:18px;">
+      ${tomorrowSOCValue !== null ? tomorrowSOCValue + "%" : "N/A"}
+    </span>
+  </div>
+`;
   for(let d=0;d<3;d++){
 
     let start=d*24;
@@ -822,7 +831,9 @@ basePV = Math.min(basePV, s.inverter * sun);
 }
     
     let soc=recommendedSOC(pv,s);
-
+if (d === 1) {
+  tomorrowSOCValue = soc;
+}
     let label = d===0
       ? "Today"
       : d===1
@@ -846,9 +857,7 @@ basePV = Math.min(basePV, s.inverter * sun);
 
         <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
 
-        <br><b>🔋 Recommended SOC for prior night grid charge:</b> ${d===1
-          ? `<span style="color:red;font-weight:bold">${soc}%</span>`
-          : `${soc}%`}
+        
       </div>
     `;
   }
