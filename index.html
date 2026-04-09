@@ -131,7 +131,7 @@
 
 <script>
 
-const SOLAR_THRESHOLD = 120;
+const SOLAR_THRESHOLD = 50;
 
 let preloadedWeather = null;
 
@@ -645,7 +645,7 @@ function getSolarTimeRange(radSlice, timeSlice) {
   let endTime = null;
 
   for (let i = 0; i < 24; i++) {
-    if (radSlice[i] > SOLAR_THRESHOLD) {
+    if (radSlice[i] > 30) {
       if (startTime === null) {
         startTime = timeSlice[i];
       }
