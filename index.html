@@ -860,11 +860,21 @@ if (d === 1 && tomorrowSOCValue === null) {
     </div>
   `;
 }
-  // -------------------- TOMORROW SOC SECTION --------------------
+  // -------------------- TOMORROW SOC // -------------------- TOMORROW SOC SECTION --------------------
 
+html += `
+  <div class="card">
+    <h3>🔋 Tomorrow Grid Charge Target</h3>
 
-  loading.innerText="";
-}
+    <b>Recommended SOC:</b>
+    <span style="color:red;font-weight:bold; font-size:18px;">
+      ${tomorrowSOCValue !== null ? tomorrowSOCValue + "%" : "N/A"}
+    </span>
+  </div>
+`;
+
+loading.innerText = "";
+output.innerHTML = html;
   
 // -------------------- INIT --------------------
 window.onload = () => {
