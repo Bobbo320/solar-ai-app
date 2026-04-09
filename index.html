@@ -842,7 +842,7 @@ if (d === 1 && tomorrowSOCValue === null) {
       : "The day after tomorrow";
 
   // Render card
-  html += `
+  forecastHtml += `
     <div class="card">
       <h3>${label}</h3>
 
@@ -878,6 +878,7 @@ forecastHtml += `
 
 // -------------------- ADD FORECAST CARDS --------------------
 
+// keep this line ONLY if forecastHtml is NOT already added elsewhere
 html += forecastHtml;
 
 // -------------------- RENDER --------------------
