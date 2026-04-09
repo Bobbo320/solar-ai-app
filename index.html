@@ -686,7 +686,8 @@ async function runAI(){
   let precip=data.hourly.precipitation;
   let time = data.hourly.time;
 
-  let html="";
+  let html = "";
+let forecastHtml = "";
 
   // -------------------- LIVE NOW --------------------
 let now = new Date();
@@ -862,6 +863,8 @@ if (d === 1 && tomorrowSOCValue === null) {
 }
 // -------------------- TOMORROW SOC SECTION --------------------
 
+// -------------------- TOMORROW SOC --------------------
+
 html += `
   <div class="card">
     <h3>🔋 Tomorrow Grid Charge Target</h3>
@@ -872,6 +875,12 @@ html += `
     </span>
   </div>
 `;
+
+// -------------------- ADD FORECAST CARDS --------------------
+
+html += forecastHtml;
+
+// -------------------- RENDER --------------------
 
 loading.innerText = "";
 output.innerHTML = html;
