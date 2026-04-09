@@ -520,6 +520,29 @@ function cloudIntensityFactor(cloud, rad) {
 
   return 1;
 }
+
+function getCloudThicknessLabel(cloud, rad) {
+  let intensity = cloud / 100;
+
+  // Adjust using radiation
+  let radFactor = rad / 1000;
+
+  let score = intensity * (1 - radFactor);
+
+  if (cloud < 30 && rad > 300) {
+    return { label: "Thin / Broken Cloud ☁️", score };
+  }
+
+  if (cloud >= 30 && cloud <= 70) {
+    return { label: "Moderate Cloud 🌥️", score };
+  }
+
+  if (cloud > 70 && rad < 200) {
+    return { label: "Thick Cloud ☁️☁️", score };
+  }
+
+  return { label: "Clear / Light Cloud ☀️", score };
+}
   
 function estimatePV(avgScore, sun, temp, s) {
   let orientationFactor = getOrientationFactor(s.orientation);
@@ -666,6 +689,7 @@ if (nowIndex === -1) nowIndex = 0;
 // Extract current conditions
 let nowRad = rad[nowIndex];
 let nowCloud = cloud[nowIndex];
+let cloudInfo = getCloudThicknessLabel(nowCloud, nowRad); 
 let nowTemp = temp[nowIndex];
 
 // -------------------- LIVE PV ESTIMATE --------------------
@@ -714,6 +738,7 @@ html += `
     <b>Radiation:</b> ${nowRad.toFixed(0)} W/m²<br>
     <b>Live PV:</b> ${nowPV.toFixed(2)} kW<br>
     <b>Cloud:</b> ${nowCloud.toFixed(0)}%<br>
+    <b>Cloud Type:</b> ${cloudInfo.label}<br>
     <b>Temp:</b> ${nowTemp.toFixed(1)}°C<br>
 
     <br><b>Status:</b> ${status}
