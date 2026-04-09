@@ -658,6 +658,20 @@ nowPV = Math.min(nowPV, s.inverter);
 // apply calibration
 nowPV *= getCalibrationFactor();
 
+ let status = "";
+
+if (nowRad < 50) {
+  status = "🌙 No solar → discharge or grid use";
+} else if (nowPV < 0.3) {
+  status = "🌥️ Very weak → minimal charging";
+} else if (nowPV < 1) {
+  status = "⚡ Low solar → partial charging";
+} else if (nowPV < 3) {
+  status = "☀️ Good solar → charging battery";
+} else {
+  status = "🔋 Peak solar → maximise charging / export";
+}
+  
 // Format time nicely
 let nowTimeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -760,19 +774,6 @@ basePV = Math.min(basePV, s.inverter * sun);
 
   output.innerHTML=html;
   loading.innerText="";
-}
-
-// -------------------- LIVE STATUS --------------------
-let status = "";
-
-if (nowRad < 50) {
-  status = "🌙 No solar → using battery/grid";
-} else if (nowPV < 0.5) {
-  status = "🌥️ Weak solar → slow charging";
-} else if (nowPV < 2) {
-  status = "⚡ Moderate solar → partial charging";
-} else {
-  status = "🔋 Strong solar → charge battery";
 }
   
 // -------------------- INIT --------------------
