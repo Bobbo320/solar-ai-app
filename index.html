@@ -646,7 +646,7 @@ function getSolarTimeRange(radSlice, timeSlice) {
   let endTime = null;
 
   for (let i = 0; i < 24; i++) {
-    if (radSlice[i] > SOLAR_VISIBLE_THRESHOLD) {
+  if (radSlice[i] > SOLAR_VISIBLE_THRESHOLD) {
       if (startTime === null) {
         startTime = timeSlice[i];
       }
@@ -717,14 +717,14 @@ let cloudFactorLive = cloudIntensityFactor(nowCloud, nowRad);
 // 🔧 soften very low radiation (prevents fake tiny PV)
 let effectiveRad = Math.max(0, nowRad - 20);
 
-let nowPV = (
+let nowPV =
   s.pvSize *
   (effectiveRad / 1000) *
   (s.efficiency / 100) *
   temperatureEfficiency(nowTemp) *
   getOrientationFactor(s.orientation) *
   (s.shading / 100) *
-  cloudFactorLive
+  cloudFactorLive;
 );
 
 // inverter cap
