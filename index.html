@@ -717,20 +717,16 @@ let radNorm = nowRad / 1000;
 // 2. cloud impact is NON-LINEAR (important for UK skies)
 let cloudRatio = nowCloud / 100;
 
-// 3. broken cloud "sun flicker boost"
-let brokenCloudBoost = 1;
 
-if (nowCloud < 40 && nowRad > 200) {
-  brokenCloudBoost = 1.15;   // sunny gaps
-} else if (nowCloud > 80) {
-  brokenCloudBoost = 0.85;   // heavy suppression but not zero
-}
-
-// 4. diffuse light correction (VERY IMPORTANT for Norwich)
-let diffuseBoost = 0.75 + (1 - cloudRatio) * 0.5;
+let cloudEffect =
+  nowCloud < 30
+    ? 1.05
+    : nowCloud < 70
+      ? 0.9 + (1 - cloudRatio) * 0.25
+      : 0.7 + (1 - cloudRatio) * 0.15;
 
 // 5. radiation saturation curve (prevents overreaction)
-let radCurve = Math.pow(radNorm, 1.15);
+let radCurve = radNorm * (0.85 + radNorm * 0.35);
 
 // 6. temperature + system losses
 let tempFactor = temperatureEfficiency(nowTemp);
@@ -741,8 +737,7 @@ let shading = s.shading / 100;
 let nowPV =
   s.pvSize *
   radCurve *
-  diffuseBoost *
-  brokenCloudBoost *
+ cloudEffect *
   tempFactor *
   orientation *
   shading *
