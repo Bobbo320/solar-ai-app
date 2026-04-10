@@ -718,10 +718,7 @@ let radNorm = nowRad / 1000;
 
 // 2. cloud impact is NON-LINEAR (important for UK skies)
 let cloudRatio = nowCloud / 100;
-
-
 let cloudEffect =
-  let cloudEffect =
   nowCloud < 20
     ? 1.05
     : nowCloud < 50
