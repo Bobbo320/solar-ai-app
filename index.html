@@ -693,12 +693,22 @@ let forecastHtml = "";
   // -------------------- LIVE NOW --------------------
 let now = new Date();
 
-let nowIndex = time.findIndex(t => new Date(t) > now);
-if (nowIndex === -1) nowIndex = time.length - 1;
-if (nowIndex > 0) nowIndex = nowIndex - 1;
+let now = new Date();
+
+// find closest hour index instead of first future match
+let nowIndex = 0;
+let minDiff = Infinity;
+
+for (let i = 0; i < time.length; i++) {
+  let diff = Math.abs(new Date(time[i]) - now);
+  if (diff < minDiff) {
+    minDiff = diff;
+    nowIndex = i;
+  }
+}
 
 // Extract current conditions
-let nowRad = rad[nowIndex];
+let nowRad = Math.max(rad[nowIndex], rad[nowIndex - 1] || 0);
 let nowCloud = cloud[nowIndex];
 let cloudInfo = getCloudThicknessLabel(nowCloud, nowRad); 
 let nowTemp = temp[nowIndex];
