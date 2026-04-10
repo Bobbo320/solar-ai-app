@@ -187,27 +187,33 @@ function storeExpectedPV(dayIndex, pvValue) {
 
   if (!data[key]) data[key] = {};
 
-  // ❌ never overwrite manual input
+  // ❌ NEVER overwrite manual data
   if (data[key].manual !== undefined) return;
 
-  // ⭐ NEW: allow controlled updates instead of locking forever
-  if (
-    data[key].expected !== undefined &&
-    !shouldUpdateExpectedPV()
-  ) return;
+  let existing = data[key].expected;
 
-  // optional improvement: only update if change is meaningful
-  if (data[key].expected !== undefined) {
-    let diff = Math.abs(data[key].expected - pvValue);
+  // 🕒 time lock (prevents early unstable writes)
+  const hour = new Date().getHours();
+  const isStableTime = hour >= 10;
 
-    // ignore tiny noise updates
-    if (diff < 0.2) return;
+  // If no existing value → always allow
+  if (existing === undefined) {
+    data[key].expected = pvValue;
+    savePVData(data);
+    return;
   }
 
-  data[key].expected = pvValue;
+  // If early in day → never update
+  if (!isStableTime) return;
+
+  // Only update if meaningful change
+  let diff = Math.abs(existing - pvValue);
+  if (diff < 0.2) return;
+
+  // Optional: dampen updates instead of replacing
+  data[key].expected = existing * 0.7 + pvValue * 0.3;
 
   savePVData(data);
-  renderPVTable();
 }
 
 function getCalibrationFactor() {
