@@ -453,11 +453,7 @@ async function getWeather(postcode) {
     };
   }
 }
-function getLocalDateKey(d) {
-  return new Date(d.getTime() - d.getTimezoneOffset() * 60000)
-    .toISOString()
-    .split("T")[0];
-}
+
 // -------------------- SOLAR --------------------
 function getOrientationFactor(o) {
   if (o==="south") return 1;
