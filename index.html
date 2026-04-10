@@ -689,6 +689,7 @@ async function runAI(){
 
   let html = "";
 let forecastHtml = "";
+  let tomorrowSOCValue = null;
 
   // -------------------- LIVE NOW --------------------
 let now = new Date();
@@ -761,6 +762,7 @@ if (nowRad < 20) {
 let nowTimeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
 // Build UI card
+// LIVE CARD
 html += `
   <div class="card">
     <h3>☀️ Now (${nowTimeStr})</h3>
@@ -770,14 +772,19 @@ html += `
     <b>Cloud:</b> ${nowCloud.toFixed(0)}%<br>
     <b>Cloud Type:</b> ${cloudInfo.label}<br>
 
-<div class="cloud-bar">
-  <div class="cloud-bar-fill" style="width:${(Math.pow(cloudInfo.intensity, 0.7) * 100).toFixed(0)}%"></div>
-</div>
+    <div class="cloud-bar">
+      <div class="cloud-bar-fill"
+        style="width:${(Math.pow(cloudInfo.intensity, 0.7) * 100).toFixed(0)}%">
+      </div>
+    </div>
+
     <b>Temp:</b> ${nowTemp.toFixed(1)}°C<br>
 
     <br><b>Status:</b> ${status}
   </div>
 `;
+
+// 🔋 SOC BLOCK (correct position)
 html += `
   <div class="card">
     <h3>🔋 Tomorrow Grid Charge Target</h3>
