@@ -560,7 +560,27 @@ function getCloudThicknessLabel(cloud, rad) {
 
   return { label: "Clear / Light Cloud ☀️", intensity: intensity * 0.5 };
 }
-  
+function effectiveIrradiance(rad, cloud, orientationFactor) {
+
+  // 1. Convert GHI → POA (panel plane irradiance)
+  let tiltBoost = 1.25; // UK average south-facing tilt gain
+
+  let poa = rad * tiltBoost * orientationFactor;
+
+  // 2. Cloud base attenuation (non-linear)
+  let cloudFactor = Math.pow(1 - (cloud / 100), 1.4);
+
+  // 3. Broken cloud spike effect (THIS FIXES YOUR 2x ERROR)
+  let cloudVarianceBoost =
+    cloud < 40 ? 1.25 :
+    cloud < 70 ? 1.1 :
+    0.9;
+
+  // 4. Radiation saturation (prevents overreaction)
+  let saturation = Math.min(1.15, poa / 700);
+
+  return poa * cloudFactor * cloudVarianceBoost * saturation;
+}  
 function estimatePV(avgScore, sun, temp, s) {
   let orientationFactor = getOrientationFactor(s.orientation);
   let shadingFactor = s.shading / 100;
@@ -728,8 +748,25 @@ let cloudEffect =
       : 0.65 + (1 - cloudRatio) * 0.2;
 
 // 5. radiation saturation curve (prevents overreaction)
-let radCurve =
-  Math.pow(radNorm, 0.9) * (0.9 + radNorm * 0.5);
+let orientationFactor = getOrientationFactor(s.orientation);
+
+// NEW physical irradiance model
+let effRad = effectiveIrradiance(nowRad, nowCloud, orientationFactor);
+
+// temperature + system losses
+let tempFactor = temperatureEfficiency(nowTemp);
+let shading = s.shading / 100;
+
+// FINAL LIVE PV
+let nowPV =
+  s.pvSize *
+  (effRad / 1000) *
+  tempFactor *
+  shading *
+  (s.efficiency / 100);
+
+// inverter cap
+nowPV = Math.min(nowPV, s.inverter);
 
 // 6. temperature + system losses
 let tempFactor = temperatureEfficiency(nowTemp);
@@ -836,11 +873,38 @@ html += `
     weightedCloudAverage(cloud, rad, start),
     avgRad
   );
-let confidence = Math.min(100, Math.max(40,
-  100 - weightedCloudAverage(cloud, rad, start)
+let cloudAvg = weightedCloudAverage(cloud, rad, start);
+
+let variancePenalty = Math.abs(50 - cloudAvg) / 50;
+
+let confidence = Math.max(
+  45,
+  Math.min(98,
+    100 - (variancePenalty * 40)
+  )
+);
 ));
-  let basePV = estimatePV(avgScore, sun, midTemp, s);
-basePV *= cloudFactorDay;
+  let orientationFactor = getOrientationFactor(s.orientation);
+
+// Use physical irradiance instead of score-based PV
+let effRadDay = effectiveIrradiance(avgRad, weightedCloudAverage(cloud, rad, start), orientationFactor);
+
+// temperature + shading
+let tempFactor = temperatureEfficiency(midTemp);
+let shading = s.shading / 100;
+
+// base PV (physical model)
+let basePV =
+  s.pvSize *
+  (effRadDay / 1000) *
+  tempFactor *
+  shading *
+  (s.efficiency / 100) *
+  sun; // sunlight duration scaling
+
+// inverter clipping
+let maxOutput = s.inverter * sun;
+basePV = Math.min(basePV, maxOutput);
 
   // inverter cap
   let maxOutput = s.inverter * sun;
@@ -855,7 +919,7 @@ basePV -= clipLoss * 0.7;
 
   // ✅ Store expected PV only for tomorrow
   if (d === 1) {
-    storeExpectedPV(1, pv);
+    storeExpectedPV(1, basepv);
   }
 
   // ✅ SOC calculation
