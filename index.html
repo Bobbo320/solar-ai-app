@@ -112,7 +112,10 @@
 </select>
 <br><br>
 <p><b>Calibration Factor:</b> <span id="calFactor">1.00</span></p>
-   
+  <button onclick="openEditor(new Date().toISOString().split('T')[0])">
+  ➕ Add Entry
+</button>
+<br><br> 
   <table border="1" style="width:100%; color:white; border-collapse:collapse;">
     <thead>
       <tr>
@@ -127,6 +130,19 @@
 </div>
   
 <p id="loading"></p>
+  <div id="pvEditor" class="card hidden">
+  <h3>✏️ Edit PV Entry</h3>
+
+  <label>Date:</label><br>
+  <input type="date" id="editDate"><br>
+
+  <label>Manual PV (kWh):</label><br>
+  <input type="number" step="0.1" id="editValue"><br>
+
+  <button onclick="saveEdit()">💾 Save</button>
+  <button onclick="deleteEdit()">🗑 Delete</button>
+  <button onclick="closeEditor()">Cancel</button>
+</div>
 <div id="output"></div>
 
 <script>
@@ -266,18 +282,11 @@ Object.keys(data).sort().forEach(date => {
     tr.innerHTML = `
       <td>${date}</td>
       <td>${row.expected ? row.expected.toFixed(1) : "-"}</td>
-      <td>
-        <select onchange="changeEntryDate('${date}', this.value)">
-  ${generateDateOptions(date)}
-</select>
-<br>
-<input type="number" step="0.1" value="${row.manual || ""}" id="manual-${date}">
-<button onclick="saveManual('${date}')">Save</button>
-      </td>
-      <td>
-        <button onclick="deletePVRow('${date}')">Delete</button>
-        <span class="saveTick" style="margin-left:10px; color:lightgreen;"></span>
-      </td>
+      <td>${row.manual ? row.manual.toFixed(1) : "-"}</td>
+<td>
+  <button onclick="openEditor('${date}')">Edit</button>
+  <button onclick="deletePVRow('${date}')">Delete</button>
+</td>
     `;
 
     tbody.appendChild(tr);
@@ -288,29 +297,6 @@ Object.keys(data).sort().forEach(date => {
   document.getElementById("calFactor").innerText = factor.toFixed(2);
 }
 
-function saveManual(date){
-  let input = document.getElementById("manual-"+date);
-  updateManualPV(date, input.value);
-}
-  
-function updateManualPV(date, value) {
-  let data = getPVData();
-
-  if (!data[date]) data[date] = {};
-  data[date].manual = parseFloat(value);
-
-  savePVData(data);
-
-  // show tick
-  let row = document.querySelector(`tr[data-date="${date}"]`);
-  if (row) {
-    let tick = row.querySelector(".saveTick");
-    if (tick) {
-      tick.innerText = "✔️ Saved";
-      setTimeout(() => tick.innerText = "", 1500);
-    }
-  }
-}
 
 function deletePVRow(date) {
   let data = getPVData();
@@ -575,52 +561,8 @@ function estimatePV(avgScore, sun, temp, s) {
   return Math.min(raw, limit);
 }
 
-function generateDateOptions(selectedDate) {
-  let data = getPVData();
 
-  // earliest stored date
-  let dates = Object.keys(data);
-  let minDate = dates.length ? dates.sort()[0] : new Date().toISOString().split("T")[0];
 
-  let today = new Date();
-
-  let options = "";
-
-  for (let i = 0; i < 14; i++) { // last 14 days window
-    let d = new Date();
-    d.setDate(today.getDate() - i);
-
-    let dStr = d.toISOString().split("T")[0];
-
-    // disable dates before first use
-    let disabled = dStr < minDate ? "disabled" : "";
-
-    let selected = dStr === selectedDate ? "selected" : "";
-
-    options += `<option value="${dStr}" ${selected} ${disabled}>${dStr}</option>`;
-  }
-
-  return options;
-}
-
-function changeEntryDate(oldDate, newDate) {
-  let data = getPVData();
-
-  if (!data[oldDate]) return;
-
-  // ✅ Prevent overwriting an existing entry
-  if (data[newDate]) {
-    alert("Date already exists. Delete it first.");
-    return;
-  }
-
-  // move entry safely
-  data[newDate] = data[oldDate];
-  delete data[oldDate];
-
-  savePVData(data);
-  renderPVTable();
-}
   
 // -------------------- SOC --------------------
 function recommendedSOC(pv, s){
@@ -915,7 +857,62 @@ html += forecastHtml;
 output.innerHTML = html;
   
 };
+let currentEditDate = null;
 
+function openEditor(date) {
+  let data = getPVData();
+
+  currentEditDate = date;
+
+  document.getElementById("editDate").value = date;
+  document.getElementById("editValue").value = data[date]?.manual || "";
+
+  pvEditor.classList.remove("hidden");
+}
+
+function closeEditor() {
+  pvEditor.classList.add("hidden");
+  currentEditDate = null;
+}
+
+function saveEdit() {
+  let data = getPVData();
+
+  let newDate = document.getElementById("editDate").value;
+  let value = parseFloat(document.getElementById("editValue").value);
+
+  if (!newDate) return alert("Pick a date");
+
+  // move entry if date changed
+  if (currentEditDate !== newDate) {
+    if (data[newDate]) {
+      alert("Date already exists");
+      return;
+    }
+    data[newDate] = data[currentEditDate] || {};
+    delete data[currentEditDate];
+  }
+
+  if (!data[newDate]) data[newDate] = {};
+  data[newDate].manual = value;
+
+  savePVData(data);
+
+  closeEditor();
+  renderPVTable();
+}
+
+function deleteEdit() {
+  if (!currentEditDate) return;
+
+  let data = getPVData();
+  delete data[currentEditDate];
+
+  savePVData(data);
+
+  closeEditor();
+  renderPVTable();
+}
 // -------------------- INIT --------------------
 window.onload = () => {
   preloadWeather();
