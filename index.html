@@ -693,17 +693,14 @@ let forecastHtml = "";
   // -------------------- LIVE NOW --------------------
 let now = new Date();
 
-// find closest hour index instead of first future match
-let nowIndex = 0;
-let minDiff = Infinity;
+let nowMs = now.getTime();
 
-for (let i = 0; i < time.length; i++) {
-  let diff = Math.abs(new Date(time[i]) - now);
-  if (diff < minDiff) {
-    minDiff = diff;
-    nowIndex = i;
-  }
-}
+let nowIndex = time.findIndex(t =>
+  new Date(t).getTime() > nowMs
+);
+
+if (nowIndex === -1) nowIndex = time.length - 1;
+if (nowIndex > 0) nowIndex--;
 
 // Extract current conditions
 let nowRad = Math.max(rad[nowIndex], rad[nowIndex - 1] || 0);
@@ -724,11 +721,12 @@ let cloudRatio = nowCloud / 100;
 
 
 let cloudEffect =
-  nowCloud < 25
-    ? 1.08
-    : nowCloud < 60
-      ? 0.8 + (1 - cloudRatio) * 0.4
-      : 0.6 + (1 - cloudRatio) * 0.25;
+  let cloudEffect =
+  nowCloud < 20
+    ? 1.05
+    : nowCloud < 50
+      ? 0.85 + (1 - cloudRatio) * 0.3
+      : 0.65 + (1 - cloudRatio) * 0.2;
 
 // 5. radiation saturation curve (prevents overreaction)
 let radCurve =
