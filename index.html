@@ -731,25 +731,17 @@ let nowTemp = temp[nowIndex];
 
 // -------------------- IMPROVED LIVE PV MODEL --------------------
 
-// 1. normalize radiation (avoid harsh cutoff)
-let radNorm = nowRad / 1000;
+// orientation FIRST
+let orientationFactor = getOrientationFactor(s.orientation);
 
-// 2. cloud impact is NON-LINEAR (important for UK skies)
-let cloudRatio = nowCloud / 100;
-
-let cloudEffect =
-  nowCloud < 20
-    ? 1.05
-    : nowCloud < 50
-      ? 0.85 + (1 - cloudRatio) * 0.3
-      : 0.65 + (1 - cloudRatio) * 0.2;
-
-// NEW physical irradiance model
+// physical irradiance
 let effRad = effectiveIrradiance(nowRad, nowCloud, orientationFactor);
 
+// temperature + losses
 let tempFactor = temperatureEfficiency(nowTemp);
 let shading = s.shading / 100;
 
+// final PV
 let nowPV =
   s.pvSize *
   (effRad / 1000) *
@@ -757,7 +749,7 @@ let nowPV =
   shading *
   (s.efficiency / 100);
 
-// inverter cap (AFTER calculation)
+// inverter cap
 nowPV = Math.min(nowPV, s.inverter);
 
 // apply calibration
