@@ -716,8 +716,8 @@ let effectiveRad = Math.max(0, nowRad - 20);
 
 let calibration = getCalibrationFactor();
 
-// uplift calibration slightly for live irradiance response
-let liveCal = 0.6 + (calibration * 0.4);
+// smoother live response
+let liveCal = 0.7 + (calibration * 0.3);
 
 let nowPV =
   s.pvSize *
@@ -729,12 +729,8 @@ let nowPV =
   cloudFactorLive *
   liveCal;
 
-// inverter cap
+// inverter cap only (NO second calibration)
 nowPV = Math.min(nowPV, s.inverter);
-
-// apply calibration
-let calibration = getCalibrationFactor();
-nowPV *= calibration;
 
 let status = "";
 
