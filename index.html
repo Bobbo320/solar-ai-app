@@ -153,9 +153,9 @@ const SOLAR_VISIBLE_THRESHOLD = 30; // used for solar time window display
 let preloadedWeather = null;
   
 function getLocalDateKey(d = new Date()) {
-  const offset = d.getTimezoneOffset();
-  const local = new Date(d.getTime() - offset * 60000);
-  return local.toISOString().split("T")[0];
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000)
+    .toISOString()
+    .split("T")[0];
 }
 // -------------------- PV DATA + AUTO TUNING --------------------
 
