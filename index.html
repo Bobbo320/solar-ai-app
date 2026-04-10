@@ -747,9 +747,7 @@ let cloudEffect =
 // NEW physical irradiance model
 let effRad = effectiveIrradiance(nowRad, nowCloud, orientationFactor);
 
-// 6. temperature + system losses
 let tempFactor = temperatureEfficiency(nowTemp);
-let orientation = getOrientationFactor(s.orientation);
 let shading = s.shading / 100;
 
 let nowPV =
@@ -759,7 +757,7 @@ let nowPV =
   shading *
   (s.efficiency / 100);
 
-// inverter cap (ONLY here)
+// inverter cap (AFTER calculation)
 nowPV = Math.min(nowPV, s.inverter);
 
 // apply calibration
