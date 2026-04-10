@@ -166,7 +166,12 @@ function getPVData() {
 function savePVData(data) {
   localStorage.setItem("pvData", JSON.stringify(data));
 }
+function shouldUpdateExpectedPV() {
+  const hour = new Date().getHours();
 
+  // allow early-day creation, refine later
+  return hour >= 10; // 10am+ improves forecast stability
+}
 function togglePVTab() {
   pvPanel.classList.toggle("hidden");
   renderPVTable();
@@ -178,22 +183,31 @@ function storeExpectedPV(dayIndex, pvValue) {
   let date = new Date();
   date.setDate(date.getDate() + dayIndex);
 
-let key = getLocalDateKey(date);
+  let key = getLocalDateKey(date);
 
-  // Create row if it doesn't exist
-if (!data[key]) data[key] = {};
+  if (!data[key]) data[key] = {};
 
-// ❌ Do NOT overwrite if manual already exists
-if (data[key].manual !== undefined) return;
+  // ❌ never overwrite manual input
+  if (data[key].manual !== undefined) return;
 
-// ❌ Do NOT overwrite existing expected (preserve history)
-if (data[key].expected !== undefined) return;
+  // ⭐ NEW: allow controlled updates instead of locking forever
+  if (
+    data[key].expected !== undefined &&
+    !shouldUpdateExpectedPV()
+  ) return;
 
-// ✅ Safe to store
-data[key].expected = pvValue;
+  // optional improvement: only update if change is meaningful
+  if (data[key].expected !== undefined) {
+    let diff = Math.abs(data[key].expected - pvValue);
+
+    // ignore tiny noise updates
+    if (diff < 0.2) return;
+  }
+
+  data[key].expected = pvValue;
 
   savePVData(data);
-renderPVTable(); // ensures immediate UI update
+  renderPVTable();
 }
 
 function getCalibrationFactor() {
