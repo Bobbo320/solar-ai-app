@@ -135,11 +135,8 @@
 const SOLAR_THRESHOLD = 50;        // used for real PV calculations
 const SOLAR_VISIBLE_THRESHOLD = 30; // used for solar time window display
 
-let preloadedWeather = null;
- const settingsPanel = document.getElementById("settingsPanel");
-const pvPanel = document.getElementById("pvPanel");
-const loading = document.getElementById("loading");
-const output = document.getElementById("output");
+ let preloadedWeather = null;
+
 // -------------------- PV DATA + AUTO TUNING --------------------
 
 function getPVData() {
@@ -930,6 +927,12 @@ output.innerHTML = html;
 window.onload = () => {
   preloadWeather();
   renderPVTable();
+
+  // DOM references (SAFE: after DOM is ready)
+  window.settingsPanel = document.getElementById("settingsPanel");
+  window.pvPanel = document.getElementById("pvPanel");
+  window.loading = document.getElementById("loading");
+  window.output = document.getElementById("output");
 };
 </script>
 
