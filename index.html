@@ -768,9 +768,6 @@ let nowPV =
   shading *
   (s.efficiency / 100);
 
-// 8. inverter cap
-nowPV = Math.min(nowPV, s.inverter);
-
 // apply calibration
 
 let status = "";
@@ -864,11 +861,8 @@ let variancePenalty = Math.abs(50 - cloudAvg) / 50;
 
 let confidence = Math.max(
   45,
-  Math.min(98,
-    100 - (variancePenalty * 40)
-  )
+  Math.min(98, 100 - (variancePenalty * 40))
 );
-));
   let orientationFactor = getOrientationFactor(s.orientation);
 
 // Use physical irradiance instead of score-based PV
