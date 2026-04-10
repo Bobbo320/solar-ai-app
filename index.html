@@ -689,7 +689,6 @@ async function runAI(){
 
   let html = "";
 let forecastHtml = "";
-  let tomorrowSOCValue = null;
 
   // -------------------- LIVE NOW --------------------
 let now = new Date();
@@ -702,12 +701,7 @@ if (nowIndex < 0) nowIndex = 0;
 if (nowIndex === -1) nowIndex = 0;
 
 // Extract current conditions
-let liveRadSource =
-  data.hourly.shortwave_radiation_instant ||
-  data.hourly.direct_radiation ||
-  data.hourly.shortwave_radiation;
-
-let nowRad = liveRadSource[nowIndex];
+let nowRad = rad[nowIndex];
 let nowCloud = cloud[nowIndex];
 let cloudInfo = getCloudThicknessLabel(nowCloud, nowRad); 
 let nowTemp = temp[nowIndex];
@@ -762,7 +756,6 @@ if (nowRad < 20) {
 let nowTimeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
 // Build UI card
-// LIVE CARD
 html += `
   <div class="card">
     <h3>☀️ Now (${nowTimeStr})</h3>
@@ -772,31 +765,15 @@ html += `
     <b>Cloud:</b> ${nowCloud.toFixed(0)}%<br>
     <b>Cloud Type:</b> ${cloudInfo.label}<br>
 
-    <div class="cloud-bar">
-      <div class="cloud-bar-fill"
-        style="width:${(Math.pow(cloudInfo.intensity, 0.7) * 100).toFixed(0)}%">
-      </div>
-    </div>
-
+<div class="cloud-bar">
+  <div class="cloud-bar-fill" style="width:${(Math.pow(cloudInfo.intensity, 0.7) * 100).toFixed(0)}%"></div>
+</div>
     <b>Temp:</b> ${nowTemp.toFixed(1)}°C<br>
 
     <br><b>Status:</b> ${status}
   </div>
 `;
 
-// 🔋 SOC BLOCK (correct position)
-html += `
-  <div class="card">
-    <h3>🔋 Tomorrow Grid Charge Target</h3>
-
-    <b>Recommended SOC:</b>
-    <span style="color:red;font-weight:bold; font-size:18px;">
-      ${tomorrowSOCValue !== null ? tomorrowSOCValue + "%" : "N/A"}
-    </span>
-
-    <br><small>Based on tomorrow PV forecast only</small>
-  </div>
-`;
  for (let d = 0; d < 3; d++) {
 
   let start = d * 24;
@@ -904,7 +881,17 @@ if (d === 1 && tomorrowSOCValue === null) {
 
 loading.innerText = "";
 
+// 1. Add SOC FIRST
+html += `
+  <div class="card">
+    <h3>🔋 Tonight's Grid Charge Target</h3>
 
+    <b>Recommended SOC:</b>
+    <span style="color:red;font-weight:bold; font-size:18px;">
+      ${tomorrowSOCValue !== null ? tomorrowSOCValue + "%" : "N/A"}
+    </span>
+  </div>
+`;
 
 // 2. Then append forecast cards
 html += forecastHtml;
