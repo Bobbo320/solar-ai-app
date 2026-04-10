@@ -727,6 +727,8 @@ let nowPV =
 nowPV = Math.min(nowPV, s.inverter);
 
 // apply calibration
+let calibration = getCalibrationFactor();
+nowPV *= calibration;
 
 let status = "";
 
