@@ -151,7 +151,12 @@ const SOLAR_THRESHOLD = 50;        // used for real PV calculations
 const SOLAR_VISIBLE_THRESHOLD = 30; // used for solar time window display
 
 let preloadedWeather = null;
-
+  
+function getLocalDateKey(d = new Date()) {
+  const offset = d.getTimezoneOffset();
+  const local = new Date(d.getTime() - offset * 60000);
+  return local.toISOString().split("T")[0];
+}
 // -------------------- PV DATA + AUTO TUNING --------------------
 
 function getPVData() {
@@ -188,6 +193,7 @@ if (data[key].expected !== undefined) return;
 data[key].expected = pvValue;
 
   savePVData(data);
+renderPVTable(); // ensures immediate UI update
 }
 
 function getCalibrationFactor() {
