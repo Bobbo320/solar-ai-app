@@ -717,8 +717,6 @@ let cloudFactorLiveSoft = 0.3 + (0.7 * cloudFactorLive);
 // 🔧 soften very low radiation (prevents fake tiny PV)
 let effectiveRad = nowRad;
 
-let calibration = getCalibrationFactor();
-
 // smoother live response
 let calibration = getCalibrationFactor();
 
