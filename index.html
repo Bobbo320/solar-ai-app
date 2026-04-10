@@ -720,8 +720,13 @@ let effectiveRad = nowRad;
 let calibration = getCalibrationFactor();
 
 // smoother live response
+let calibration = getCalibrationFactor();
+
+// LIVE = damped correction (reacts, but doesn’t overfit noise)
+let liveCal = 0.75 + (calibration * 0.35);
+
+// FORECAST = full correction (bias correction model)
 let forecastCal = 0.8 + (calibration * 0.6);
-let liveCal = forecastCal;
 
 let nowPV =
   s.pvSize *
