@@ -788,10 +788,9 @@ let forecastCal = 0.8 + (calibration * 0.6);
 
 let pv = basePV * forecastCal;
 
-  // ✅ Store expected PV only for tomorrow
-  if (d === 1) {
-    storeExpectedPV(1, basePV);
-  }
+// ✅ Store expected PV for today + tomorrow
+if (d === 0) storeExpectedPV(0, pv); // today
+if (d === 1) storeExpectedPV(1, pv); // tomorrow
 
   // ✅ SOC calculation
   let risk = 1;
