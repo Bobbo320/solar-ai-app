@@ -852,22 +852,20 @@ basePV -= clipLoss * 0.7;
   // calibration
   let calibration = getCalibrationFactor();
   let pv = basePV * calibration;
-let calibration = getCalibrationFactor();
-nowPV *= calibration;
+
   // ✅ Store expected PV only for tomorrow
   if (d === 1) {
-    storeExpectedPV(1, PV);
+    storeExpectedPV(1, pv);
   }
 
   // ✅ SOC calculation
-  let risk = 1;
 
 let risk =
   pv < 3 ? 1.35 :
   pv < 6 ? 1.2 :
   pv < 10 ? 1.1 : 1;
 
-let soc = recommendedSOC(pv * (1 / risk), s);;
+let soc = recommendedSOC(pv * (1 / risk), s);
 
   // ✅ Capture tomorrow SOC for display
 if (d === 1 && tomorrowSOCValue === null) {
