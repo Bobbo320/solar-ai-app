@@ -1,9 +1,6 @@
 <!DOCTYPE html>
 <html>
-  const settingsPanel = document.getElementById("settingsPanel");
-const pvPanel = document.getElementById("pvPanel");
-const loading = document.getElementById("loading");
-const output = document.getElementById("output");
+ 
 <head>
   <title>Solar SOC AI Pro</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -139,7 +136,10 @@ const SOLAR_THRESHOLD = 50;        // used for real PV calculations
 const SOLAR_VISIBLE_THRESHOLD = 30; // used for solar time window display
 
 let preloadedWeather = null;
-
+ const settingsPanel = document.getElementById("settingsPanel");
+const pvPanel = document.getElementById("pvPanel");
+const loading = document.getElementById("loading");
+const output = document.getElementById("output");
 // -------------------- PV DATA + AUTO TUNING --------------------
 
 function getPVData() {
