@@ -173,7 +173,7 @@ function storeExpectedPV(dayIndex, pvValue) {
   let date = new Date();
   date.setDate(date.getDate() + dayIndex);
 
-  let key = date.toISOString().split("T")[0];
+let key = getLocalDateKey(date);
 
   // Create row if it doesn't exist
 if (!data[key]) data[key] = {};
@@ -251,9 +251,11 @@ function renderPVTable() {
   let mode = document.getElementById("pvViewMode")?.value || "today";
 
 let today = new Date();
-let todayStr = today.toISOString().split("T")[0];
+let todayStr = getLocalDateKey(new Date());
 
-Object.keys(data).sort().forEach(date => {
+Object.keys(data)
+  .sort((a, b) => new Date(a) - new Date(b))
+  .forEach(date => {
 
   let include = false;
   let entryDate = new Date(date);
@@ -445,7 +447,11 @@ async function getWeather(postcode) {
     };
   }
 }
-
+function getLocalDateKey(d) {
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000)
+    .toISOString()
+    .split("T")[0];
+}
 // -------------------- SOLAR --------------------
 function getOrientationFactor(o) {
   if (o==="south") return 1;
