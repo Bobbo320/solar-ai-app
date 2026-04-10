@@ -744,11 +744,8 @@ let cloudEffect =
       ? 0.85 + (1 - cloudRatio) * 0.3
       : 0.65 + (1 - cloudRatio) * 0.2;
 
-// 5. radiation saturation curve (prevents overreaction)
-let orientationFactor = getOrientationFactor(s.orientation);
-
 // NEW physical irradiance model
-let effRad = effectiveIrradiance(nowRad, nowCloud, 
+let effRad = effectiveIrradiance(nowRad, nowCloud, orientationFactor);
 
 // 6. temperature + system losses
 let tempFactor = temperatureEfficiency(nowTemp);
