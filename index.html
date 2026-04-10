@@ -712,7 +712,7 @@ let nowTemp = temp[nowIndex];
 let cloudFactorLive = cloudIntensityFactor(nowCloud, nowRad);
 
 // softened version (Patch 3 fix)
-let cloudFactorLiveSoft = 0.3 + (0.7 * cloudFactorLive);
+let cloudFactorLiveSoft = 0.6 + (0.4 * cloudFactorLive);
 
 // 🔧 soften very low radiation (prevents fake tiny PV)
 let effectiveRad = nowRad;
