@@ -729,9 +729,6 @@ let nowCloud = cloud[nowIndex];
 let cloudInfo = getCloudThicknessLabel(nowCloud, nowRad); 
 let nowTemp = temp[nowIndex];
 
-// -------------------- LIVE PV ESTIMATE --------------------
-
-// Convert radiation to PV output (kW)
 // -------------------- IMPROVED LIVE PV MODEL --------------------
 
 // 1. normalize radiation (avoid harsh cutoff)
@@ -752,18 +749,6 @@ let orientationFactor = getOrientationFactor(s.orientation);
 
 // NEW physical irradiance model
 let effRad = effectiveIrradiance(nowRad, nowCloud, orientationFactor);
-
-// temperature + system losses
-let tempFactor = temperatureEfficiency(nowTemp);
-let shading = s.shading / 100;
-
-// FINAL LIVE PV
-let nowPV =
-  s.pvSize *
-  (effRad / 1000) *
-  tempFactor *
-  shading *
-  (s.efficiency / 100);
 
 // inverter cap
 nowPV = Math.min(nowPV, s.inverter);
