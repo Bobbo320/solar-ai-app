@@ -748,25 +748,22 @@ let cloudEffect =
 let orientationFactor = getOrientationFactor(s.orientation);
 
 // NEW physical irradiance model
-let effRad = effectiveIrradiance(nowRad, nowCloud, orientationFactor);
-
-// inverter cap
-nowPV = Math.min(nowPV, s.inverter);
+let effRad = effectiveIrradiance(nowRad, nowCloud, 
 
 // 6. temperature + system losses
 let tempFactor = temperatureEfficiency(nowTemp);
 let orientation = getOrientationFactor(s.orientation);
 let shading = s.shading / 100;
 
-// 7. final PV model
 let nowPV =
   s.pvSize *
-  radCurve *
- cloudEffect *
+  (effRad / 1000) *
   tempFactor *
-  orientation *
   shading *
   (s.efficiency / 100);
+
+// inverter cap (ONLY here)
+nowPV = Math.min(nowPV, s.inverter);
 
 // apply calibration
 
@@ -886,7 +883,6 @@ let maxOutput = s.inverter * sun;
 basePV = Math.min(basePV, maxOutput);
 
   // inverter cap
-  let maxOutput = s.inverter * sun;
 let clipLoss = Math.max(0, basePV - maxOutput);
 
 basePV = Math.min(basePV, maxOutput);
@@ -898,7 +894,7 @@ basePV -= clipLoss * 0.7;
 
   // ✅ Store expected PV only for tomorrow
   if (d === 1) {
-    storeExpectedPV(1, basepv);
+ storeExpectedPV(1, basePV);
   }
 
   // ✅ SOC calculation
