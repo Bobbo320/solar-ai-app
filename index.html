@@ -1,6 +1,5 @@
 <!DOCTYPE html>
 <html>
- 
 <head>
   <title>Solar SOC AI Pro</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -53,7 +52,7 @@
 <h2>⚡ Solar SOC AI Pro</h2>
 
 <button onclick="toggleSettings()">⚙️ Settings</button>
-<button onclick="runAI()">Summary</button>
+<button onclick="runAI()">Plan Next 3 Days</button>
 <button onclick="togglePVTab()">📊 PV Data</button>
   
 <div id="settingsPanel" class="card hidden">
@@ -135,7 +134,7 @@
 const SOLAR_THRESHOLD = 50;        // used for real PV calculations
 const SOLAR_VISIBLE_THRESHOLD = 30; // used for solar time window display
 
- let preloadedWeather = null;
+let preloadedWeather = null;
 
 // -------------------- PV DATA + AUTO TUNING --------------------
 
@@ -560,27 +559,7 @@ function getCloudThicknessLabel(cloud, rad) {
 
   return { label: "Clear / Light Cloud ☀️", intensity: intensity * 0.5 };
 }
-function effectiveIrradiance(rad, cloud, orientationFactor) {
-
-  // 1. Convert GHI → POA (panel plane irradiance)
-  let tiltBoost = 1.25; // UK average south-facing tilt gain
-
-  let poa = rad * tiltBoost * orientationFactor;
-
-  // 2. Cloud base attenuation (non-linear)
-  let cloudFactor = Math.pow(1 - (cloud / 100), 1.4);
-
-  // 3. Broken cloud spike effect (THIS FIXES YOUR 2x ERROR)
-  let cloudVarianceBoost =
-    cloud < 40 ? 1.25 :
-    cloud < 70 ? 1.1 :
-    0.9;
-
-  // 4. Radiation saturation (prevents overreaction)
-  let saturation = Math.min(1.15, poa / 700);
-
-  return poa * cloudFactor * cloudVarianceBoost * saturation;
-}  
+  
 function estimatePV(avgScore, sun, temp, s) {
   let orientationFactor = getOrientationFactor(s.orientation);
   let shadingFactor = s.shading / 100;
@@ -706,7 +685,7 @@ async function runAI(){
   let temp=data.hourly.temperature_2m;
   let hum=data.hourly.relativehumidity_2m;
   let precip=data.hourly.precipitation;
-  let time = (data.hourly && data.hourly.time) ? data.hourly.time : new Array(72).fill(new Date().toISOString());
+  let time = data.hourly.time;
 
   let html = "";
 let forecastHtml = "";
@@ -714,40 +693,35 @@ let forecastHtml = "";
   // -------------------- LIVE NOW --------------------
 let now = new Date();
 
-let nowMs = now.getTime();
+// Find closest hour index
+let nowIndex = time.findIndex(t => new Date(t) >= now) - 1;
+if (nowIndex < 0) nowIndex = 0;
 
-let nowIndex = time.findIndex(t =>
-  new Date(t).getTime() > nowMs
-);
-
-if (nowIndex === -1) nowIndex = time.length - 1;
-if (nowIndex > 0) nowIndex--;
+// fallback if not found
+if (nowIndex === -1) nowIndex = 0;
 
 // Extract current conditions
-let nowRad = Math.max(rad[nowIndex], rad[nowIndex - 1] || 0);
+let nowRad = rad[nowIndex];
 let nowCloud = cloud[nowIndex];
 let cloudInfo = getCloudThicknessLabel(nowCloud, nowRad); 
 let nowTemp = temp[nowIndex];
 
-// -------------------- IMPROVED LIVE PV MODEL --------------------
+// -------------------- LIVE PV ESTIMATE --------------------
 
-// orientation FIRST
-let orientationFactor = getOrientationFactor(s.orientation);
+// Convert radiation to PV output (kW)
+let cloudFactorLive = cloudIntensityFactor(nowCloud, nowRad);
 
-// physical irradiance
-let effRad = effectiveIrradiance(nowRad, nowCloud, orientationFactor);
+// 🔧 soften very low radiation (prevents fake tiny PV)
+let effectiveRad = Math.max(0, nowRad - 20);
 
-// temperature + losses
-let tempFactor = temperatureEfficiency(nowTemp);
-let shading = s.shading / 100;
-
-// final PV
 let nowPV =
   s.pvSize *
-  (effRad / 1000) *
-  tempFactor *
-  shading *
-  (s.efficiency / 100);
+  (effectiveRad / 1000) *
+  (s.efficiency / 100) *
+  temperatureEfficiency(nowTemp) *
+  getOrientationFactor(s.orientation) *
+  (s.shading / 100) *
+  cloudFactorLive;
 
 // inverter cap
 nowPV = Math.min(nowPV, s.inverter);
@@ -839,37 +813,14 @@ html += `
     weightedCloudAverage(cloud, rad, start),
     avgRad
   );
-let cloudAvg = weightedCloudAverage(cloud, rad, start);
-
-let variancePenalty = Math.abs(50 - cloudAvg) / 50;
-
-let confidence = Math.max(
-  45,
-  Math.min(98, 100 - (variancePenalty * 40))
-);
-  let orientationFactor = getOrientationFactor(s.orientation);
-
-// Use physical irradiance instead of score-based PV
-let effRadDay = effectiveIrradiance(avgRad, weightedCloudAverage(cloud, rad, start), orientationFactor);
-
-// temperature + shading
-let tempFactor = temperatureEfficiency(midTemp);
-let shading = s.shading / 100;
-
-// base PV (physical model)
-let basePV =
-  s.pvSize *
-  (effRadDay / 1000) *
-  tempFactor *
-  shading *
-  (s.efficiency / 100) *
-  sun; // sunlight duration scaling
-
-// inverter clipping
-let maxOutput = s.inverter * sun;
-basePV = Math.min(basePV, maxOutput);
+let confidence = Math.min(100, Math.max(40,
+  100 - weightedCloudAverage(cloud, rad, start)
+));
+  let basePV = estimatePV(avgScore, sun, midTemp, s);
+basePV *= cloudFactorDay;
 
   // inverter cap
+  let maxOutput = s.inverter * sun;
 let clipLoss = Math.max(0, basePV - maxOutput);
 
 basePV = Math.min(basePV, maxOutput);
@@ -881,17 +832,16 @@ basePV -= clipLoss * 0.7;
 
   // ✅ Store expected PV only for tomorrow
   if (d === 1) {
- storeExpectedPV(1, basePV);
+    storeExpectedPV(1, basePV);
   }
 
   // ✅ SOC calculation
+  let risk = 1;
 
-let risk =
-  pv < 3 ? 1.35 :
-  pv < 6 ? 1.2 :
-  pv < 10 ? 1.1 : 1;
+if (pv < 5) risk = 1.3;
+else if (pv < 10) risk = 1.15;
 
-let soc = recommendedSOC(pv * (1 / risk), s);
+let soc = recommendedSOC(pv * (1 / risk), s);;
 
   // ✅ Capture tomorrow SOC for display
 if (d === 1 && tomorrowSOCValue === null) {
@@ -954,12 +904,6 @@ output.innerHTML = html;
 window.onload = () => {
   preloadWeather();
   renderPVTable();
-
-  // DOM references (SAFE: after DOM is ready)
-  window.settingsPanel = document.getElementById("settingsPanel");
-  window.pvPanel = document.getElementById("pvPanel");
-  window.loading = document.getElementById("loading");
-  window.output = document.getElementById("output");
 };
 </script>
 
