@@ -52,7 +52,7 @@
 <h2>⚡ Solar SOC AI Pro</h2>
 
 <button onclick="toggleSettings()">⚙️ Settings</button>
-<button onclick="runAI()">Summary</button>
+<button onclick="runAI()">Plan Next 3 Days</button>
 <button onclick="togglePVTab()">📊 PV Data</button>
   
 <div id="settingsPanel" class="card hidden">
@@ -726,9 +726,7 @@ let nowPV =
 // inverter cap
 nowPV = Math.min(nowPV, s.inverter);
 
-// ✅ apply calibration
-let calibration = getCalibrationFactor();
-nowPV *= calibration;
+// apply calibration
 
 let status = "";
 
@@ -815,17 +813,11 @@ html += `
     weightedCloudAverage(cloud, rad, start),
     avgRad
   );
-let cloudAvg = weightedCloudAverage(cloud, rad, start);
-let variability = Math.abs(split.morning - split.afternoon) || 0;
-
-let confidence =
-  100 -
-  (cloudAvg * 0.7) -
-  (variability * 2);
-
-confidence = Math.max(40, Math.min(100, confidence));
+let confidence = Math.min(100, Math.max(40,
+  100 - weightedCloudAverage(cloud, rad, start)
+));
   let basePV = estimatePV(avgScore, sun, midTemp, s);
-basePV *= Math.min(1.15, cloudFactorDay);
+basePV *= cloudFactorDay;
 
   // inverter cap
   let maxOutput = s.inverter * sun;
@@ -849,8 +841,7 @@ basePV -= clipLoss * 0.7;
 if (pv < 5) risk = 1.3;
 else if (pv < 10) risk = 1.15;
 
-let adjustedPV = Math.max(0.5, pv * (1 / risk));
-let soc = recommendedSOC(adjustedPV, s);
+let soc = recommendedSOC(pv * (1 / risk), s);;
 
   // ✅ Capture tomorrow SOC for display
 if (d === 1 && tomorrowSOCValue === null) {
@@ -914,14 +905,6 @@ window.onload = () => {
   preloadWeather();
   renderPVTable();
 };
-  // ✅ FORCE GLOBAL ACCESS FOR BUTTONS
-window.toggleSettings = toggleSettings;
-window.runAI = runAI;
-window.togglePVTab = togglePVTab;
-window.saveSettings = saveSettings;
-window.saveManual = saveManual;
-window.deletePVRow = deletePVRow;
-window.changeEntryDate = changeEntryDate;
 </script>
 
 </body>
