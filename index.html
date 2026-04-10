@@ -816,12 +816,12 @@ html += `
     avgRad
   );
 let cloudAvg = weightedCloudAverage(cloud, rad, start);
+let variability = Math.abs(split.morning - split.afternoon) || 0;
 
-let variability = Math.abs(split.morning - split.afternoon); // ✅ ADD THIS
-
-let confidence = 100
-  - (cloudAvg * 0.7)
-  - (variability * 2);
+let confidence =
+  100 -
+  (cloudAvg * 0.7) -
+  (variability * 2);
 
 confidence = Math.max(40, Math.min(100, confidence));
   let basePV = estimatePV(avgScore, sun, midTemp, s);
