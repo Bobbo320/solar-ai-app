@@ -708,22 +708,22 @@ let nowTemp = temp[nowIndex];
 
 // -------------------- LIVE PV ESTIMATE --------------------
 
+// smoother live response (must come first)
+let calibration = getCalibrationFactor();
+
 // Convert radiation to PV output (kW)
 let cloudFactorLive = cloudIntensityFactor(nowCloud, nowRad);
 
-// softened version (Patch 3 fix)
-let cloudFactorLiveSoft = 0.6 + (0.4 * cloudFactorLive);
+// stronger but still stable cloud response
+let cloudFactorLiveSoft = 0.7 + (0.3 * cloudFactorLive);
 
-// 🔧 soften very low radiation (prevents fake tiny PV)
-let effectiveRad = nowRad;
+// less suppressive calibration for live
+let liveCal = 0.95 + (calibration * 0.25);
 
-// smoother live response
-let calibration = getCalibrationFactor();
+// 🔧 radiation input (no change)
+let effectiveRad = Math.min(1000, nowRad * 1.08);
 
-// LIVE = damped correction (reacts, but doesn’t overfit noise)
-let liveCal = 0.75 + (calibration * 0.35);
-
-// FORECAST = full correction (bias correction model)
+// FORECAST (kept for later use)
 let forecastCal = 0.8 + (calibration * 0.6);
 
 let nowPV =
@@ -736,7 +736,7 @@ let nowPV =
   cloudFactorLiveSoft *
   liveCal;
 
-// inverter cap only (NO second calibration)
+// inverter cap only
 nowPV = Math.min(nowPV, s.inverter);
 
 let status = "";
