@@ -709,6 +709,9 @@ let nowTemp = temp[nowIndex];
 // -------------------- LIVE PV ESTIMATE --------------------
 
 // Convert radiation to PV output (kW)
+let cloudFactorLive = cloudIntensityFactor(nowCloud, nowRad);
+
+// softened version (Patch 3 fix)
 let cloudFactorLiveSoft = 0.3 + (0.7 * cloudFactorLive);
 
 // 🔧 soften very low radiation (prevents fake tiny PV)
