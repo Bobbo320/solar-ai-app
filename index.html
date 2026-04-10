@@ -709,19 +709,47 @@ let nowTemp = temp[nowIndex];
 // -------------------- LIVE PV ESTIMATE --------------------
 
 // Convert radiation to PV output (kW)
-let cloudFactorLive = cloudIntensityFactor(nowCloud, nowRad);
+// -------------------- IMPROVED LIVE PV MODEL --------------------
 
-// 🔧 soften very low radiation (prevents fake tiny PV)
-let effectiveRad = Math.max(0, nowRad - 20);
+// 1. normalize radiation (avoid harsh cutoff)
+let radNorm = nowRad / 1000;
 
+// 2. cloud impact is NON-LINEAR (important for UK skies)
+let cloudRatio = nowCloud / 100;
+
+// 3. broken cloud "sun flicker boost"
+let brokenCloudBoost = 1;
+
+if (nowCloud < 40 && nowRad > 200) {
+  brokenCloudBoost = 1.15;   // sunny gaps
+} else if (nowCloud > 80) {
+  brokenCloudBoost = 0.85;   // heavy suppression but not zero
+}
+
+// 4. diffuse light correction (VERY IMPORTANT for Norwich)
+let diffuseBoost = 0.75 + (1 - cloudRatio) * 0.5;
+
+// 5. radiation saturation curve (prevents overreaction)
+let radCurve = Math.pow(radNorm, 1.15);
+
+// 6. temperature + system losses
+let tempFactor = temperatureEfficiency(nowTemp);
+let orientation = getOrientationFactor(s.orientation);
+let shading = s.shading / 100;
+
+// 7. final PV model
 let nowPV =
   s.pvSize *
-  (effectiveRad / 1000) *
-  (s.efficiency / 100) *
-  temperatureEfficiency(nowTemp) *
-  getOrientationFactor(s.orientation) *
-  (s.shading / 100) *
-  cloudFactorLive;
+  radCurve *
+  diffuseBoost *
+  brokenCloudBoost *
+  tempFactor *
+  orientation *
+  shading *
+  (s.efficiency / 100);
+
+// 8. inverter cap
+nowPV = Math.min(nowPV, s.inverter);
 
 // inverter cap
 nowPV = Math.min(nowPV, s.inverter);
