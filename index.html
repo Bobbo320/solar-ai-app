@@ -824,22 +824,24 @@ html += `
 let confidence = Math.min(100, Math.max(40,
   100 - weightedCloudAverage(cloud, rad, start)
 ));
-let calibration = getCalibrationFactor();
+  let basePV = estimatePV(avgScore, sun, midTemp, s);
+basePV *= cloudFactorDay;
 
-// apply calibration EARLY (bias correction stage)
-let basePV = estimatePV(avgScore, sun, midTemp, s);
-basePV *= cloudFactorDay * (0.8 + calibration * 0.6);
-
-// inverter cap (physical constraint)
-let maxOutput = s.inverter * sun;
-
+  // inverter cap
+  let maxOutput = s.inverter * sun;
 let clipLoss = Math.max(0, basePV - maxOutput);
 
-// soft clipping (do NOT double penalise)
 basePV = Math.min(basePV, maxOutput);
+basePV -= clipLoss * 0.7;
 
-// final PV (no second distortion)
-let pv = basePV;
+  // calibration
+  let calibration = getCalibrationFactor();
+  
+
+// forecast should use stronger calibration effect (historical bias correction)
+let forecastCal = 0.8 + (calibration * 0.6);
+
+let pv = basePV * forecastCal;
 
   // ✅ Store expected PV only for tomorrow
   if (d === 1) {
