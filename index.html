@@ -778,7 +778,18 @@ html += `
     <br><b>Status:</b> ${status}
   </div>
 `;
+html += `
+  <div class="card">
+    <h3>🔋 Tomorrow Grid Charge Target</h3>
 
+    <b>Recommended SOC:</b>
+    <span style="color:red;font-weight:bold; font-size:18px;">
+      ${tomorrowSOCValue !== null ? tomorrowSOCValue + "%" : "N/A"}
+    </span>
+
+    <br><small>Based on tomorrow PV forecast only</small>
+  </div>
+`;
  for (let d = 0; d < 3; d++) {
 
   let start = d * 24;
@@ -886,17 +897,7 @@ if (d === 1 && tomorrowSOCValue === null) {
 
 loading.innerText = "";
 
-// 1. Add SOC FIRST
-html += `
-  <div class="card">
-    <h3>🔋 Tonight's Grid Charge Target</h3>
 
-    <b>Recommended SOC:</b>
-    <span style="color:red;font-weight:bold; font-size:18px;">
-      ${tomorrowSOCValue !== null ? tomorrowSOCValue + "%" : "N/A"}
-    </span>
-  </div>
-`;
 
 // 2. Then append forecast cards
 html += forecastHtml;
