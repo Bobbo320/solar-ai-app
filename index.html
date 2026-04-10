@@ -709,15 +709,16 @@ let nowTemp = temp[nowIndex];
 // -------------------- LIVE PV ESTIMATE --------------------
 
 // Convert radiation to PV output (kW)
-let cloudFactorLive = cloudIntensityFactor(nowCloud, nowRad);
+let cloudFactorLiveSoft = 0.3 + (0.7 * cloudFactorLive);
 
 // 🔧 soften very low radiation (prevents fake tiny PV)
-let effectiveRad = Math.max(0, nowRad - 20);
+let effectiveRad = nowRad;
 
 let calibration = getCalibrationFactor();
 
 // smoother live response
-let liveCal = 0.7 + (calibration * 0.3);
+let forecastCal = 0.8 + (calibration * 0.6);
+let liveCal = forecastCal;
 
 let nowPV =
   s.pvSize *
@@ -726,7 +727,7 @@ let nowPV =
   temperatureEfficiency(nowTemp) *
   getOrientationFactor(s.orientation) *
   (s.shading / 100) *
-  cloudFactorLive *
+  cloudFactorLiveSoft *
   liveCal;
 
 // inverter cap only (NO second calibration)
