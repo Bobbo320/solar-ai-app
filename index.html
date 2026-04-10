@@ -701,7 +701,12 @@ if (nowIndex < 0) nowIndex = 0;
 if (nowIndex === -1) nowIndex = 0;
 
 // Extract current conditions
-let nowRad = rad[nowIndex];
+let liveRadSource =
+  data.hourly.shortwave_radiation_instant ||
+  data.hourly.direct_radiation ||
+  data.hourly.shortwave_radiation;
+
+let nowRad = liveRadSource[nowIndex];
 let nowCloud = cloud[nowIndex];
 let cloudInfo = getCloudThicknessLabel(nowCloud, nowRad); 
 let nowTemp = temp[nowIndex];
