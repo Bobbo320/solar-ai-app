@@ -678,31 +678,28 @@ let nowTemp = temp[nowIndex];
 
 // -------------------- SOLAR CURVE (LIVE) --------------------
 let hour = now.getHours();
-
 let baseCurve = Math.sin((Math.PI * hour) / 24);
 
-let solarWeight;
-
-// SOUTH (strong midday peak, low edges)
+// SOUTH
 if (s.orientation === "south") {
-  solarWeight = 0.3 + (0.7 * Math.pow(baseCurve, 2.0));
+  solarWeight = Math.pow(baseCurve, 2.0);
 }
 
-// EAST/WEST (better morning + evening)
+// EAST/WEST
 else if (s.orientation === "east_west") {
   let morning = Math.sin((Math.PI * hour) / 24);
   let evening = Math.sin((Math.PI * (24 - hour)) / 24);
-  solarWeight = 0.5 + (0.5 * Math.max(morning, evening));
+  solarWeight = Math.max(morning, evening);
 }
 
-// SE/SW (slightly softened south)
+// SE/SW
 else if (s.orientation === "se_sw") {
-  solarWeight = 0.4 + (0.6 * Math.pow(baseCurve, 1.6));
+  solarWeight = Math.pow(baseCurve, 1.6);
 }
 
-// NORTH / fallback
+// NORTH
 else {
-  solarWeight = 0.6 + (0.4 * baseCurve);
+  solarWeight = Math.pow(baseCurve, 1.2);
 }
   
 // -------------------- LIVE PV ESTIMATE --------------------
@@ -714,14 +711,13 @@ let calibration = getCalibrationFactor();
 let cloudFactorLive = cloudIntensityFactor(nowCloud, nowRad);
 
 // stronger but still stable cloud response
-let cloudFactorLiveSoft = 0.7 + (0.3 * cloudFactorLive);
+let cloudFactorLiveSoft = Math.pow(cloudFactorLive, 1.5);
 
 // less suppressive calibration for live
-let liveCal = 0.95 + (calibration * 0.25);
+let liveCal = Math.min(1.05, Math.max(0.85, calibration));
 
 // 🔧 radiation input (no change)
-let middayFactor = Math.sin((Math.PI * hour) / 24);
-let effectiveRad = Math.min(1000, nowRad * (1 + 0.08 * middayFactor));
+let effectiveRad = nowRad;
 
 // FORECAST (kept for later use)
 let forecastCal = 0.8 + (calibration * 0.6);
