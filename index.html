@@ -794,9 +794,34 @@ html += `
     weightedCloudAverage(cloud, rad, start),
     avgRad
   );
-let confidence = Math.min(100, Math.max(40,
-  100 - weightedCloudAverage(cloud, rad, start)
-));
+// --- Confidence Model (SAFE VERSION) ---
+
+let cloudAvg = weightedCloudAverage(cloud, rad, start);
+
+// solar strength (0–1)
+let radStrength = Math.min(1, avgRad / 600);
+
+// variability (unstable weather = lower confidence)
+let radSlice = rad.slice(start, start + 24);
+let radMean = radSlice.reduce((a, b) => a + b, 0) / 24;
+
+let variance = radSlice.reduce((s, v) => s + Math.pow(v - radMean, 2), 0) / 24;
+let volatility = Math.min(1, variance / 40000);
+
+// calibration trust
+let calibration = getCalibrationFactor();
+let calPenalty = Math.min(1, Math.abs(calibration - 1));
+
+// final score
+let confidence =
+  100
+  - (cloudAvg * 0.5)          // cloud impact
+  - ((1 - radStrength) * 30)  // weak sun penalty
+  - (volatility * 20)         // instability penalty
+  - (calPenalty * 15);        // model uncertainty
+
+// clamp
+confidence = Math.round(Math.max(40, Math.min(95, confidence)));
   let basePV = estimatePV(avgScore, sun, midTemp, s);
 basePV *= cloudFactorDay;
 
@@ -857,7 +882,7 @@ if (d === 1 && tomorrowSOCValue === null) {
       <br><b>⏱️ Time Range:</b> ${timeRange}
 
       <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
-<br><b>📊 Confidence:</b> ${confidence.toFixed(0)}%
+📊 Confidence: ${confidence}% (${getConfidenceLabel(confidence)})
     </div>
   `;
 }
