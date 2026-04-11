@@ -679,22 +679,30 @@ let nowTemp = temp[nowIndex];
 // -------------------- SOLAR CURVE (LIVE) --------------------
 let hour = now.getHours();
 
-// base solar curve (0 → sunrise/sunset, 1 → midday)
-let solarWeight = Math.sin((Math.PI * hour) / 24);
+let baseCurve = Math.sin((Math.PI * hour) / 24);
 
-// soften curve so it doesn't over-kill mornings/evenings
-solarWeight = 0.6 + (0.4 * solarWeight);
+let solarWeight;
 
-// orientation shaping
+// SOUTH (strong midday peak, low edges)
 if (s.orientation === "south") {
-  solarWeight = Math.pow(Math.sin((Math.PI * hour) / 24), 2.2);
+  solarWeight = 0.3 + (0.7 * Math.pow(baseCurve, 2.0));
 }
 
-if (s.orientation === "east_west") {
-  // boost morning + evening instead of midday
-  let morningBoost = Math.sin((Math.PI * hour) / 24);
-  let eveningBoost = Math.sin((Math.PI * (24 - hour)) / 24);
-  solarWeight = 0.6 + (0.4 * Math.max(morningBoost, eveningBoost));
+// EAST/WEST (better morning + evening)
+else if (s.orientation === "east_west") {
+  let morning = Math.sin((Math.PI * hour) / 24);
+  let evening = Math.sin((Math.PI * (24 - hour)) / 24);
+  solarWeight = 0.5 + (0.5 * Math.max(morning, evening));
+}
+
+// SE/SW (slightly softened south)
+else if (s.orientation === "se_sw") {
+  solarWeight = 0.4 + (0.6 * Math.pow(baseCurve, 1.6));
+}
+
+// NORTH / fallback
+else {
+  solarWeight = 0.6 + (0.4 * baseCurve);
 }
   
 // -------------------- LIVE PV ESTIMATE --------------------
