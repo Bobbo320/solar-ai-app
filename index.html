@@ -473,33 +473,7 @@ async function getWeather(postcode) {
     };
   }
 }
-// -------------------- SEASONAL SOLAR CURVE --------------------
-function seasonalSunFactor(date = new Date(), lat = 52) {
 
-  // Day of year (1–365)
-  const dayOfYear =
-    Math.floor((date - new Date(date.getFullYear(), 0, 0)) / 86400000);
-
-  // Solar declination (stable approximation)
-  const decl = 23.44 * Math.sin((2 * Math.PI * (dayOfYear - 81)) / 365);
-
-  // Convert to radians
-  const latRad = lat * Math.PI / 180;
-  const declRad = decl * Math.PI / 180;
-
-  // Solar elevation proxy
-  let elevation = Math.sin(latRad) * Math.sin(declRad) +
-                  Math.cos(latRad) * Math.cos(declRad);
-
-  // Clamp + normalize for UK behaviour
-  elevation = Math.max(0.15, elevation);
-
-  // Normalize winter/summer range
-  let factor = elevation / 0.9;
-
-  // Hard safety clamp (prevents model break)
-  return Math.max(0.35, Math.min(1.25, factor));
-}
 // -------------------- SOLAR --------------------
 function getOrientationFactor(o) {
   if (o==="south") return 1;
