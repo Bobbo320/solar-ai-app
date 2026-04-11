@@ -773,7 +773,28 @@ html += `
     let rVal = rad[start + i];
 
     if (rVal > SOLAR_THRESHOLD) {
-      scoreSum += hourlySolarScore(cloud[start + i], rVal);
+      let hour = i;
+
+// solar shape (peaks at midday)
+let solarWeight = Math.sin((Math.PI * hour) / 24);
+
+// orientation adjustment
+let orientationBoost = 1;
+
+if (s.orientation === "south") {
+  // suppress edges, boost midday
+  orientationBoost = Math.pow(solarWeight, 1.5);
+}
+
+if (s.orientation === "east_west") {
+  // boost morning + evening instead
+  let morningBoost = Math.sin((Math.PI * hour) / 24);
+  let eveningBoost = Math.sin((Math.PI * (24 - hour)) / 24);
+  orientationBoost = Math.max(morningBoost, eveningBoost);
+}
+
+// final weighted score
+scoreSum += hourlySolarScore(cloud[start + i], rVal) * solarWeight * orientationBoost;
       validHours++;
     }
   }
