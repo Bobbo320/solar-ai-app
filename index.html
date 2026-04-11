@@ -877,8 +877,6 @@ scoreSum += hourlySolarScore(cloud[start + i], rVal) * solarWeight * orientation
 
   let sun = split.morning + split.afternoon;
 
-  let midTemp = temp[start + 12] ?? temp[start]; // safety fallback
-
 let midTemp = temp[start + 12] ?? temp[start]; // safety fallback
 
 let cloudFactorDay = cloudIntensityFactor(
@@ -886,15 +884,16 @@ let cloudFactorDay = cloudIntensityFactor(
   avgRad
 );
 
-let dayOfYear = getDayOfYear();
-let dayFactor = daylightSeasonFactor(dayOfYear);
+// base PV calculation (ONLY ONCE)
 let basePV = estimatePV(avgScore, sun, midTemp, s);
 
-// seasonal daylight correction (NEW)
+// seasonal correction
+let dayOfYear = getDayOfYear();
+let dayFactor = daylightSeasonFactor(dayOfYear);
+
+// apply modifiers
 basePV *= cloudFactorDay;
 basePV *= dayFactor;
-
-basePV *= cloudFactorDay;;
 
 // smooth radiation stability (important!)
 let radStd = 0;
