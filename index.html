@@ -149,7 +149,52 @@
 
 const SOLAR_THRESHOLD = 50;        // used for real PV calculations
 const SOLAR_VISIBLE_THRESHOLD = 30; // used for solar time window display
+// -------------------- SEASONAL SOLAR MODEL (OPTION A) --------------------
 
+// Approx latitude fallback (UK default from your fallback coords)
+const DEFAULT_LAT = 52.6;
+
+// Day of year
+function getDayOfYear() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), 0, 0);
+  const diff = now - start;
+  return Math.floor(diff / (1000 * 60 * 60 * 24));
+}
+
+// Solar declination angle (seasonal sun tilt)
+function solarDeclination(dayOfYear) {
+  return 23.45 * Math.sin(((360 / 365) * (dayOfYear - 81)) * Math.PI / 180);
+}
+
+// Seasonal sun height factor
+function seasonalSunFactor(hour, dayOfYear, lat = DEFAULT_LAT) {
+
+  const decl = solarDeclination(dayOfYear);
+
+  // convert to radians
+  const latRad = lat * Math.PI / 180;
+  const declRad = decl * Math.PI / 180;
+
+  // hour angle (-180 to +180 degrees across day)
+  const solarNoonOffset = (hour - 12) * 15 * Math.PI / 180;
+
+  // solar elevation approximation
+  const elevation =
+    Math.sin(latRad) * Math.sin(declRad) +
+    Math.cos(latRad) * Math.cos(declRad) * Math.cos(solarNoonOffset);
+
+  // clamp
+  return Math.max(0, elevation);
+}
+
+// Daylight scaling (winter shorter, summer longer)
+function daylightSeasonFactor(dayOfYear) {
+  const decl = solarDeclination(dayOfYear);
+
+  // crude but effective seasonal daylight scaling
+  return 0.6 + (Math.cos((decl * Math.PI) / 180) * 0.4);
+}
 let preloadedWeather = null;
   
 function getLocalDateKey(d = new Date()) {
@@ -675,32 +720,21 @@ let nowRad = rad[nowIndex];
 let nowCloud = cloud[nowIndex];
 let cloudInfo = getCloudThicknessLabel(nowCloud, nowRad); 
 let nowTemp = temp[nowIndex];
-
-// -------------------- SOLAR CURVE (LIVE) --------------------
+// -------------------- SOLAR CURVE -------------------
 let hour = now.getHours();
+let dayOfYear = getDayOfYear();
+
+// seasonal correction (NEW)
+let seasonFactor = seasonalSunFactor(hour, dayOfYear);
+
+// daily curve (kept but reduced influence)
 let baseCurve = Math.sin((Math.PI * hour) / 24);
 
-// SOUTH
-if (s.orientation === "south") {
-  solarWeight = Math.pow(baseCurve, 2.0);
-}
+// combined realistic solar weight
+let solarWeight = baseCurve * seasonFactor;
 
-// EAST/WEST
-else if (s.orientation === "east_west") {
-  let morning = Math.sin((Math.PI * hour) / 24);
-  let evening = Math.sin((Math.PI * (24 - hour)) / 24);
-  solarWeight = Math.max(morning, evening);
-}
-
-// SE/SW
-else if (s.orientation === "se_sw") {
-  solarWeight = Math.pow(baseCurve, 1.6);
-}
-
-// NORTH
-else {
-  solarWeight = Math.pow(baseCurve, 1.2);
-}
+// ensure stability
+solarWeight = Math.max(0, solarWeight);
   
 // -------------------- LIVE PV ESTIMATE --------------------
 
@@ -802,7 +836,14 @@ html += `
       let hour = i;
 
 // solar shape (peaks at midday)
-let solarWeight = Math.sin((Math.PI * hour) / 24);
+let dayOfYear = getDayOfYear();
+let seasonFactor = seasonalSunFactor(hour, dayOfYear);
+
+// daily curve + seasonal correction
+let solarWeight =
+  Math.sin((Math.PI * hour) / 24) * seasonFactor;
+
+solarWeight = Math.max(0, solarWeight);
 
 // orientation adjustment
 let orientationBoost = 1;
@@ -838,11 +879,22 @@ scoreSum += hourlySolarScore(cloud[start + i], rVal) * solarWeight * orientation
 
   let midTemp = temp[start + 12] ?? temp[start]; // safety fallback
 
-  let cloudFactorDay = cloudIntensityFactor(
-    weightedCloudAverage(cloud, rad, start),
-    avgRad
-  );
-let cloudAvg = weightedCloudAverage(cloud, rad, start);
+let midTemp = temp[start + 12] ?? temp[start]; // safety fallback
+
+let cloudFactorDay = cloudIntensityFactor(
+  weightedCloudAverage(cloud, rad, start),
+  avgRad
+);
+
+let dayOfYear = getDayOfYear();
+let dayFactor = daylightSeasonFactor(dayOfYear);
+let basePV = estimatePV(avgScore, sun, midTemp, s);
+
+// seasonal daylight correction (NEW)
+basePV *= cloudFactorDay;
+basePV *= dayFactor;
+
+basePV *= cloudFactorDay;;
 
 // smooth radiation stability (important!)
 let radStd = 0;
