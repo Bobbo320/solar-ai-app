@@ -895,7 +895,14 @@ if (d === 1 && tomorrowSOCValue === null) {
       <br><b>⏱️ Time Range:</b> ${timeRange}
 
       <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
-<br><b>📊 Confidence:</b> ${confidence.toFixed(0)}%
+<br><b>📊 Confidence:</b>
+<span style="
+  color: ${confidence > 80 ? '#22c55e' : confidence > 60 ? '#f59e0b' : '#ef4444'};
+  font-weight: bold;
+">
+  ${confidence.toFixed(0)}% 
+  (${confidence > 80 ? 'High' : confidence > 60 ? 'Medium' : 'Low'} reliability)
+</span>
     </div>
   `;
 }
