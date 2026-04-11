@@ -482,7 +482,20 @@ function getOrientationFactor(o) {
   if (o==="north") return 0.65;
   return 1;
 }
+function seasonalSunFactor(date = new Date()) {
+  // Day of year (0–365)
+  const start = new Date(date.getFullYear(), 0, 0);
+  const diff = date - start;
+  const dayOfYear = Math.floor(diff / (1000 * 60 * 60 * 24));
 
+  // seasonal sine curve:
+  // peak ~ June 21 (day ~172)
+  const seasonal = Math.sin((2 * Math.PI * (dayOfYear - 80)) / 365);
+
+  // Convert to usable multiplier
+  // winter ≈ 0.55 → summer ≈ 1.15
+  return 0.75 + (seasonal * 0.4);
+}
 function temperatureEfficiency(t) {
   let f = 1 + ((t - 25) * -0.004);
   return Math.min(1.05, Math.max(0.8, f));
@@ -824,7 +837,9 @@ scoreSum += hourlySolarScore(cloud[start + i], rVal) * solarWeight * orientation
       validHours++;
     }
   }
-
+// 🌞 seasonal adjustment (LIVE)
+let seasonalFactor = seasonalSunFactor(now);
+solarWeight *= seasonalFactor;
   let avgScore = validHours ? (scoreSum / validHours) : 0;
 
   let split = sunshineSplit(rad, start);
