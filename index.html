@@ -884,14 +884,13 @@ let cloudFactorDay = cloudIntensityFactor(
   avgRad
 );
 
-// base PV calculation (ONLY ONCE)
-let basePV = estimatePV(avgScore, sun, midTemp, s);
-
-// seasonal correction
 let dayOfYear = getDayOfYear();
 let dayFactor = daylightSeasonFactor(dayOfYear);
 
-// apply modifiers
+// ONLY ONE declaration
+let basePV = estimatePV(avgScore, sun, midTemp, s);
+
+// seasonal daylight correction
 basePV *= cloudFactorDay;
 basePV *= dayFactor;
 
