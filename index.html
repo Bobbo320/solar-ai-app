@@ -704,7 +704,8 @@ let nowPV =
   getOrientationFactor(s.orientation) *
   (s.shading / 100) *
   cloudFactorLiveSoft *
-  liveCal;
+  liveCal *
+  0.9; // 🔻 reduce live PV by 10%
 
 // inverter cap only
 nowPV = Math.min(nowPV, s.inverter);
