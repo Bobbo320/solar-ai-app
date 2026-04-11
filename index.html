@@ -464,14 +464,11 @@ async function getWeather(postcode) {
   } catch {
     return {
       hourly: {
-        cloudcover: new Array(72).fill(50),
-        shortwave_radiation: new Array(72).fill(200),
-        temperature_2m: new Array(72).fill(15),
-        relativehumidity_2m: new Array(72).fill(70),
-        precipitation: new Array(72).fill(0)
-      }
-    };
-  }
+   function getConfidenceLabel(c) {
+  if (c > 85) return "🟢 Very High";
+  if (c > 70) return "🟡 Good";
+  if (c > 55) return "🟠 Medium";
+  return "🔴 Low";
 }
 
 // -------------------- SOLAR --------------------
@@ -794,9 +791,55 @@ html += `
     weightedCloudAverage(cloud, rad, start),
     avgRad
   );
-let confidence = Math.min(100, Math.max(40,
-  100 - weightedCloudAverage(cloud, rad, start)
-));
+// -------------------- CONFIDENCE MODEL --------------------
+
+// 1. Cloud uncertainty (0 = clear, 1 = fully cloudy)
+let cloudAvg = weightedCloudAverage(cloud, rad, start);
+let cloudPenalty = cloudAvg / 100;
+
+// 2. Solar strength (low sun = less reliable forecast)
+let radStrength = Math.min(1, avgRad / 600);
+
+// 3. Radiation volatility (unstable weather = lower confidence)
+let radSlice = rad.slice(start, start + 24);
+
+let radMean = radSlice.reduce((a, b) => a + b, 0) / 24;
+
+let radVariance = radSlice.reduce(
+  (s, v) => s + Math.pow(v - radMean, 2),
+  0
+) / 24;
+
+// scale variance into 0–1 range
+let radVolatility = Math.min(1, radVariance / 50000);
+
+// 4. Calibration stability (how trustworthy your model is right now)
+let calibration = getCalibrationFactor();
+let calStability = Math.min(1, Math.abs(calibration - 1));
+
+// -------------------- FINAL CONFIDENCE SCORE --------------------
+
+let confidenceRaw =
+  1
+  - (0.45 * cloudPenalty)
+  - (0.25 * (1 - radStrength))
+  - (0.20 * radVolatility)
+  - (0.10 * calStability);
+
+// clamp final value
+let confidence = Math.round(
+  Math.max(35, Math.min(95, confidenceRaw * 100))
+);
+
+// ✅ PATCH 4 — DEBUG OUTPUT
+console.log({
+  day: d,
+  cloudAvg,
+  radStrength,
+  radVolatility,
+  calStability,
+  confidence
+});
   let basePV = estimatePV(avgScore, sun, midTemp, s);
 basePV *= cloudFactorDay;
 
@@ -857,7 +900,7 @@ if (d === 1 && tomorrowSOCValue === null) {
       <br><b>⏱️ Time Range:</b> ${timeRange}
 
       <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
-<br><b>📊 Confidence:</b> ${confidence.toFixed(0)}%
+<br><b>📊 Confidence:</b> ${confidence}% (${getConfidenceLabel(confidence)})
     </div>
   `;
 }
