@@ -794,9 +794,47 @@ html += `
     weightedCloudAverage(cloud, rad, start),
     avgRad
   );
-let confidence = Math.min(100, Math.max(40,
-  100 - weightedCloudAverage(cloud, rad, start)
-));
+let cloudAvg = weightedCloudAverage(cloud, rad, start);
+
+// smooth radiation stability (important!)
+let radStd = 0;
+let count = 0;
+let mean = 0;
+
+// quick variance estimate (cheap + stable)
+for (let i = 0; i < 24; i++) {
+  let r = rad[start + i];
+  if (r > SOLAR_THRESHOLD) {
+    mean += r;
+    count++;
+  }
+}
+
+mean = count ? mean / count : 0;
+
+for (let i = 0; i < 24; i++) {
+  let r = rad[start + i];
+  if (r > SOLAR_THRESHOLD) {
+    radStd += Math.pow(r - mean, 2);
+  }
+}
+
+radStd = count ? Math.sqrt(radStd / count) : 0;
+
+// normalize instability (0 = stable, 1 = chaotic)
+let instability = Math.min(1, radStd / 400);
+
+// cloud penalty (soft curve, not linear)
+let cloudPenalty = Math.pow(cloudAvg / 100, 1.4);
+
+// final confidence blend
+let confidence =
+  100 *
+  (0.55 * (1 - cloudPenalty) +
+   0.45 * (1 - instability));
+
+// clamp
+confidence = Math.max(35, Math.min(98, confidence));
   let basePV = estimatePV(avgScore, sun, midTemp, s);
 basePV *= cloudFactorDay;
 
