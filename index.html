@@ -720,7 +720,8 @@ let cloudFactorLiveSoft = 0.7 + (0.3 * cloudFactorLive);
 let liveCal = 0.95 + (calibration * 0.25);
 
 // 🔧 radiation input (no change)
-let effectiveRad = Math.min(1000, nowRad * 1.08);
+let middayFactor = Math.sin((Math.PI * hour) / 24);
+let effectiveRad = Math.min(1000, nowRad * (1 + 0.08 * middayFactor));
 
 // FORECAST (kept for later use)
 let forecastCal = 0.8 + (calibration * 0.6);
