@@ -676,6 +676,28 @@ let nowCloud = cloud[nowIndex];
 let cloudInfo = getCloudThicknessLabel(nowCloud, nowRad); 
 let nowTemp = temp[nowIndex];
 
+// -------------------- SOLAR CURVE (LIVE) --------------------
+let hour = now.getHours();
+
+// base solar curve (0 → sunrise/sunset, 1 → midday)
+let solarWeight = Math.sin((Math.PI * hour) / 24);
+
+// soften curve so it doesn't over-kill mornings/evenings
+solarWeight = 0.6 + (0.4 * solarWeight);
+
+// orientation shaping
+if (s.orientation === "south") {
+  // sharper midday peak
+  solarWeight = 0.5 + (0.5 * Math.pow(Math.sin((Math.PI * hour) / 24), 1.5));
+}
+
+if (s.orientation === "east_west") {
+  // boost morning + evening instead of midday
+  let morningBoost = Math.sin((Math.PI * hour) / 24);
+  let eveningBoost = Math.sin((Math.PI * (24 - hour)) / 24);
+  solarWeight = 0.6 + (0.4 * Math.max(morningBoost, eveningBoost));
+}
+  
 // -------------------- LIVE PV ESTIMATE --------------------
 
 // smoother live response (must come first)
@@ -705,7 +727,7 @@ let nowPV =
   (s.shading / 100) *
   cloudFactorLiveSoft *
   liveCal *
-  0.9; // 🔻 reduce live PV by 10%
+  solarWeight; // 🔻 NEW: time-of-day shaping
 
 // inverter cap only
 nowPV = Math.min(nowPV, s.inverter);
