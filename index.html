@@ -649,9 +649,7 @@ async function runAI(){
   loading.innerText="Loading...";
   let tomorrowSOCValue = null;
   let data = preloadedWeather || await getWeather(s.postcode);
-let calibration = getCalibrationFactor();
-let forecastCal = 0.8 + (calibration * 0.6);
-  
+
   let cloud=data.hourly.cloudcover;
   let rad=data.hourly.shortwave_radiation;
   let temp=data.hourly.temperature_2m;
@@ -680,6 +678,8 @@ let nowTemp = temp[nowIndex];
 
 // -------------------- LIVE PV ESTIMATE --------------------
 
+// smoother live response (must come first)
+let calibration = getCalibrationFactor();
 
 // Convert radiation to PV output (kW)
 let cloudFactorLive = cloudIntensityFactor(nowCloud, nowRad);
@@ -687,8 +687,14 @@ let cloudFactorLive = cloudIntensityFactor(nowCloud, nowRad);
 // stronger but still stable cloud response
 let cloudFactorLiveSoft = 0.7 + (0.3 * cloudFactorLive);
 
+// less suppressive calibration for live
+let liveCal = 0.95 + (calibration * 0.25);
+
 // 🔧 radiation input (no change)
 let effectiveRad = Math.min(1000, nowRad * 1.08);
+
+// FORECAST (kept for later use)
+let forecastCal = 0.8 + (calibration * 0.6);
 
 let nowPV =
   s.pvSize *
