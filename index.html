@@ -694,9 +694,21 @@ let nowTemp = temp[nowIndex];
 let hour = now.getHours();
 let baseCurve = Math.sin((Math.PI * hour) / 24);
 
-// SOUTH
+let solarWeight = 0;
+
 if (s.orientation === "south") {
   solarWeight = Math.pow(baseCurve, 2.0);
+}
+else if (s.orientation === "east_west") {
+  let morning = Math.sin((Math.PI * hour) / 24);
+  let evening = Math.sin((Math.PI * (24 - hour)) / 24);
+  solarWeight = Math.max(morning, evening);
+}
+else if (s.orientation === "se_sw") {
+  solarWeight = Math.pow(baseCurve, 1.6);
+}
+else {
+  solarWeight = Math.pow(baseCurve, 1.2);
 }
 
 // EAST/WEST
