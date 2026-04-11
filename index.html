@@ -687,8 +687,7 @@ solarWeight = 0.6 + (0.4 * solarWeight);
 
 // orientation shaping
 if (s.orientation === "south") {
-  // sharper midday peak
-  solarWeight = 0.5 + (0.5 * Math.pow(Math.sin((Math.PI * hour) / 24), 1.5));
+  solarWeight = Math.pow(Math.sin((Math.PI * hour) / 24), 2.2);
 }
 
 if (s.orientation === "east_west") {
