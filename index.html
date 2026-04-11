@@ -473,7 +473,33 @@ async function getWeather(postcode) {
     };
   }
 }
+// -------------------- SEASONAL SOLAR CURVE --------------------
+function seasonalSunFactor(date = new Date(), lat = 52) {
 
+  // Day of year (1–365)
+  const dayOfYear =
+    Math.floor((date - new Date(date.getFullYear(), 0, 0)) / 86400000);
+
+  // Solar declination (stable approximation)
+  const decl = 23.44 * Math.sin((2 * Math.PI * (dayOfYear - 81)) / 365);
+
+  // Convert to radians
+  const latRad = lat * Math.PI / 180;
+  const declRad = decl * Math.PI / 180;
+
+  // Solar elevation proxy
+  let elevation = Math.sin(latRad) * Math.sin(declRad) +
+                  Math.cos(latRad) * Math.cos(declRad);
+
+  // Clamp + normalize for UK behaviour
+  elevation = Math.max(0.15, elevation);
+
+  // Normalize winter/summer range
+  let factor = elevation / 0.9;
+
+  // Hard safety clamp (prevents model break)
+  return Math.max(0.35, Math.min(1.25, factor));
+}
 // -------------------- SOLAR --------------------
 function getOrientationFactor(o) {
   if (o==="south") return 1;
@@ -886,6 +912,14 @@ confidence = Math.max(35, Math.min(98, confidence));
   let basePV = estimatePV(avgScore, sun, midTemp, s);
 basePV *= cloudFactorDay;
 
+   // 🌞 Seasonal adjustment (safe, daily-level only)
+let dayDate = new Date();
+dayDate.setDate(dayDate.getDate() + d);
+
+let seasonalFactor = seasonalSunFactor(dayDate);
+
+// Apply gently (prevents over-scaling)
+basePV *= (0.75 + seasonalFactor * 0.5);
   // inverter cap
   let maxOutput = s.inverter * sun;
 let clipLoss = Math.max(0, basePV - maxOutput);
