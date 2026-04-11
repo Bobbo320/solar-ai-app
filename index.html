@@ -482,19 +482,24 @@ function getOrientationFactor(o) {
   if (o==="north") return 0.65;
   return 1;
 }
-function seasonalSunFactor(date = new Date()) {
-  // Day of year (0–365)
-  const start = new Date(date.getFullYear(), 0, 0);
-  const diff = date - start;
-  const dayOfYear = Math.floor(diff / (1000 * 60 * 60 * 24));
+function seasonalSunFactor(date = new Date(), lat = 52) {
 
-  // seasonal sine curve:
-  // peak ~ June 21 (day ~172)
-  const seasonal = Math.sin((2 * Math.PI * (dayOfYear - 80)) / 365);
+  const dayOfYear =
+    Math.floor((date - new Date(date.getFullYear(), 0, 0)) /
+    86400000);
 
-  // Convert to usable multiplier
-  // winter ≈ 0.55 → summer ≈ 1.15
-  return 0.75 + (seasonal * 0.4);
+  // declination angle approximation
+  const decl = -23.44 * Math.cos((360 / 365) * (dayOfYear + 10) * Math.PI / 180);
+
+  // solar elevation proxy (lat sensitive)
+  const rad = (lat - decl) * Math.PI / 180;
+
+  let factor = Math.sin(rad);
+
+  // normalize UK range
+  factor = (factor + 0.2) * 1.1;
+
+  return Math.max(0.25, Math.min(1.35, factor));
 }
 function temperatureEfficiency(t) {
   let f = 1 + ((t - 25) * -0.004);
