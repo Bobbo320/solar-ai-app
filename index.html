@@ -838,8 +838,11 @@ scoreSum += hourlySolarScore(cloud[start + i], rVal) * solarWeight * orientation
     }
   }
 // 🌞 seasonal adjustment (LIVE)
-let seasonalFactor = seasonalSunFactor(now);
-solarWeight *= seasonalFactor;
+let dayDate = new Date();
+dayDate.setDate(dayDate.getDate() + d);
+
+let seasonalFactor = seasonalSunFactor(dayDate);
+let pv = basePV * forecastCal * seasonalFactor;
   let avgScore = validHours ? (scoreSum / validHours) : 0;
 
   let split = sunshineSplit(rad, start);
