@@ -509,6 +509,20 @@ function getOrientationFactor(o) {
   return 1;
 }
 
+  function seasonalSunFactor(date = new Date(), lat = 52) {
+  const day = Math.floor(
+    (Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) -
+     Date.UTC(date.getFullYear(), 0, 0)) / 86400000
+  );
+
+  // Peak ~ day 172 (June 21)
+  let seasonal = 0.5 + 0.5 * Math.sin((2 * Math.PI * (day - 80)) / 365);
+
+  // Latitude scaling (UK ≈ 52 → strong seasonal swing)
+  let latScale = 0.7 + (lat / 90) * 0.6;
+
+  return Math.pow(seasonal, latScale);
+}
 function temperatureEfficiency(t) {
   let f = 1 + ((t - 25) * -0.004);
   return Math.min(1.05, Math.max(0.8, f));
@@ -748,6 +762,8 @@ let effectiveRad = nowRad;
 // FORECAST (kept for later use)
 let forecastCal = 0.8 + (calibration * 0.6);
 
+let seasonFactor = seasonalSunFactor(new Date(), 52);
+
 let nowPV =
   s.pvSize *
   (effectiveRad / 1000) *
@@ -757,7 +773,8 @@ let nowPV =
   (s.shading / 100) *
   cloudFactorLiveSoft *
   liveCal *
-  solarWeight; // 🔻 NEW: time-of-day shaping
+  solarWeight *
+  seasonFactor; // ✅ NEW
 
 // inverter cap only
 nowPV = Math.min(nowPV, s.inverter);
@@ -909,7 +926,12 @@ let confidence =
 
 // clamp
 confidence = Math.max(35, Math.min(98, confidence));
-  let basePV = estimatePV(avgScore, sun, midTemp, s);
+  let forecastDate = new Date();
+forecastDate.setDate(forecastDate.getDate() + d);
+
+let seasonFactor = seasonalSunFactor(forecastDate, 52);
+
+let basePV = estimatePV(avgScore, sun, midTemp, s) * seasonFactor;
 basePV *= cloudFactorDay;
 
    // 🌞 Seasonal adjustment (safe, daily-level only)
