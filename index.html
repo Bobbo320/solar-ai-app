@@ -693,21 +693,27 @@ let liveCal = 0.95 + (calibration * 0.25);
 // 🔧 radiation input (no change)
 let hour = new Date().getHours();
 
-// Morning / evening boost
-let angleBoost = 1;
+let orientationBias = 1;
 
-if (hour < 10 || hour > 16) {
-  angleBoost = 1.8;   // strong boost at low sun
-} else if (hour < 12 || hour > 14) {
-  angleBoost = 1.4;   // moderate boost
-} else {
-  angleBoost = 1.1;   // midday minimal boost
+// Morning boost (east light hitting tilted panels)
+if (hour < 10) {
+  orientationBias = 1.7;
 }
 
-// Extra boost when radiation is low (critical fix)
+// Midday neutral (perfect alignment)
+else if (hour >= 10 && hour <= 15) {
+  orientationBias = 1.1;
+}
+
+// Evening penalty (sun behind panels)
+else {
+  orientationBias = 0.75;
+}
+
+// Radiation response curve (already good idea)
 let radBoost = 1 + (0.6 * Math.exp(-nowRad / 300));
 
-let effectiveRad = Math.min(1000, nowRad * angleBoost * radBoost);
+let effectiveRad = Math.min(1000, nowRad * orientationBias * radBoost);
 
 // FORECAST (kept for later use)
 let forecastCal = 0.8 + (calibration * 0.6);
