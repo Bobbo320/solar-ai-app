@@ -466,64 +466,13 @@ async function getCoordinates(postcode) {
     };
 
     setCache(cacheKey, coords);
-    window.cachedCoords = coords;
-return coords;
+    return coords;
 
   } catch {
     return { lat: 52.6309, lon: 1.2974 };
   }
 }
 
-// -------------------- SOLAR POSITION --------------------
-function getSolarElevation(lat, lon, date = new Date()) {
-
-  const rad = Math.PI / 180;
-
-  let day = Math.floor((Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) -
-                       Date.UTC(date.getFullYear(), 0, 0)) / 86400000);
-
-  let hour = date.getHours() + date.getMinutes() / 60;
-
-  // fractional year
-  let gamma = 2 * Math.PI / 365 * (day - 1 + (hour - 12) / 24);
-
-  // solar declination
-  let decl =
-    0.006918
-    - 0.399912 * Math.cos(gamma)
-    + 0.070257 * Math.sin(gamma)
-    - 0.006758 * Math.cos(2 * gamma)
-    + 0.000907 * Math.sin(2 * gamma)
-    - 0.002697 * Math.cos(3 * gamma)
-    + 0.00148 * Math.sin(3 * gamma);
-
-  // equation of time
-  let eqtime =
-    229.18 * (
-      0.000075
-      + 0.001868 * Math.cos(gamma)
-      - 0.032077 * Math.sin(gamma)
-      - 0.014615 * Math.cos(2 * gamma)
-      - 0.040849 * Math.sin(2 * gamma)
-    );
-
-  // time offset
-  let offset = eqtime + 4 * lon;
-
-  let tst = hour * 60 + offset;
-
-  let ha = (tst / 4 - 180) * rad; // hour angle
-
-  let latRad = lat * rad;
-
-  let elevation = Math.asin(
-    Math.sin(latRad) * Math.sin(decl) +
-    Math.cos(latRad) * Math.cos(decl) * Math.cos(ha)
-  );
-
-  return elevation / rad; // degrees
-}
-  
 // -------------------- WEATHER --------------------
 async function getWeather(postcode) {
   try {
@@ -571,51 +520,50 @@ function getOrientationFactor(o) {
 // -------------------- SEASONAL TILT --------------------
 function getSeasonalTilt(baseTilt) {
   let s = getSettings();
+  if (s.seasonalTilt === "off") return baseTilt;
+  let month = new Date().getMonth() + 1;
 
-  if (!window.cachedCoords) return baseTilt;
+  // Approx UK latitude behaviour (~50–55°)
+  let winterTilt = Math.min(60, baseTilt + 20);
+  let summerTilt = Math.max(15, baseTilt - 15);
 
-  let elevation = getSolarElevation(
-    window.cachedCoords.lat,
-    window.cachedCoords.lon
-  );
+  // Deep winter (Nov–Feb)
+  if (month === 11 || month === 12 || month <= 2) {
+    return winterTilt;
+  }
 
-  // Optimal tilt = perpendicular to sun
-  let optimalTilt = 90 - elevation;
+  // Peak summer (May–Aug)
+  if (month >= 5 && month <= 8) {
+    return summerTilt;
+  }
 
-  // Blend with user tilt (prevents extreme swings)
-  let blended = baseTilt * 0.4 + optimalTilt * 0.6;
+  // Shoulder seasons → interpolate smoothly
+  let factor = (Math.cos((month - 3) / 6 * Math.PI) + 1) / 2;
 
-  // Clamp realistic bounds
-  return Math.max(10, Math.min(70, blended));
+  return summerTilt * (1 - factor) + winterTilt * factor;
 }
   
 function getTiltFactor(tilt, hour) {
 
   tilt = Math.max(0, Math.min(90, getSeasonalTilt(tilt)));
 
-  let s = getSettings();
+  const optimalTilt = 35;
 
-  if (!window.cachedCoords) return 1;
+  let tiltEffect = 1 - Math.pow((tilt - optimalTilt) / 55, 2);
+  tiltEffect = Math.max(0.75, Math.min(1.05, tiltEffect));
 
-  let now = new Date();
-  now.setHours(hour);
+  let sunAngleFactor = 1;
 
-  let elevation = getSolarElevation(
-    window.cachedCoords.lat,
-    window.cachedCoords.lon,
-    now
-  );
+  let month = new Date().getMonth() + 1;
+let winterBoost = (month <= 2 || month >= 11) ? 1.15 : 1;
 
-  // Convert to optimal panel angle
-  let optimalTilt = 90 - elevation;
+if (hour < 10) {
+  sunAngleFactor = (0.85 + (tilt / 90) * 0.3) * winterBoost;
+} else if (hour > 16) {
+  sunAngleFactor = (0.85 + (tilt / 90) * 0.3) * winterBoost;
+}
 
-  // Efficiency based on alignment error
-  let error = Math.abs(tilt - optimalTilt);
-
-  let tiltEffect = Math.cos(error * Math.PI / 180);
-
-  // Clamp realistic performance
-  return Math.max(0.7, Math.min(1.05, tiltEffect));
+  return tiltEffect * sunAngleFactor;
 }
   
 function temperatureEfficiency(t) {
@@ -782,9 +730,7 @@ function weatherSummary(c,r,t,h,p){
 
 // -------------------- MAIN --------------------
 async function runAI(){
-if (!window.cachedCoords) {
-  window.cachedCoords = await getCoordinates(s.postcode);
-}
+
   let s=getSettings();
   loading.innerText="Loading...";
   let tomorrowSOCValue = null;
