@@ -691,7 +691,23 @@ let cloudFactorLiveSoft = 0.7 + (0.3 * cloudFactorLive);
 let liveCal = 0.95 + (calibration * 0.25);
 
 // 🔧 radiation input (no change)
-let effectiveRad = Math.min(1000, nowRad * 1.08);
+let hour = new Date().getHours();
+
+// Morning / evening boost
+let angleBoost = 1;
+
+if (hour < 10 || hour > 16) {
+  angleBoost = 1.8;   // strong boost at low sun
+} else if (hour < 12 || hour > 14) {
+  angleBoost = 1.4;   // moderate boost
+} else {
+  angleBoost = 1.1;   // midday minimal boost
+}
+
+// Extra boost when radiation is low (critical fix)
+let radBoost = 1 + (0.6 * Math.exp(-nowRad / 300));
+
+let effectiveRad = Math.min(1000, nowRad * angleBoost * radBoost);
 
 // FORECAST (kept for later use)
 let forecastCal = 0.8 + (calibration * 0.6);
