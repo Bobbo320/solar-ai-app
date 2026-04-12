@@ -216,6 +216,24 @@ function storeExpectedPV(dayIndex, pvValue) {
   savePVData(data);
 }
 
+  function refreshExpectedPVAfterManualChange() {
+  let data = getPVData();
+
+  for (let d = 0; d < 2; d++) {
+    let date = new Date();
+    date.setDate(date.getDate() + d);
+
+    let key = getLocalDateKey(date);
+
+    if (data[key]?.manual !== undefined) continue;
+
+    if (!data[key]) data[key] = {};
+    delete data[key].expected;
+  }
+
+  savePVData(data);
+}
+  
 function getCalibrationFactor() {
   let data = getPVData();
 
@@ -330,7 +348,11 @@ function deletePVRow(date) {
   let data = getPVData();
   delete data[date];
   savePVData(data);
-  renderPVTable();
+
+refreshExpectedPVAfterManualChange();
+
+renderPVTable();
+runAI();
 }
   
 // -------------------- SETTINGS --------------------
@@ -882,8 +904,19 @@ let forecastCal = 0.8 + (calibration * 0.6);
 let pv = basePV * forecastCal;
 
 // ✅ Store expected PV for today + tomorrow
-if (d === 0) storeExpectedPV(0, pv); // today
-if (d === 1) storeExpectedPV(1, pv); // tomorrow
+let data = getPVData();
+
+let date = new Date();
+date.setDate(date.getDate() + d);
+
+let key = getLocalDateKey(date);
+
+// NEVER overwrite manual entries
+if (!data[key]?.manual) {
+  if (!data[key]) data[key] = {};
+  data[key].expected = pv;
+  savePVData(data);
+}
 
   // ✅ SOC calculation
   let risk = 1;
@@ -990,8 +1023,12 @@ function saveEdit() {
 
   savePVData(data);
 
-  closeEditor();
-  renderPVTable();
+// 🔥 force PV recalculation after manual entry
+refreshExpectedPVAfterManualChange();
+
+closeEditor();
+renderPVTable();
+runAI(); // optional but recommended
 }
 
 function deleteEdit() {
@@ -1002,8 +1039,11 @@ function deleteEdit() {
 
   savePVData(data);
 
-  closeEditor();
-  renderPVTable();
+refreshExpectedPVAfterManualChange();
+
+closeEditor();
+renderPVTable();
+runAI();
 }
 // -------------------- INIT --------------------
 window.onload = () => {
