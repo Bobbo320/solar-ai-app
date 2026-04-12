@@ -483,20 +483,6 @@ function getOrientationFactor(o) {
   return 1;
 }
 
-  function seasonalSunFactor(date = new Date(), lat = 52) {
-  const day = Math.floor(
-    (Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) -
-     Date.UTC(date.getFullYear(), 0, 0)) / 86400000
-  );
-
-  // Peak ~ day 172 (June 21)
-  let seasonal = 0.5 + 0.5 * Math.sin((2 * Math.PI * (day - 80)) / 365);
-
-  // Latitude scaling (UK ≈ 52 → strong seasonal swing)
-  let latScale = 0.7 + (lat / 90) * 0.6;
-
-  return Math.pow(seasonal, latScale);
-}
 function temperatureEfficiency(t) {
   let f = 1 + ((t - 25) * -0.004);
   return Math.min(1.05, Math.max(0.8, f));
@@ -690,32 +676,6 @@ let nowCloud = cloud[nowIndex];
 let cloudInfo = getCloudThicknessLabel(nowCloud, nowRad); 
 let nowTemp = temp[nowIndex];
 
-// -------------------- SOLAR CURVE (LIVE) --------------------
-let hour = now.getHours();
-let baseCurve = Math.sin((Math.PI * hour) / 24);
-
-// SOUTH
-if (s.orientation === "south") {
-  solarWeight = Math.pow(baseCurve, 2.0);
-}
-
-// EAST/WEST
-else if (s.orientation === "east_west") {
-  let morning = Math.sin((Math.PI * hour) / 24);
-  let evening = Math.sin((Math.PI * (24 - hour)) / 24);
-  solarWeight = Math.max(morning, evening);
-}
-
-// SE/SW
-else if (s.orientation === "se_sw") {
-  solarWeight = Math.pow(baseCurve, 1.6);
-}
-
-// NORTH
-else {
-  solarWeight = Math.pow(baseCurve, 1.2);
-}
-  
 // -------------------- LIVE PV ESTIMATE --------------------
 
 // smoother live response (must come first)
@@ -725,18 +685,16 @@ let calibration = getCalibrationFactor();
 let cloudFactorLive = cloudIntensityFactor(nowCloud, nowRad);
 
 // stronger but still stable cloud response
-let cloudFactorLiveSoft = Math.pow(cloudFactorLive, 1.5);
+let cloudFactorLiveSoft = 0.7 + (0.3 * cloudFactorLive);
 
 // less suppressive calibration for live
-let liveCal = Math.min(1.05, Math.max(0.85, calibration));
+let liveCal = 0.95 + (calibration * 0.25);
 
 // 🔧 radiation input (no change)
-let effectiveRad = nowRad;
+let effectiveRad = Math.min(1000, nowRad * 1.08);
 
 // FORECAST (kept for later use)
 let forecastCal = 0.8 + (calibration * 0.6);
-
-let seasonFactor = seasonalSunFactor(new Date(), 52);
 
 let nowPV =
   s.pvSize *
@@ -746,9 +704,7 @@ let nowPV =
   getOrientationFactor(s.orientation) *
   (s.shading / 100) *
   cloudFactorLiveSoft *
-  liveCal *
-  solarWeight *
-  seasonFactor; // ✅ NEW
+  liveCal;
 
 // inverter cap only
 nowPV = Math.min(nowPV, s.inverter);
@@ -816,28 +772,7 @@ html += `
     let rVal = rad[start + i];
 
     if (rVal > SOLAR_THRESHOLD) {
-      let hour = i;
-
-// solar shape (peaks at midday)
-let solarWeight = Math.sin((Math.PI * hour) / 24);
-
-// orientation adjustment
-let orientationBoost = 1;
-
-if (s.orientation === "south") {
-  // suppress edges, boost midday
-  orientationBoost = Math.pow(solarWeight, 1.5);
-}
-
-if (s.orientation === "east_west") {
-  // boost morning + evening instead
-  let morningBoost = Math.sin((Math.PI * hour) / 24);
-  let eveningBoost = Math.sin((Math.PI * (24 - hour)) / 24);
-  orientationBoost = Math.max(morningBoost, eveningBoost);
-}
-
-// final weighted score
-scoreSum += hourlySolarScore(cloud[start + i], rVal) * solarWeight * orientationBoost;
+      scoreSum += hourlySolarScore(cloud[start + i], rVal);
       validHours++;
     }
   }
@@ -900,22 +835,9 @@ let confidence =
 
 // clamp
 confidence = Math.max(35, Math.min(98, confidence));
-  let forecastDate = new Date();
-forecastDate.setDate(forecastDate.getDate() + d);
-
-let seasonFactor = seasonalSunFactor(forecastDate, 52);
-
-let basePV = estimatePV(avgScore, sun, midTemp, s) * seasonFactor;
+  let basePV = estimatePV(avgScore, sun, midTemp, s);
 basePV *= cloudFactorDay;
 
-   // 🌞 Seasonal adjustment (safe, daily-level only)
-let dayDate = new Date();
-dayDate.setDate(dayDate.getDate() + d);
-
-let seasonalFactor = seasonalSunFactor(dayDate);
-
-// Apply gently (prevents over-scaling)
-basePV *= (0.75 + seasonalFactor * 0.5);
   // inverter cap
   let maxOutput = s.inverter * sun;
 let clipLoss = Math.max(0, basePV - maxOutput);
@@ -973,14 +895,7 @@ if (d === 1 && tomorrowSOCValue === null) {
       <br><b>⏱️ Time Range:</b> ${timeRange}
 
       <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
-<br><b>📊 Confidence:</b>
-<span style="
-  color: ${confidence > 80 ? '#22c55e' : confidence > 60 ? '#f59e0b' : '#ef4444'};
-  font-weight: bold;
-">
-  ${confidence.toFixed(0)}% 
-  (${confidence > 80 ? 'High' : confidence > 60 ? 'Medium' : 'Low'} reliability)
-</span>
+<br><b>📊 Confidence:</b> ${confidence.toFixed(0)}%
     </div>
   `;
 }
