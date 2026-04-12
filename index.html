@@ -80,7 +80,11 @@
 
 <label>Panel Tilt (°):</label><br>
 <input id="tilt" type="number" min="0" max="90" step="1"><br>
-  
+ <label>Seasonal Tilt Optimisation:</label><br>
+<select id="seasonalTilt">
+  <option value="on">Enabled</option>
+  <option value="off">Disabled</option>
+</select><br> 
   <label>Shading:</label><br>
   <select id="shading">
     <option value="100">None (100% output)</option>
@@ -369,6 +373,7 @@ function getSettings() {
     battery: s.battery ?? 10.64,
     orientation: s.orientation || "south",
     tilt: s.tilt ?? 30,
+    seasonalTilt: s.seasonalTilt ?? "on",
     shading: s.shading ?? 100,
     dailyLoad: s.dailyLoad ?? 10,
     efficiency: s.efficiency ?? 85,
@@ -385,6 +390,7 @@ function saveSettings() {
     battery: +battery.value,
     orientation: orientation.value,
     tilt: +tilt.value,
+    seasonalTilt: seasonalTilt.value,
     shading: +shading.value,
     dailyLoad: +dailyLoad.value,
     efficiency: +efficiency.value,
@@ -513,25 +519,33 @@ function getOrientationFactor(o) {
 
 // -------------------- SEASONAL TILT --------------------
 function getSeasonalTilt(baseTilt) {
+  let s = getSettings();
+  if (s.seasonalTilt === "off") return baseTilt;
   let month = new Date().getMonth() + 1;
 
-  // Winter boost (sun low → steeper panels)
+  // Approx UK latitude behaviour (~50–55°)
+  let winterTilt = Math.min(60, baseTilt + 20);
+  let summerTilt = Math.max(15, baseTilt - 15);
+
+  // Deep winter (Nov–Feb)
   if (month === 11 || month === 12 || month <= 2) {
-    return baseTilt + 10;
+    return winterTilt;
   }
 
-  // Summer flatten (sun high → flatter panels)
+  // Peak summer (May–Aug)
   if (month >= 5 && month <= 8) {
-    return baseTilt - 10;
+    return summerTilt;
   }
 
-  // Spring / Autumn (balanced)
-  return baseTilt;
+  // Shoulder seasons → interpolate smoothly
+  let factor = (Math.cos((month - 3) / 6 * Math.PI) + 1) / 2;
+
+  return summerTilt * (1 - factor) + winterTilt * factor;
 }
   
 function getTiltFactor(tilt, hour) {
 
-  tilt = getSeasonalTilt(tilt); // 🔥 NEW LINE
+  tilt = Math.max(0, Math.min(90, getSeasonalTilt(tilt)));
 
   const optimalTilt = 35;
 
@@ -540,13 +554,14 @@ function getTiltFactor(tilt, hour) {
 
   let sunAngleFactor = 1;
 
-  if (hour < 10) {
-    sunAngleFactor = 0.85 + (tilt / 90) * 0.3;
-  } else if (hour > 16) {
-    sunAngleFactor = 0.85 + (tilt / 90) * 0.3;
-  } else {
-    sunAngleFactor = 1.05 - (tilt / 90) * 0.15;
-  }
+  let month = new Date().getMonth() + 1;
+let winterBoost = (month <= 2 || month >= 11) ? 1.15 : 1;
+
+if (hour < 10) {
+  sunAngleFactor = (0.85 + (tilt / 90) * 0.3) * winterBoost;
+} else if (hour > 16) {
+  sunAngleFactor = (0.85 + (tilt / 90) * 0.3) * winterBoost;
+}
 
   return tiltEffect * sunAngleFactor;
 }
@@ -1008,6 +1023,7 @@ if (d === 1 && tomorrowSOCValue === null) {
       <br><b>⏱️ Time Range:</b> ${timeRange}
 
       <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
+<br><b>📐 Effective Tilt:</b> ${getSeasonalTilt(s.tilt).toFixed(0)}°
 <br><b>📊 Confidence:</b> ${confidence.toFixed(0)}%
     </div>
   `;
