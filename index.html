@@ -78,9 +78,6 @@
     <option value="north">North (65% output)</option>
   </select><br>
 
-<label>Panel Tilt (°):</label><br>
-<input id="tilt" type="number" placeholder="e.g. 35"><br>
-  
   <label>Shading:</label><br>
   <select id="shading">
     <option value="100">None (100% output)</option>
@@ -346,7 +343,6 @@ function getSettings() {
     inverter: s.inverter ?? 5,
     battery: s.battery ?? 10.64,
     orientation: s.orientation || "south",
-    tilt: s.tilt ?? 35,
     shading: s.shading ?? 100,
     dailyLoad: s.dailyLoad ?? 10,
     efficiency: s.efficiency ?? 85,
@@ -362,7 +358,6 @@ function saveSettings() {
     inverter: +inverter.value,
     battery: +battery.value,
     orientation: orientation.value,
-    tilt: +tilt.value,
     shading: +shading.value,
     dailyLoad: +dailyLoad.value,
     efficiency: +efficiency.value,
@@ -389,7 +384,6 @@ function loadSettingsToUI() {
   inverter.value = s.inverter;
   battery.value = s.battery;
   orientation.value = s.orientation;
-  tilt.value = s.tilt;
   shading.value = s.shading;
   dailyLoad.value = s.dailyLoad;
   efficiency.value = s.efficiency;
@@ -488,29 +482,7 @@ function getOrientationFactor(o) {
   if (o==="north") return 0.65;
   return 1;
 }
-  
-function getTiltFactor(tilt, orientation) {
-  // UK optimal tilt ≈ 30–40°
-  let optimal = 35;
 
-  // base tilt efficiency curve (gentle penalty)
-  let diff = Math.abs(tilt - optimal);
-  let tiltFactor = 1 - (diff * 0.005); // 0.5% loss per degree
-
-  // clamp
-  tiltFactor = Math.max(0.75, Math.min(1.05, tiltFactor));
-
-  // orientation interaction
-  if (orientation === "east_west") {
-    tiltFactor *= 0.95; // flatter roofs perform better
-  }
-
-  if (orientation === "north") {
-    tiltFactor *= 0.9; // tilt matters more when north-facing
-  }
-
-  return tiltFactor;
-}
 function temperatureEfficiency(t) {
   let f = 1 + ((t - 25) * -0.004);
   return Math.min(1.05, Math.max(0.8, f));
@@ -604,15 +576,13 @@ function getCloudThicknessLabel(cloud, rad) {
   
 function estimatePV(avgScore, sun, temp, s) {
   let orientationFactor = getOrientationFactor(s.orientation);
-let tiltFactor = getTiltFactor(s.tilt, s.orientation);
-let shadingFactor = s.shading / 100;
+  let shadingFactor = s.shading / 100;
 
   let raw = s.pvSize * sun * avgScore *
             (s.efficiency/100) *
             temperatureEfficiency(temp) *
             orientationFactor *
-tiltFactor *
-shadingFactor;
+            shadingFactor;
 
   let limit = s.inverter * sun;
 
@@ -752,21 +722,14 @@ let sunDrop = maxRadToday > 0 ? nowRad / maxRadToday : 0;
 sunDrop = 0.5 + 0.5 * sunDrop;
 // FORECAST (kept for later use)
 let forecastCal = 0.8 + (calibration * 0.6);
-let orientationFactor = getOrientationFactor(s.orientation);
-let tiltFactor = getTiltFactor(s.tilt, s.orientation);
-let shadingFactor = s.shading / 100;
-let orientationFactor = getOrientationFactor(s.orientation);
-let tiltFactor = getTiltFactor(s.tilt, s.orientation);
-let shadingFactor = s.shading / 100;
 
 let nowPV =
   s.pvSize *
   (effectiveRad / 1000) *
   (s.efficiency / 100) *
   temperatureEfficiency(nowTemp) *
-  orientationFactor *
-  tiltFactor *
-  shadingFactor *
+  getOrientationFactor(s.orientation) *
+  (s.shading / 100) *
   cloudFactorLiveSoft *
   liveCal;
 nowPV *= sunDrop;
