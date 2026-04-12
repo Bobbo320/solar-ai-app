@@ -368,7 +368,7 @@ function getSettings() {
     inverter: s.inverter ?? 5,
     battery: s.battery ?? 10.64,
     orientation: s.orientation || "south",
-    tilt: s.tilt ?? 30
+    tilt: s.tilt ?? 30,
     shading: s.shading ?? 100,
     dailyLoad: s.dailyLoad ?? 10,
     efficiency: s.efficiency ?? 85,
@@ -384,7 +384,7 @@ function saveSettings() {
     inverter: +inverter.value,
     battery: +battery.value,
     orientation: orientation.value,
-    tilt: +tilt.value
+    tilt: +tilt.value,
     shading: +shading.value,
     dailyLoad: +dailyLoad.value,
     efficiency: +efficiency.value,
