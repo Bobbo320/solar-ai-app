@@ -752,7 +752,9 @@ let sunDrop = maxRadToday > 0 ? nowRad / maxRadToday : 0;
 sunDrop = 0.5 + 0.5 * sunDrop;
 // FORECAST (kept for later use)
 let forecastCal = 0.8 + (calibration * 0.6);
-
+let orientationFactor = getOrientationFactor(s.orientation);
+let tiltFactor = getTiltFactor(s.tilt, s.orientation);
+let shadingFactor = s.shading / 100;
 let orientationFactor = getOrientationFactor(s.orientation);
 let tiltFactor = getTiltFactor(s.tilt, s.orientation);
 let shadingFactor = s.shading / 100;
