@@ -240,13 +240,6 @@ function storeExpectedPV(dayIndex, pvValue) {
 
   savePVData(data);
 }
-
-function calibrationEngine() {
-  let c = getCalibrationFactor();
-
-  // clamp once globally (single source of truth)
-  return Math.max(0.75, Math.min(1.25, c));
-}
   
 function getCalibrationFactor() {
   let data = getPVData();
@@ -576,21 +569,6 @@ function temperatureEfficiency(t) {
   return Math.min(1.05, Math.max(0.8, f));
 }
 
-function solarCoreModel(input) {
-  return {
-    base:
-      input.pvSize *
-      input.radiationFactor *
-      input.cloudFactor *
-      input.tempFactor *
-      input.orientationFactor *
-      input.tiltFactor *
-      input.shadingFactor,
-
-    inverterCap: input.inverter
-  };
-}
-  
 function daylightHours(radSlice) {
   return radSlice.filter(r => r > SOLAR_THRESHOLD);
 }
@@ -748,52 +726,6 @@ function weatherSummary(c,r,t,h,p){
   `;
 }
 
-function livePV(params) {
-  let cal = calibrationEngine();
-
-  let result = solarCoreModel({
-    pvSize: params.pvSize,
-    radiationFactor: params.radiation / 1000,
-    cloudFactor: params.cloudFactor,
-    tempFactor: temperatureEfficiency(params.temp),
-    orientationFactor: getOrientationFactor(params.orientation),
-    tiltFactor: getTiltFactor(params.tilt, params.hour),
-    shadingFactor: params.shading / 100,
-    inverter: params.inverter
-  });
-
-  // LIVE-specific shaping (your existing behaviour preserved)
-  let liveBoost = 0.7 + (0.3 * cal);
-
-  let output = result.base * liveBoost;
-
-  // preserve inverter clipping
-  return Math.min(output, result.inverterCap);
-} 
-
-function forecastPV(params) {
-  let cal = calibrationEngine();
-
-  let result = solarCoreModel({
-    pvSize: params.pvSize,
-    radiationFactor: params.avgScore,
-    cloudFactor: params.cloudFactor,
-    tempFactor: temperatureEfficiency(params.temp),
-    orientationFactor: getOrientationFactor(params.orientation),
-    tiltFactor: getTiltFactor(params.tilt, 12),
-    shadingFactor: params.shading / 100,
-    inverter: params.inverter
-  });
-
-  // FORECAST-specific smoothing (slightly stronger correction than live)
-  let forecastBoost = 0.6 + (0.4 * cal);
-
-  let output = result.base * forecastBoost;
-
-  // preserve clipping logic
-  return Math.min(output, result.inverterCap);
-}
-  
 // -------------------- MAIN --------------------
 async function runAI(){
 
@@ -877,17 +809,19 @@ let forecastCal = 0.8 + (calibration * 0.6);
 
 let tiltFactor = getTiltFactor(s.tilt, hour);
 
-let nowPV = livePV({
-  pvSize: s.pvSize,
-  radiation: effectiveRad,
-  cloudFactor: cloudFactorLiveSoft,
-  temp: nowTemp,
-  orientation: s.orientation,
-  tilt: s.tilt,
-  shading: s.shading,
-  inverter: s.inverter,
-  hour: hour
-});
+let nowPV =
+  s.pvSize *
+  (effectiveRad / 1000) *
+  (s.efficiency / 100) *
+  temperatureEfficiency(nowTemp) *
+  getOrientationFactor(s.orientation) *
+  tiltFactor *
+  (s.shading / 100) *
+  cloudFactorLiveSoft *
+  liveCal;
+nowPV *= sunDrop;
+// inverter cap only
+nowPV = Math.min(nowPV, s.inverter);
 
 let status = "";
 
@@ -1033,16 +967,7 @@ basePV -= clipLoss * 0.7;
 // forecast should use stronger calibration effect (historical bias correction)
 let forecastCal = 0.8 + (calibration * 0.6);
 
-let pv = forecastPV({
-  pvSize: s.pvSize,
-  avgScore: avgScore,
-  cloudFactor: cloudFactorDay,
-  temp: midTemp,
-  orientation: s.orientation,
-  tilt: s.tilt,
-  shading: s.shading,
-  inverter: s.inverter
-});
+let pv = basePV * forecastCal;
 
 // ✅ Store expected PV for today + tomorrow
 let data = getPVData();
