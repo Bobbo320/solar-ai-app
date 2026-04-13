@@ -521,26 +521,30 @@ function getOrientationFactor(o) {
 function getSeasonalTilt(baseTilt) {
   let s = getSettings();
   if (s.seasonalTilt === "off") return baseTilt;
-  let month = new Date().getMonth() + 1;
 
-  // Approx UK latitude behaviour (~50–55°)
-  let winterTilt = Math.min(60, baseTilt + 20);
-  let summerTilt = Math.max(15, baseTilt - 15);
+  let now = new Date();
 
-  // Deep winter (Nov–Feb)
-  if (month === 11 || month === 12 || month <= 2) {
-    return winterTilt;
-  }
+  // Day of year (1–365)
+  let start = new Date(now.getFullYear(), 0, 0);
+  let diff = now - start;
+  let day = Math.floor(diff / (1000 * 60 * 60 * 24));
 
-  // Peak summer (May–Aug)
-  if (month >= 5 && month <= 8) {
-    return summerTilt;
-  }
+  // Solar declination (degrees)
+  let decl =
+    23.45 *
+    Math.sin(((360 / 365) * (day - 81)) * Math.PI / 180);
 
-  // Shoulder seasons → interpolate smoothly
-  let factor = (Math.cos((month - 3) / 6 * Math.PI) + 1) / 2;
+let coords = getCache("coords_" + s.postcode);
+let latitude = coords?.lat || 52.6;
 
-  return summerTilt * (1 - factor) + winterTilt * factor;
+  // Optimal tilt ≈ latitude - declination
+  let optimalTilt = latitude - decl;
+
+  // Blend with user base tilt (keeps user control)
+  let tilt = (baseTilt * 0.4) + (optimalTilt * 0.6);
+
+  // Clamp realistic limits
+  return Math.max(10, Math.min(65, tilt));
 }
   
 function getTiltFactor(tilt, hour) {
@@ -661,7 +665,7 @@ function estimatePV(avgScore, sun, temp, s) {
   let orientationFactor = getOrientationFactor(s.orientation);
   let shadingFactor = s.shading / 100;
 
-  let tiltFactor = getTiltFactor(s.tilt, 12); // midday reference
+ let tiltFactor = getTiltFactor(s.tilt, hour);
 
 let raw = s.pvSize * sun * avgScore *
           (s.efficiency/100) *
@@ -866,7 +870,7 @@ html += `
   <div class="cloud-bar-fill" style="width:${(Math.pow(cloudInfo.intensity, 0.7) * 100).toFixed(0)}%"></div>
 </div>
     <b>Temp:</b> ${nowTemp.toFixed(1)}°C<br>
-    <b>Effective Tilt:</b> ${getSeasonalTilt(s.tilt).toFixed(0)}°<br>
+    <b>Effective Tilt:</b> ${getSeasonalTilt(s.tilt).toFixed(1)}°<br>
 
     <br><b>Status:</b> ${status}
   </div>
@@ -1023,7 +1027,7 @@ if (d === 1 && tomorrowSOCValue === null) {
       <br><b>⏱️ Time Range:</b> ${timeRange}
 
       <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
-<br><b>📐 Effective Tilt:</b> ${getSeasonalTilt(s.tilt).toFixed(0)}°
+<br><b>📐 Effective Tilt:</b> ${getSeasonalTilt(s.tilt).toFixed(1)}°
 <br><b>📊 Confidence:</b> ${confidence.toFixed(0)}%
     </div>
   `;
