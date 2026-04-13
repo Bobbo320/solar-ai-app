@@ -770,9 +770,6 @@ let nowTemp = temp[nowIndex];
 
 // -------------------- LIVE PV ESTIMATE --------------------
 
-// smoother live response (must come first)
-let calibration = getCalibrationFactor();
-
 // Convert radiation to PV output (kW)
 let cloudFactorLive = cloudIntensityFactor(nowCloud, nowRad);
 
@@ -984,11 +981,7 @@ date.setDate(date.getDate() + d);
 let key = getLocalDateKey(date);
 
 // NEVER overwrite manual entries
-if (data[key]?.manual === undefined) {
-  if (!data[key]) data[key] = {};
-  data[key].expected = pv;
-  savePVData(data);
-}
+storeExpectedPV(d, pv);
 
   // ✅ SOC calculation
   let risk = 1;
@@ -1076,7 +1069,10 @@ function saveEdit() {
   let data = getPVData();
 
   let newDate = document.getElementById("editDate").value;
-  let value = parseFloat(document.getElementById("editValue").value);
+if (isNaN(value)) {
+  alert("Enter a valid number");
+  return;
+}
 
   if (!newDate) return alert("Pick a date");
 
