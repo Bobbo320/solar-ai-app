@@ -552,14 +552,25 @@ function getTiltFactor(tilt, hour) {
 
   let sunAngleFactor = 1;
 
-  let month = new Date().getMonth() + 1;
-let winterBoost = (month <= 2 || month >= 11) ? 1.15 : 1;
+  // -------------------- DAILY WINTER BOOST --------------------
+  let now = new Date();
 
-if (hour < 10) {
-  sunAngleFactor = (0.85 + (tilt / 90) * 0.3) * winterBoost;
-} else if (hour > 16) {
-  sunAngleFactor = (0.85 + (tilt / 90) * 0.3) * winterBoost;
-}
+  let start = new Date(now.getFullYear(), 0, 0);
+  let day = Math.floor((now - start) / (1000 * 60 * 60 * 24));
+
+  // 0 = summer, 1 = winter
+  let winterFactor =
+    (Math.cos((2 * Math.PI * (day - 172)) / 365) + 1) / 2;
+
+  // Scale boost (same max as before: 1.15)
+  let winterBoost = 1 + (0.15 * winterFactor);
+  // ------------------------------------------------------------
+
+  if (hour < 10) {
+    sunAngleFactor = (0.85 + (tilt / 90) * 0.3) * winterBoost;
+  } else if (hour > 16) {
+    sunAngleFactor = (0.85 + (tilt / 90) * 0.3) * winterBoost;
+  }
 
   return tiltEffect * sunAngleFactor;
 }
