@@ -447,36 +447,47 @@ async function preloadWeather() {
   } catch {}
 }
 
+  function normalizePostcode(pc) {
+  return pc.replace(/\s+/g, "").toUpperCase();
+}
+  
 // -------------------- GEOCODING --------------------
 async function getCoordinates(postcode) {
+  let cacheKey = "coords_" + normalizePostcode(postcode);
+  let cached = getCache(cacheKey);
+  if (cached) return cached;
+
   try {
-    let cacheKey = "coords_" + postcode;
-    let cached = getCache(cacheKey);
+    const res = await fetch(
+      `https://api.postcodes.io/postcodes/${encodeURIComponent(postcode)}`
+    );
 
-    if (cached) return cached;
+    const data = await res.json();
 
-    let res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(postcode)}&count=1`);
-    let data = await res.json();
+    if (data.status !== 200 || !data.result) {
+      throw new Error("Invalid postcode");
+    }
 
-    if (!data.results || data.results.length === 0) throw new Error();
-
-    let coords = {
-      lat: data.results[0].latitude,
-      lon: data.results[0].longitude
+    const coords = {
+      lat: data.result.latitude,
+      lon: data.result.longitude,
+      postcode: data.result.postcode // normalized format (important)
     };
 
     setCache(cacheKey, coords);
     return coords;
 
-  } catch {
-    return { lat: 52.6309, lon: 1.2974 };
+  } catch (err) {
+    // fallback (your old Norwich default)
+    const fallback = { lat: 52.6309, lon: 1.2974, postcode: postcode };
+    return fallback;
   }
 }
 
 // -------------------- WEATHER --------------------
 async function getWeather(postcode) {
   try {
-    let cacheKey = "weather_" + postcode;
+   let cacheKey = "weather_" + normalizePostcode(postcode);
     let cached = getCache(cacheKey);
     let now = Date.now();
 
