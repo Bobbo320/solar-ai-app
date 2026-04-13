@@ -521,24 +521,26 @@ function getOrientationFactor(o) {
 function getSeasonalTilt(baseTilt) {
   let s = getSettings();
   if (s.seasonalTilt === "off") return baseTilt;
+  let month = new Date().getMonth() + 1;
 
-  let now = new Date();
-
-  // Day of year (1–365)
-  let start = new Date(now.getFullYear(), 0, 0);
-  let diff = now - start;
-  let day = Math.floor(diff / (1000 * 60 * 60 * 24));
-
-  // Seasonal tilt limits
+  // Approx UK latitude behaviour (~50–55°)
   let winterTilt = Math.min(60, baseTilt + 20);
   let summerTilt = Math.max(15, baseTilt - 15);
 
-  // Smooth cosine curve across the year
-  // Peak winter ≈ day 355 (Dec), peak summer ≈ day 172 (June)
-  let seasonalFactor =
-    (Math.cos((2 * Math.PI * (day - 172)) / 365) + 1) / 2;
+  // Deep winter (Nov–Feb)
+  if (month === 11 || month === 12 || month <= 2) {
+    return winterTilt;
+  }
 
-  return summerTilt * (1 - seasonalFactor) + winterTilt * seasonalFactor;
+  // Peak summer (May–Aug)
+  if (month >= 5 && month <= 8) {
+    return summerTilt;
+  }
+
+  // Shoulder seasons → interpolate smoothly
+  let factor = (Math.cos((month - 3) / 6 * Math.PI) + 1) / 2;
+
+  return summerTilt * (1 - factor) + winterTilt * factor;
 }
   
 function getTiltFactor(tilt, hour) {
@@ -552,25 +554,14 @@ function getTiltFactor(tilt, hour) {
 
   let sunAngleFactor = 1;
 
-  // -------------------- DAILY WINTER BOOST --------------------
-  let now = new Date();
+  let month = new Date().getMonth() + 1;
+let winterBoost = (month <= 2 || month >= 11) ? 1.15 : 1;
 
-  let start = new Date(now.getFullYear(), 0, 0);
-  let day = Math.floor((now - start) / (1000 * 60 * 60 * 24));
-
-  // 0 = summer, 1 = winter
-  let winterFactor =
-    (Math.cos((2 * Math.PI * (day - 172)) / 365) + 1) / 2;
-
-  // Scale boost (same max as before: 1.15)
-  let winterBoost = 1 + (0.15 * winterFactor);
-  // ------------------------------------------------------------
-
-  if (hour < 10) {
-    sunAngleFactor = (0.85 + (tilt / 90) * 0.3) * winterBoost;
-  } else if (hour > 16) {
-    sunAngleFactor = (0.85 + (tilt / 90) * 0.3) * winterBoost;
-  }
+if (hour < 10) {
+  sunAngleFactor = (0.85 + (tilt / 90) * 0.3) * winterBoost;
+} else if (hour > 16) {
+  sunAngleFactor = (0.85 + (tilt / 90) * 0.3) * winterBoost;
+}
 
   return tiltEffect * sunAngleFactor;
 }
@@ -875,7 +866,7 @@ html += `
   <div class="cloud-bar-fill" style="width:${(Math.pow(cloudInfo.intensity, 0.7) * 100).toFixed(0)}%"></div>
 </div>
     <b>Temp:</b> ${nowTemp.toFixed(1)}°C<br>
-    <b>Effective Tilt:</b> ${getSeasonalTilt(s.tilt).toFixed(1)}°<br>
+    <b>Effective Tilt:</b> ${getSeasonalTilt(s.tilt).toFixed(0)}°<br>
 
     <br><b>Status:</b> ${status}
   </div>
@@ -1032,7 +1023,7 @@ if (d === 1 && tomorrowSOCValue === null) {
       <br><b>⏱️ Time Range:</b> ${timeRange}
 
       <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
-<br><b>📐 Effective Tilt:</b> ${getSeasonalTilt(s.tilt).toFixed(1)}°
+<br><b>📐 Effective Tilt:</b> ${getSeasonalTilt(s.tilt).toFixed(0)}°
 <br><b>📊 Confidence:</b> ${confidence.toFixed(0)}%
     </div>
   `;
