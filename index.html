@@ -597,6 +597,25 @@ function sunshineSplit(r,start){
   return {morning, afternoon};
 }
 
+function weightedCloudAverage(c, r, start){
+  let sum = 0, wSum = 0;
+
+  for(let i=0;i<24;i++){
+    let radVal = r[start+i];
+
+    if(radVal > SOLAR_THRESHOLD){
+      let weight = radVal;
+
+      sum += c[start+i] * weight;
+      wSum += weight;
+    }
+  }
+
+  if(wSum === 0) wSum = 1;
+
+  return sum / wSum;
+}
+  
 function cloudIntensityFactor(cloud, rad) {
   let cloudFactor = cloud / 100;
 
