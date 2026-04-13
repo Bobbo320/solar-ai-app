@@ -866,7 +866,7 @@ html += `
   <div class="cloud-bar-fill" style="width:${(Math.pow(cloudInfo.intensity, 0.7) * 100).toFixed(0)}%"></div>
 </div>
     <b>Temp:</b> ${nowTemp.toFixed(1)}°C<br>
-    <b>Effective Tilt:</b> ${getSeasonalTilt(s.tilt).toFixed(0)}°<br>
+    <b>Effective Tilt:</b> ${getSeasonalTilt(s.tilt).toFixed(1)}°<br>
 
     <br><b>Status:</b> ${status}
   </div>
@@ -1023,7 +1023,6 @@ if (d === 1 && tomorrowSOCValue === null) {
       <br><b>⏱️ Time Range:</b> ${timeRange}
 
       <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
-<br><b>📐 Effective Tilt:</b> ${getSeasonalTilt(s.tilt).toFixed(0)}°
 <br><b>📊 Confidence:</b> ${confidence.toFixed(0)}%
     </div>
   `;
