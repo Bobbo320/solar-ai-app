@@ -1079,35 +1079,28 @@ if (d === 1 && tomorrowSOCValue === null) {
     : "The day after tomorrow";
 
   // Render card
-  forecastHtml += `
-    <div class="card">
-      <h3>${label}</h3>
+forecastHtml += `
+  <div class="card">
+    <h3>${label}</h3>
 
-      ${weatherSummary(
-        weightedCloudAverage(cloud, rad, start),
-        avgRad,
-        temp[start + 12] ?? temp[start],
-        hum[start + 12] ?? hum[start],
-        precip[start + 12] ?? precip[start]
-      )}
+    ${weatherSummary(
+      weightedCloudAverage(cloud, rad, start),
+      avgRad,
+      temp[start + 12] ?? temp[start],
+      hum[start + 12] ?? hum[start],
+      precip[start + 12] ?? precip[start]
+    )}
 
-      <br><b>🔆 Usable Solar Window:</b> ${sun} hours
-      <br><b>⏱️ Time Range:</b> ${timeRange}
+    <br><b>🔆 Usable Solar Window:</b> ${sun} hours
+    <br><b>⏱️ Time Range:</b> ${timeRange}
 
-      <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
-      <br><b>⚠️ Clipping Window:</b> ${clipWindowText}
-<br><b>🔥 Inverter Clipping Loss:</b> ${clippingEnergy.toFixed(2)} kWh
-<br><b>📊 Confidence:</b> ${confidence.toFixed(0)}%
-    </div>
-  `;
-}
-let clippingSeverity =
-  clippingEnergy > 5 ? "🔴 High clipping" :
-  clippingEnergy > 2 ? "🟠 Medium clipping" :
-  clippingEnergy > 0.5 ? "🟡 Low clipping" :
-  "🟢 No significant clipping";
-
-  <br><b>📉 Clipping Status:</b> ${clippingSeverity}
+    <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
+    <br><b>⚠️ Clipping Window:</b> ${clipWindowText}
+    <br><b>🔥 Inverter Clipping Loss:</b> ${clippingEnergy.toFixed(2)} kWh
+    <br><b>📉 Clipping Status:</b> ${clippingSeverity}
+    <br><b>📊 Confidence:</b> ${confidence.toFixed(0)}%
+  </div>
+`;
   
 // -------------------- RENDER --------------------
 
