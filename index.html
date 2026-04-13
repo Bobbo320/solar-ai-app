@@ -154,6 +154,12 @@
 
 <script>
 
+const settingsPanel = document.getElementById("settingsPanel");
+const pvPanel = document.getElementById("pvPanel");
+const loading = document.getElementById("loading");
+const output = document.getElementById("output");
+const pvEditor = document.getElementById("pvEditor");
+  
 const SOLAR_THRESHOLD = 50;        // used for real PV calculations
 const SOLAR_VISIBLE_THRESHOLD = 30; // used for solar time window display
 
@@ -335,7 +341,9 @@ Object.keys(data)
     tr.innerHTML = `
       <td>${date}</td>
       <td>${row.expected ? row.expected.toFixed(1) : "-"}</td>
-      <td>${row.manual ? row.manual.toFixed(1) : "-"}</td>
+      <td>${row.manual !== undefined ? row.manual.toFixed(1) : "-"}</td>
+<td>${row.expected !== undefined ? row.expected.toFixed(1) : "-"}</td>
+
 <td>
   <button onclick="openEditor('${date}')">Edit</button>
   <button onclick="deletePVRow('${date}')">Delete</button>
@@ -748,8 +756,8 @@ let forecastHtml = "";
 let now = new Date();
 
 // Find closest hour index
-let nowIndex = time.findIndex(t => new Date(t) >= now) - 1;
-if (nowIndex < 0) nowIndex = 0;
+let idx = time.findIndex(t => new Date(t) >= now);
+let nowIndex = idx > 0 ? idx - 1 : 0;
 
 // fallback if not found
 if (nowIndex === -1) nowIndex = 0;
@@ -976,7 +984,7 @@ date.setDate(date.getDate() + d);
 let key = getLocalDateKey(date);
 
 // NEVER overwrite manual entries
-if (!data[key]?.manual) {
+if (data[key]?.manual === undefined) {
   if (!data[key]) data[key] = {};
   data[key].expected = pv;
   savePVData(data);
