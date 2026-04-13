@@ -597,30 +597,6 @@ function sunshineSplit(r,start){
   return {morning, afternoon};
 }
 
-function hourlySolarScore(c, r) {
-  return Math.min(1, r / 1000);
-}
-
-function weightedCloudAverage(c, r, start){
-
-  let sum = 0, wSum = 0;
-
-  for(let i=0;i<24;i++){
-    let radVal = r[start+i];
-
-    if(radVal > SOLAR_THRESHOLD){
-      let weight = radVal;
-
-      sum += c[start+i] * weight;
-      wSum += weight;
-    }
-  }
-
-  if(wSum === 0) wSum = 1;
-
-  return sum / wSum;
-}
-
 function cloudIntensityFactor(cloud, rad) {
   let cloudFactor = cloud / 100;
 
@@ -891,19 +867,12 @@ html += `
     ? dayRad.reduce((a, b) => a + b) / dayRad.length
     : 0;
 
-  let validHours = 0;
-  let scoreSum = 0;
+ let avgRadEffective = avgRad; // base
 
-  for (let i = 0; i < 24; i++) {
-    let rVal = rad[start + i];
+let radBoost = 1 + (0.6 * Math.exp(-avgRadEffective / 300));
+avgRadEffective *= radBoost;
 
-    if (rVal > SOLAR_THRESHOLD) {
-      scoreSum += hourlySolarScore(cloud[start + i], rVal);
-      validHours++;
-    }
-  }
-
-  let avgScore = validHours ? (scoreSum / validHours) : 0;
+let avgScore = Math.min(1, avgRadEffective / 1000);
 
   let split = sunshineSplit(rad, start);
 
