@@ -342,7 +342,6 @@ Object.keys(data)
       <td>${date}</td>
       <td>${row.expected ? row.expected.toFixed(1) : "-"}</td>
       <td>${row.manual !== undefined ? row.manual.toFixed(1) : "-"}</td>
-<td>${row.expected !== undefined ? row.expected.toFixed(1) : "-"}</td>
 
 <td>
   <button onclick="openEditor('${date}')">Edit</button>
@@ -771,6 +770,7 @@ let nowTemp = temp[nowIndex];
 // -------------------- LIVE PV ESTIMATE --------------------
 
 // Convert radiation to PV output (kW)
+  let calibration = getCalibrationFactor();
 let cloudFactorLive = cloudIntensityFactor(nowCloud, nowRad);
 
 // stronger but still stable cloud response
@@ -864,7 +864,8 @@ html += `
     <b>Cloud Type:</b> ${cloudInfo.label}<br>
 
 <div class="cloud-bar">
-  <div class="cloud-bar-fill" style="width:${(Math.pow(cloudInfo.intensity, 0.7) * 100).toFixed(0)}%"></div>
+let calibration = getCalibrationFactor();
+  <div class="cloud-bar-fill" style="width:${Math.max(5, Math.min(100, (Math.pow(cloudInfo.intensity || 0, 0.7) * 100))).toFixed(0)}%"></div>
 </div>
     <b>Temp:</b> ${nowTemp.toFixed(1)}°C<br>
     <b>Effective Tilt:</b> ${getSeasonalTilt(s.tilt).toFixed(1)}°<br>
@@ -1068,8 +1069,13 @@ function closeEditor() {
 function saveEdit() {
   let data = getPVData();
 
-  let newDate = document.getElementById("editDate").value;
+ let newDate = document.getElementById("editDate").value;
+let value = parseFloat(document.getElementById("editValue").value);
+
 if (isNaN(value)) {
+  alert("Enter a valid number");
+  return;
+}
   alert("Enter a valid number");
   return;
 }
