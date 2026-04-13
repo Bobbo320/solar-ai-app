@@ -508,6 +508,66 @@ async function getWeather(postcode) {
   }
 }
 
+function detectClippingWindow(rad, temp, start, s) {
+
+  let clippingHours = [];
+
+  for (let i = 0; i < 24; i++) {
+
+    let rVal = rad[start + i];
+    if (rVal <= SOLAR_THRESHOLD) continue;
+
+    let pv =
+      s.pvSize *
+      (rVal / 1000) *
+      (s.efficiency / 100) *
+      temperatureEfficiency(temp[start + i]) *
+      getOrientationFactor(s.orientation) *
+      (s.shading / 100);
+
+    if (pv >= s.inverter * 0.95) {
+      clippingHours.push(i);
+    }
+  }
+
+  if (clippingHours.length === 0) {
+    return { start: null, end: null, hours: [] };
+  }
+
+  return {
+    start: clippingHours[0],
+    end: clippingHours[clippingHours.length - 1],
+    hours: clippingHours
+  };
+}
+
+function calculateClippingEnergy(rad, temp, start, s) {
+
+  let clipping = 0;
+
+  for (let i = 0; i < 24; i++) {
+
+    let rVal = rad[start + i];
+    if (rVal <= SOLAR_THRESHOLD) continue;
+
+    let pv =
+      s.pvSize *
+      (rVal / 1000) *
+      (s.efficiency / 100) *
+      temperatureEfficiency(temp[start + i]) *
+      getOrientationFactor(s.orientation) *
+      (s.shading / 100);
+
+    let limit = s.inverter;
+
+    if (pv > limit) {
+      clipping += (pv - limit);
+    }
+  }
+
+  return clipping;
+}
+  
 // -------------------- SOLAR --------------------
 function getOrientationFactor(o) {
   if (o==="south") return 1;
@@ -673,7 +733,14 @@ let raw = s.pvSize * sun * avgScore *
   return Math.min(raw, limit);
 }
 
+function hourToTime(timeSlice, start, hourIndex) {
+  if (hourIndex === null || hourIndex === undefined) return null;
 
+  return new Date(timeSlice[start + hourIndex]).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
 
   
 // -------------------- SOC --------------------
@@ -873,7 +940,14 @@ html += `
  for (let d = 0; d < 3; d++) {
 
   let start = d * 24;
+let clipInfo = detectClippingWindow(rad, temp, start, s);
+let clippingEnergy = calculateClippingEnergy(rad, temp, start, s);
 
+   let clipWindowText =
+  clipInfo.start !== null
+    ? `${hourToTime(time, start, clipInfo.start)} – ${hourToTime(time, start, clipInfo.end)}`
+    : "No clipping expected";
+   
   let dayRad = daylightHours(rad.slice(start, start + 24));
 
   let avgRad = dayRad.length
@@ -1021,11 +1095,20 @@ if (d === 1 && tomorrowSOCValue === null) {
       <br><b>⏱️ Time Range:</b> ${timeRange}
 
       <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
+      <br><b>⚠️ Clipping Window:</b> ${clipWindowText}
+<br><b>🔥 Inverter Clipping Loss:</b> ${clippingEnergy.toFixed(2)} kWh
 <br><b>📊 Confidence:</b> ${confidence.toFixed(0)}%
     </div>
   `;
 }
+let clippingSeverity =
+  clippingEnergy > 5 ? "🔴 High clipping" :
+  clippingEnergy > 2 ? "🟠 Medium clipping" :
+  clippingEnergy > 0.5 ? "🟡 Low clipping" :
+  "🟢 No significant clipping";
 
+  <br><b>📉 Clipping Status:</b> ${clippingSeverity}
+  
 // -------------------- RENDER --------------------
 
 loading.innerText = "";
