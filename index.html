@@ -843,16 +843,22 @@ let forecastCal = 0.8 + (calibration * 0.6);
 
 let tiltFactor = getTiltFactor(s.tilt, hour);
 
+// 1️⃣ Base PV (no cloud yet)
 let nowPV =
   s.pvSize *
-  (effectiveRad / 1000) *
+  effectiveRad *
   (s.efficiency / 100) *
   temperatureEfficiency(nowTemp) *
   getOrientationFactor(s.orientation) *
   tiltFactor *
-  (s.shading / 100) *
-applyCloudFactor(nowPV, nowCloud, nowRad)
-  liveCal;
+  (s.shading / 100);
+
+// 2️⃣ Apply cloud properly
+nowPV = applyCloudFactor(nowPV, nowCloud, nowRad);
+
+// 3️⃣ Apply calibration
+nowPV *= liveCal;
+
 nowPV *= sunDrop;
 // inverter cap only
 nowPV = Math.min(nowPV, s.inverter);
