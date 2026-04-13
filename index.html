@@ -597,7 +597,12 @@ function sunshineSplit(r,start){
   return {morning, afternoon};
 }
 
+function hourlySolarScore(c, r) {
+  return Math.min(1, r / 1000);
+}
+
 function weightedCloudAverage(c, r, start){
+
   let sum = 0, wSum = 0;
 
   for(let i=0;i<24;i++){
@@ -615,7 +620,7 @@ function weightedCloudAverage(c, r, start){
 
   return sum / wSum;
 }
-  
+
 function cloudIntensityFactor(cloud, rad) {
   let cloudFactor = cloud / 100;
 
@@ -886,12 +891,19 @@ html += `
     ? dayRad.reduce((a, b) => a + b) / dayRad.length
     : 0;
 
- let avgRadEffective = avgRad; // base
+  let validHours = 0;
+  let scoreSum = 0;
 
-let radBoost = 1 + (0.6 * Math.exp(-avgRadEffective / 300));
-avgRadEffective *= radBoost;
+  for (let i = 0; i < 24; i++) {
+    let rVal = rad[start + i];
 
-let avgScore = Math.min(1, avgRadEffective / 1000);
+    if (rVal > SOLAR_THRESHOLD) {
+      scoreSum += hourlySolarScore(cloud[start + i], rVal);
+      validHours++;
+    }
+  }
+
+  let avgScore = validHours ? (scoreSum / validHours) : 0;
 
   let split = sunshineSplit(rad, start);
 
@@ -949,10 +961,8 @@ let confidence =
 
 // clamp
 confidence = Math.max(35, Math.min(98, confidence));
- let adjustedSun = sun * 0.85; // prevents double counting
-let basePV = estimatePV(avgScore, adjustedSun, midTemp, s);
-   let cloudFactorDaySoft = 0.7 + (0.3 * cloudFactorDay);
-basePV *= cloudFactorDaySoft;
+  let basePV = estimatePV(avgScore, sun, midTemp, s);
+basePV *= cloudFactorDay;
 
   // inverter cap
   let maxOutput = s.inverter * sun;
