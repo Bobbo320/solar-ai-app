@@ -804,8 +804,6 @@ let sunDrop = maxRadToday > 0 ? nowRad / maxRadToday : 0;
 
 // soften curve + force ~half near sunset
 sunDrop = 0.5 + 0.5 * sunDrop;
-// FORECAST (kept for later use)
-let forecastCal = 0.8 + (calibration * 0.6);
 
 let tiltFactor = getTiltFactor(s.tilt, hour);
 
