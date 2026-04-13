@@ -155,7 +155,7 @@
 <script>
 
 const SOLAR_THRESHOLD = 50;        // used for real PV calculations
-const SOLAR_VISIBLE_THRESHOLD = SOLAR_THRESHOLD * 0.6;
+const SOLAR_VISIBLE_THRESHOLD = 30; // used for solar time window display
 
 let preloadedWeather = null;
   
@@ -240,10 +240,6 @@ function storeExpectedPV(dayIndex, pvValue) {
 
   savePVData(data);
 }
-
-function getCalibrationAdjusted(base, calibration, strength = 0.5) {
-  return base * (1 + (calibration - 1) * strength);
-}  
   
 function getCalibrationFactor() {
   let data = getPVData();
@@ -577,19 +573,6 @@ function daylightHours(radSlice) {
   return radSlice.filter(r => r > SOLAR_THRESHOLD);
 }
 
-function getDayStartIndex(timeArray, dayOffset) {
-  let target = new Date();
-  target.setHours(0,0,0,0);
-  target.setDate(target.getDate() + dayOffset);
-
-  for (let i = 0; i < timeArray.length; i++) {
-    let t = new Date(timeArray[i]);
-    if (t.getTime() === target.getTime()) return i;
-  }
-
-  return dayOffset * 24; // fallback
-}
-  
 function sunshineSplit(r,start){
   let morning=0, afternoon=0;
 
@@ -607,10 +590,6 @@ function hourlySolarScore(c, r) {
   return Math.min(1, r / 1000);
 }
 
-function normalizedRadiation(rad) {
-  return Math.min(1, rad / 1000);
-}
-  
 function weightedCloudAverage(c, r, start){
 
   let sum = 0, wSum = 0;
@@ -653,10 +632,6 @@ function cloudIntensityFactor(cloud, rad) {
   return 1;
 }
 
-  function applyCloudFactor(pv, cloud, rad) {
-  return pv * cloudIntensityFactor(cloud, rad);
-}
-  
 function getCloudThicknessLabel(cloud, rad) {
   let radFactor = rad / 1000;
 
@@ -772,17 +747,12 @@ let forecastHtml = "";
   // -------------------- LIVE NOW --------------------
 let now = new Date();
 
-// ✅ robust nearest-hour match (prevents drift)
-let nowIndex = 0;
-let minDiff = Infinity;
+// Find closest hour index
+let nowIndex = time.findIndex(t => new Date(t) >= now) - 1;
+if (nowIndex < 0) nowIndex = 0;
 
-for (let i = 0; i < time.length; i++) {
-  let diff = Math.abs(new Date(time[i]) - now);
-  if (diff < minDiff) {
-    minDiff = diff;
-    nowIndex = i;
-  }
-}
+// fallback if not found
+if (nowIndex === -1) nowIndex = 0;
 
 // Extract current conditions
 let nowRad = rad[nowIndex];
@@ -802,7 +772,7 @@ let cloudFactorLive = cloudIntensityFactor(nowCloud, nowRad);
 let cloudFactorLiveSoft = 0.7 + (0.3 * cloudFactorLive);
 
 // less suppressive calibration for live
-let liveCal = getCalibrationAdjusted(1, calibration, 0.3);
+let liveCal = 0.95 + (calibration * 0.25);
 
 // 🔧 radiation input (no change)
 let hour = new Date().getHours();
@@ -827,11 +797,7 @@ else {
 // Radiation response curve (already good idea)
 let radBoost = 1 + (0.6 * Math.exp(-nowRad / 300));
 
-let effectiveRad =
-  normalizedRadiation(nowRad) *
-  orientationBias *
-  radBoost;
-  
+let effectiveRad = Math.min(1000, nowRad * orientationBias * radBoost);
 // simple sun-height drop (based on radiation vs peak)
 let maxRadToday = Math.max(...rad.slice(0, 24));
 let sunDrop = maxRadToday > 0 ? nowRad / maxRadToday : 0;
@@ -843,14 +809,17 @@ let forecastCal = 0.8 + (calibration * 0.6);
 
 let tiltFactor = getTiltFactor(s.tilt, hour);
 
-let nowPV = 0;
-
-// calculate in steps
-nowPV = baseCalculation;
-nowPV = applyCloudFactor(nowPV, nowCloud, nowRad);
-nowPV *= liveCal;
+let nowPV =
+  s.pvSize *
+  (effectiveRad / 1000) *
+  (s.efficiency / 100) *
+  temperatureEfficiency(nowTemp) *
+  getOrientationFactor(s.orientation) *
+  tiltFactor *
+  (s.shading / 100) *
+  cloudFactorLiveSoft *
+  liveCal;
 nowPV *= sunDrop;
-nowPV = Math.min(nowPV, s.inverter);
 // inverter cap only
 nowPV = Math.min(nowPV, s.inverter);
 
@@ -903,7 +872,7 @@ html += `
 
  for (let d = 0; d < 3; d++) {
 
-let start = getDayStartIndex(time, d);
+  let start = d * 24;
 
   let dayRad = daylightHours(rad.slice(start, start + 24));
 
@@ -981,16 +950,8 @@ let confidence =
 
 // clamp
 confidence = Math.max(35, Math.min(98, confidence));
-let basePV =
-  s.pvSize *
-  avgScore *
-  sun *
-  (s.efficiency / 100) *
-  temperatureEfficiency(midTemp) *
-  getOrientationFactor(s.orientation) *
-  getTiltFactor(s.tilt, 12) *
-  (s.shading / 100);
-basePV = applyCloudFactor(basePV, cloudAvg, avgRad);
+  let basePV = estimatePV(avgScore, sun, midTemp, s);
+basePV *= cloudFactorDay;
 
   // inverter cap
   let maxOutput = s.inverter * sun;
@@ -1004,7 +965,9 @@ basePV -= clipLoss * 0.7;
   
 
 // forecast should use stronger calibration effect (historical bias correction)
-let pv = getCalibrationAdjusted(basePV, calibration, 0.6);
+let forecastCal = 0.8 + (calibration * 0.6);
+
+let pv = basePV * forecastCal;
 
 // ✅ Store expected PV for today + tomorrow
 let data = getPVData();
@@ -1015,7 +978,11 @@ date.setDate(date.getDate() + d);
 let key = getLocalDateKey(date);
 
 // NEVER overwrite manual entries
-storeExpectedPV(d, pv);
+if (!data[key]?.manual) {
+  if (!data[key]) data[key] = {};
+  data[key].expected = pv;
+  savePVData(data);
+}
 
   // ✅ SOC calculation
   let risk = 1;
