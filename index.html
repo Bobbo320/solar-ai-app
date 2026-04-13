@@ -930,8 +930,10 @@ let confidence =
 
 // clamp
 confidence = Math.max(35, Math.min(98, confidence));
-  let basePV = estimatePV(avgScore, sun, midTemp, s);
-basePV *= cloudFactorDay;
+ let adjustedSun = sun * 0.85; // prevents double counting
+let basePV = estimatePV(avgScore, adjustedSun, midTemp, s);
+   let cloudFactorDaySoft = 0.7 + (0.3 * cloudFactorDay);
+basePV *= cloudFactorDaySoft;
 
   // inverter cap
   let maxOutput = s.inverter * sun;
