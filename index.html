@@ -241,68 +241,89 @@ function storeExpectedPV(dayIndex, pvValue) {
   savePVData(data);
 }
   
-function getCalibrationFactor() {
+function getCalibrationSystem() {
   let data = getPVData();
+  let today = new Date();
 
   let weightedManual = 0;
   let weightedExpected = 0;
 
-  let today = new Date();
+  let seasonalBias = {
+    winter: { m: 0, e: 0 },
+    spring: { m: 0, e: 0 },
+    summer: { m: 0, e: 0 },
+    autumn: { m: 0, e: 0 }
+  };
 
   Object.keys(data).forEach(date => {
-  let row = data[date];
+    let row = data[date];
+    if (!row.expected || !row.manual) return;
 
-  let entryDate = new Date(date);
-  let diffDays = (today - entryDate) / (1000 * 60 * 60 * 24);
+    let entryDate = new Date(date);
+    let diffDays = (today - entryDate) / (1000 * 60 * 60 * 24);
 
-  if (
-    diffDays >= 0 &&
-    diffDays <= 14 &&
-    row.expected !== undefined &&
-    row.manual !== undefined &&
-    row.expected > 0 &&
-    !isNaN(row.expected) &&
-    !isNaN(row.manual)
-  ) {
+    if (diffDays < 0 || diffDays > 30) return;
 
-    let baseWeight = row.expected;
-    // ❌ Outlier protection (bad manual entries)
-let ratio = row.manual / row.expected;
+    let ratio = row.manual / row.expected;
+    if (ratio < 0.3 || ratio > 1.7) return;
+    if (row.expected < 1) return;
 
-// Ignore unrealistic values
-if (ratio < 0.3 || ratio > 1.7) return;
-
-    // ❌ Ignore weak/noisy days
-    if (baseWeight < 1) return;
-
-    // ✅ Boost strong days
-    let weight = Math.pow(baseWeight, 1.3);
+    let weight = Math.pow(row.expected, 1.25);
 
     weightedManual += row.manual * weight;
     weightedExpected += row.expected * weight;
-  }
-});
 
-  if (weightedExpected === 0) return 1;
+    let month = entryDate.getMonth() + 1;
 
-let factor = weightedManual / weightedExpected;
+    let season =
+      (month <= 2 || month === 12) ? "winter" :
+      (month <= 5) ? "spring" :
+      (month <= 8) ? "summer" : "autumn";
 
-// ✅ Stability clamp (prevents crazy swings)
-factor = Math.max(0.75, Math.min(1.25, factor));
+    seasonalBias[season].m += row.manual * weight;
+    seasonalBias[season].e += row.expected * weight;
+  });
 
-return factor;
+  let bias = weightedExpected
+    ? weightedManual / weightedExpected
+    : 1;
+
+  bias = Math.max(0.75, Math.min(1.25, bias));
+
+  let month = new Date().getMonth() + 1;
+
+  let currentSeason =
+    (month <= 2 || month === 12) ? "winter" :
+    (month <= 5) ? "spring" :
+    (month <= 8) ? "summer" : "autumn";
+
+  let seasonData = seasonalBias[currentSeason];
+
+  let seasonalFactor =
+    seasonData.e > 0
+      ? (seasonData.m / seasonData.e)
+      : 1;
+
+  seasonalFactor = Math.max(0.85, Math.min(1.15, seasonalFactor));
+
+  return {
+    bias,
+    seasonalFactor
+  };
 }
 
-function getCalibrationFactorUnified(type = "live") {
-  let base = getCalibrationFactor();
+function applyCalibration(raw, mode = "live") {
+  let { bias, seasonalFactor } = getCalibrationSystem();
 
-  if (!base || isNaN(base)) return 1;
+  let strength = mode === "live" ? 0.35 : 0.75;
 
-  let strength = type === "live" ? 0.35 : 0.75;
+  let combined = bias * seasonalFactor;
 
-  let calibrated = 1 + (base - 1) * strength;
+  let smoothed = 1 + (combined - 1) * strength;
 
-  return Math.max(0.85, Math.min(1.20, calibrated));
+  smoothed = Math.max(0.85, Math.min(1.20, smoothed));
+
+  return raw * smoothed;
 }
   
 function renderPVTable() {
@@ -358,7 +379,9 @@ Object.keys(data)
   });
 
   // ✅ Calibration factor display (run once)
-  let factor = getCalibrationFactor();
+let { bias, seasonalFactor } = getCalibrationSystem();
+
+let factor = bias * seasonalFactor;
   document.getElementById("calFactor").innerText = factor.toFixed(2);
 }
 
@@ -787,8 +810,6 @@ let nowTemp = temp[nowIndex];
 
 // -------------------- LIVE PV ESTIMATE --------------------
 
-// smoother live response (must come first)
-let calibration = getCalibrationFactorUnified("live");
 
 // Convert radiation to PV output (kW)
 let cloudFactorLive = cloudIntensityFactor(nowCloud, nowRad);
@@ -823,7 +844,7 @@ let nowPV =
   cloudFactorLiveSoft;
 
 // apply calibrated correction
-nowPV *= calibration;
+nowPV = applyCalibration(nowPV, "live");
 
 // inverter cap
 nowPV = Math.min(nowPV, s.inverter);
@@ -966,8 +987,7 @@ let basePV = estimatePV(
 );
 
   // calibration
-let calibration = getCalibrationFactorUnified("forecast");
-let pv = basePV * calibration;
+let pv = applyCalibration(basePV, "forecast");
 
 // ✅ Store expected PV for today + tomorrow
 let data = getPVData();
