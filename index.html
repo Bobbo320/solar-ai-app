@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <link rel="icon" href="data:,">
   <title>Solar SOC AI Pro</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
@@ -41,10 +40,9 @@
 
 .cloud-bar-fill {
   height: 100%;
-  background: linear-gradient(to right, #38bdf8, #0ea5e9);
+  background: #38bdf8;
   width: 0%;
-  transition: width 0.4s ease;
-  box-shadow: 0 0 8px rgba(56,189,248,0.6);
+  transition: width 0.3s ease;
 }
   </style>
 </head>
@@ -610,69 +608,28 @@ function getSeasonalTilt(baseTilt) {
 
   return summerTilt * (1 - seasonalFactor) + winterTilt * seasonalFactor;
 }
-
-// -------------------- REAL SOLAR GEOMETRY --------------------
-function getDayOfYear(date = new Date()) {
-  const start = new Date(date.getFullYear(), 0, 0);
-  return Math.floor((date - start) / 86400000);
-}
-
-function getSolarDeclination(dayOfYear) {
-  // Cooper equation (accurate enough for PV modelling)
-  return 23.45 * Math.sin((2 * Math.PI * (284 + dayOfYear)) / 365);
-}
-
-function getSolarElevation(lat, decl, hour) {
-  const latRad = lat * Math.PI / 180;
-  const declRad = decl * Math.PI / 180;
-
-  // Solar hour angle (0 at solar noon)
-  const h = (hour - 12) * 15 * Math.PI / 180;
-
-  const elevation = Math.asin(
-    Math.sin(latRad) * Math.sin(declRad) +
-    Math.cos(latRad) * Math.cos(declRad) * Math.cos(h)
-  );
-
-  return elevation * 180 / Math.PI;
-}
-
-function getLocationLatitude() {
-  // pull from cached coords if available
-  let s = getSettings();
-  let cache = getCache("coords_" + s.postcode);
-  return cache?.lat ?? 52.6; // fallback UK
-}
   
 function getTiltFactor(tilt, hour) {
 
-  const lat = getLocationLatitude();
-
-  const day = getDayOfYear();
-  const decl = getSolarDeclination(day);
-
-  const elevation = getSolarElevation(lat, decl, hour);
-
-  // below horizon
-  if (elevation <= 0) return 0;
-
-  // apply your seasonal tilt logic (UNCHANGED system)
   tilt = Math.max(0, Math.min(90, getSeasonalTilt(tilt)));
 
-  // convert to radians
-  const tiltRad = tilt * Math.PI / 180;
-  const elevRad = elevation * Math.PI / 180;
+  const optimalTilt = 35;
 
-  // incidence angle approximation (south-facing assumption preserved)
-  let incidence = Math.cos(tiltRad - elevRad);
+  let tiltEffect = 1 - Math.pow((tilt - optimalTilt) / 55, 2);
+  tiltEffect = Math.max(0.75, Math.min(1.05, tiltEffect));
 
-  // clamp (prevents negative generation)
-  incidence = Math.max(0, incidence);
+  let sunAngleFactor = 1;
 
-  // mild smoothing to avoid overly sharp peaks
-  let smoothed = 0.85 + 0.15 * incidence;
+  let month = new Date().getMonth() + 1;
+let winterBoost = (month <= 2 || month >= 11) ? 1.15 : 1;
 
-  return smoothed;
+if (hour < 10) {
+  sunAngleFactor = (0.85 + (tilt / 90) * 0.3) * winterBoost;
+} else if (hour > 16) {
+  sunAngleFactor = (0.85 + (tilt / 90) * 0.3) * winterBoost;
+}
+
+  return tiltEffect * sunAngleFactor;
 }
   
 function temperatureEfficiency(t) {
@@ -850,55 +807,6 @@ function weatherSummary(c,r,t,h,p){
   `;
 }
 
-// -------------------- TREND DETECTION --------------------
-function getPVTrend(pvToday, pvTomorrow) {
-  let diff = pvTomorrow - pvToday;
-
-  if (diff > 2) return { label: "Improving ⬆️", dir: "up" };
-  if (diff < -2) return { label: "Worsening ⬇️", dir: "down" };
-  return { label: "Stable ➖", dir: "flat" };
-}
-
-// -------------------- CONFIDENCE COLOR --------------------
-function getConfidenceColor(c) {
-  if (c > 80) return "#22c55e"; // green
-  if (c > 60) return "#eab308"; // amber
-  return "#ef4444"; // red
-}
-
-// -------------------- SOLAR QUALITY --------------------
-function getSolarQuality(pv, confidence, instability) {
-
-  if (pv > 15 && confidence > 75 && instability < 0.4)
-    return "🔥 Excellent solar day";
-
-  if (pv > 10 && confidence > 65)
-    return "☀️ Good generation";
-
-  if (pv > 5)
-    return "🌥️ Mixed conditions";
-
-  return "⚠️ Poor solar day";
-}
-
-// -------------------- BATTERY STRATEGY --------------------
-function getBatteryStrategy(pvTomorrow, confidence, trend) {
-
-  if (pvTomorrow < 5)
-    return "🔌 Charge higher overnight (low solar expected)";
-
-  if (confidence < 60)
-    return "⚠️ Be cautious — forecast uncertain";
-
-  if (trend.dir === "up")
-    return "📉 Can reduce grid charge slightly";
-
-  if (trend.dir === "down")
-    return "📈 Increase reserve — solar dropping";
-
-  return "وازن — balanced charging recommended";
-}
-  
 // -------------------- MAIN --------------------
 async function runAI(){
 
@@ -1026,11 +934,6 @@ html += `
   </div>
 `;
 
-let pvTodayVal = null;
-let pvTomorrowVal = null;
-let instabilityTomorrow = 0;
-let confidenceTomorrow = 0;
-  
  for (let d = 0; d < 3; d++) {
 
   let start = d * 24;
@@ -1043,7 +946,7 @@ let confidenceTomorrow = 0;
 
   let validHours = 0;
   let scoreSum = 0;
-   
+
   for (let i = 0; i < 24; i++) {
     let rVal = rad[start + i];
 
@@ -1122,13 +1025,6 @@ let basePV = estimatePV(
 let rawPV = basePV;
 let pv = applyCalibration(rawPV, "forecast");
 
-// ✅ NOW it's safe to use pv
-if (d === 0) pvTodayVal = pv;
-if (d === 1) {
-  pvTomorrowVal = pv;
-  instabilityTomorrow = instability;
-  confidenceTomorrow = confidence;
-   
 // ✅ Store expected PV for today + tomorrow
 let data = getPVData();
 
@@ -1181,11 +1077,7 @@ if (d === 1 && tomorrowSOCValue === null) {
       <br><b>⏱️ Time Range:</b> ${timeRange}
 
       <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
-<br><b>📊 Confidence:</b> 
-<span style="color:${getConfidenceColor(confidence)}; font-weight:bold;">
-  ${confidence.toFixed(0)}%
-</span>
-<br><b>🌤️ Solar Quality:</b> ${getSolarQuality(pv, confidence, instability)}
+<br><b>📊 Confidence:</b> ${confidence.toFixed(0)}%
     </div>
   `;
 }
@@ -1209,21 +1101,6 @@ html += `
 // 2. Then append forecast cards
 html += forecastHtml;
 
-let trend = getPVTrend(pvTodayVal, pvTomorrowVal);
-let strategy = getBatteryStrategy(pvTomorrowVal, confidenceTomorrow, trend);
-
-html += `
-  <div class="card">
-    <h3>📈 Solar Trend</h3>
-    <b>Direction:</b> ${trend.label}
-  </div>
-
-  <div class="card">
-    <h3>🧠 Battery Strategy</h3>
-    ${strategy}
-  </div>
-`;
-  
 output.innerHTML = html;
   
 };
