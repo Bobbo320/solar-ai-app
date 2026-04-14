@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <link rel="icon" href="data:,">
   <title>Solar SOC AI Pro</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
@@ -1042,13 +1043,6 @@ let confidenceTomorrow = 0;
 
   let validHours = 0;
   let scoreSum = 0;
-
-if (d === 0) pvTodayVal = pv;
-if (d === 1) {
-  pvTomorrowVal = pv;
-  instabilityTomorrow = instability;
-  confidenceTomorrow = confidence;
-}
    
   for (let i = 0; i < 24; i++) {
     let rVal = rad[start + i];
@@ -1128,6 +1122,13 @@ let basePV = estimatePV(
 let rawPV = basePV;
 let pv = applyCalibration(rawPV, "forecast");
 
+// ✅ NOW it's safe to use pv
+if (d === 0) pvTodayVal = pv;
+if (d === 1) {
+  pvTomorrowVal = pv;
+  instabilityTomorrow = instability;
+  confidenceTomorrow = confidence;
+   
 // ✅ Store expected PV for today + tomorrow
 let data = getPVData();
 
