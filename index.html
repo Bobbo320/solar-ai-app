@@ -40,9 +40,10 @@
 
 .cloud-bar-fill {
   height: 100%;
-  background: #38bdf8;
+  background: linear-gradient(to right, #38bdf8, #0ea5e9);
   width: 0%;
-  transition: width 0.3s ease;
+  transition: width 0.4s ease;
+  box-shadow: 0 0 8px rgba(56,189,248,0.6);
 }
   </style>
 </head>
@@ -848,6 +849,55 @@ function weatherSummary(c,r,t,h,p){
   `;
 }
 
+// -------------------- TREND DETECTION --------------------
+function getPVTrend(pvToday, pvTomorrow) {
+  let diff = pvTomorrow - pvToday;
+
+  if (diff > 2) return { label: "Improving ⬆️", dir: "up" };
+  if (diff < -2) return { label: "Worsening ⬇️", dir: "down" };
+  return { label: "Stable ➖", dir: "flat" };
+}
+
+// -------------------- CONFIDENCE COLOR --------------------
+function getConfidenceColor(c) {
+  if (c > 80) return "#22c55e"; // green
+  if (c > 60) return "#eab308"; // amber
+  return "#ef4444"; // red
+}
+
+// -------------------- SOLAR QUALITY --------------------
+function getSolarQuality(pv, confidence, instability) {
+
+  if (pv > 15 && confidence > 75 && instability < 0.4)
+    return "🔥 Excellent solar day";
+
+  if (pv > 10 && confidence > 65)
+    return "☀️ Good generation";
+
+  if (pv > 5)
+    return "🌥️ Mixed conditions";
+
+  return "⚠️ Poor solar day";
+}
+
+// -------------------- BATTERY STRATEGY --------------------
+function getBatteryStrategy(pvTomorrow, confidence, trend) {
+
+  if (pvTomorrow < 5)
+    return "🔌 Charge higher overnight (low solar expected)";
+
+  if (confidence < 60)
+    return "⚠️ Be cautious — forecast uncertain";
+
+  if (trend.dir === "up")
+    return "📉 Can reduce grid charge slightly";
+
+  if (trend.dir === "down")
+    return "📈 Increase reserve — solar dropping";
+
+  return "وازن — balanced charging recommended";
+}
+  
 // -------------------- MAIN --------------------
 async function runAI(){
 
@@ -975,6 +1025,11 @@ html += `
   </div>
 `;
 
+let pvTodayVal = null;
+let pvTomorrowVal = null;
+let instabilityTomorrow = 0;
+let confidenceTomorrow = 0;
+  
  for (let d = 0; d < 3; d++) {
 
   let start = d * 24;
@@ -988,6 +1043,13 @@ html += `
   let validHours = 0;
   let scoreSum = 0;
 
+if (d === 0) pvTodayVal = pv;
+if (d === 1) {
+  pvTomorrowVal = pv;
+  instabilityTomorrow = instability;
+  confidenceTomorrow = confidence;
+}
+   
   for (let i = 0; i < 24; i++) {
     let rVal = rad[start + i];
 
@@ -1118,7 +1180,11 @@ if (d === 1 && tomorrowSOCValue === null) {
       <br><b>⏱️ Time Range:</b> ${timeRange}
 
       <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
-<br><b>📊 Confidence:</b> ${confidence.toFixed(0)}%
+<br><b>📊 Confidence:</b> 
+<span style="color:${getConfidenceColor(confidence)}; font-weight:bold;">
+  ${confidence.toFixed(0)}%
+</span>
+<br><b>🌤️ Solar Quality:</b> ${getSolarQuality(pv, confidence, instability)}
     </div>
   `;
 }
@@ -1142,6 +1208,21 @@ html += `
 // 2. Then append forecast cards
 html += forecastHtml;
 
+let trend = getPVTrend(pvTodayVal, pvTomorrowVal);
+let strategy = getBatteryStrategy(pvTomorrowVal, confidenceTomorrow, trend);
+
+html += `
+  <div class="card">
+    <h3>📈 Solar Trend</h3>
+    <b>Direction:</b> ${trend.label}
+  </div>
+
+  <div class="card">
+    <h3>🧠 Battery Strategy</h3>
+    ${strategy}
+  </div>
+`;
+  
 output.innerHTML = html;
   
 };
