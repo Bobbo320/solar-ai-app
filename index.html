@@ -296,26 +296,14 @@ return factor;
 function getCalibrationFactorUnified(type = "live") {
   let base = getCalibrationFactor();
 
-  // no calibration data yet
   if (!base || isNaN(base)) return 1;
 
-  // strength controls how aggressive calibration is
-  let strength;
+  let strength = type === "live" ? 0.35 : 0.75;
 
-  if (type === "live") {
-    strength = 0.35;   // smooth, stable
-  } else {
-    strength = 0.75;   // stronger correction for forecast
-  }
-
-  // pull toward 1 (neutral baseline)
   let calibrated = 1 + (base - 1) * strength;
 
-  // clamp safety
-  calibrated = Math.max(0.85, Math.min(1.20, calibrated));
-
-  return calibrated;
-}  
+  return Math.max(0.85, Math.min(1.20, calibrated));
+}
   
 function renderPVTable() {
   let data = getPVData();
