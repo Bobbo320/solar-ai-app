@@ -1128,8 +1128,20 @@ if (isNaN(value)) value = undefined;
     delete data[currentEditDate];
   }
 
-  if (!data[newDate]) data[newDate] = {};
- if (value !== undefined) {
+if (value !== undefined) {
+
+  let s = getSettings();
+
+  let maxPV = Math.max(
+    s.pvSize * 6,
+    s.inverter * 8
+  );
+
+  if (value < 0 || value > maxPV) {
+    alert(`Value must be between 0 and ${maxPV.toFixed(1)} kWh`);
+    return;
+  }
+
   data[newDate].manual = value;
 } else {
   delete data[newDate].manual;
