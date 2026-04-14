@@ -248,7 +248,8 @@ function getCalibrationSystem() {
   let weightedManual = 0;
   let weightedExpected = 0;
 
-  let seasonalBias = {
+  // seasonal buckets
+  let seasonal = {
     winter: { m: 0, e: 0 },
     spring: { m: 0, e: 0 },
     summer: { m: 0, e: 0 },
@@ -260,15 +261,15 @@ function getCalibrationSystem() {
     if (!row.expected || !row.manual) return;
 
     let entryDate = new Date(date);
-    let diffDays = (today - entryDate) / (1000 * 60 * 60 * 24);
+    let diffDays = (today - entryDate) / 86400000;
 
-    if (diffDays < 0 || diffDays > 30) return;
+    if (diffDays < 0 || diffDays > 45) return;
 
     let ratio = row.manual / row.expected;
     if (ratio < 0.3 || ratio > 1.7) return;
     if (row.expected < 1) return;
 
-    let weight = Math.pow(row.expected, 1.25);
+    let weight = Math.pow(row.expected, 1.2);
 
     weightedManual += row.manual * weight;
     weightedExpected += row.expected * weight;
@@ -280,16 +281,22 @@ function getCalibrationSystem() {
       (month <= 5) ? "spring" :
       (month <= 8) ? "summer" : "autumn";
 
-    seasonalBias[season].m += row.manual * weight;
-    seasonalBias[season].e += row.expected * weight;
+    seasonal[season].m += row.manual * weight;
+    seasonal[season].e += row.expected * weight;
   });
 
+  // ---------------------------
+  // LAYER 1: SYSTEM BIAS
+  // ---------------------------
   let bias = weightedExpected
     ? weightedManual / weightedExpected
     : 1;
 
   bias = Math.max(0.75, Math.min(1.25, bias));
 
+  // ---------------------------
+  // LAYER 2: SEASONAL DRIFT
+  // ---------------------------
   let month = new Date().getMonth() + 1;
 
   let currentSeason =
@@ -297,33 +304,59 @@ function getCalibrationSystem() {
     (month <= 5) ? "spring" :
     (month <= 8) ? "summer" : "autumn";
 
-  let seasonData = seasonalBias[currentSeason];
+  let s = seasonal[currentSeason];
 
-  let seasonalFactor =
-    seasonData.e > 0
-      ? (seasonData.m / seasonData.e)
-      : 1;
+  let seasonalFactor = s.e > 0 ? (s.m / s.e) : 1;
 
   seasonalFactor = Math.max(0.85, Math.min(1.15, seasonalFactor));
 
+  // ---------------------------
+  // LAYER 3: DATA CONFIDENCE (NEW)
+  // ---------------------------
+  let sampleSize = Object.values(data)
+    .filter(d => d.manual && d.expected)
+    .length;
+
+  // weak data → reduce correction strength
+  let confidence = Math.min(1, sampleSize / 20);
+
   return {
     bias,
-    seasonalFactor
+    seasonalFactor,
+    confidence
   };
 }
 
 function applyCalibration(raw, mode = "live") {
-  let { bias, seasonalFactor } = getCalibrationSystem();
 
-  let strength = mode === "live" ? 0.35 : 0.75;
+  let { bias, seasonalFactor, confidence } = getCalibrationSystem();
 
+  // combine layers
   let combined = bias * seasonalFactor;
 
-  let smoothed = 1 + (combined - 1) * strength;
+  // ---------------------------
+  // RESPONSIVENESS MODEL (NEW CORE IDEA)
+  // ---------------------------
+  let strength;
 
-  smoothed = Math.max(0.85, Math.min(1.20, smoothed));
+  if (mode === "live") {
+    strength = 0.25;   // stable, avoids noise chasing
+  } else if (mode === "forecast") {
+    strength = 0.60;   // allows learning from trends
+  } else {
+    strength = 0.40;
+  }
 
-  return raw * smoothed;
+  // reduce effect when data is weak
+  strength *= (0.4 + 0.6 * confidence);
+
+  // blend toward 1 (neutral baseline)
+  let corrected = 1 + (combined - 1) * strength;
+
+  // hard safety clamp
+  corrected = Math.max(0.85, Math.min(1.20, corrected));
+
+  return raw * corrected;
 }
   
 function renderPVTable() {
@@ -844,7 +877,9 @@ let nowPV =
   cloudFactorLiveSoft;
 
 // apply calibrated correction
-nowPV = applyCalibration(nowPV, "live");
+  // raw physics model first
+let rawNowPV = nowPV;
+nowPV = applyCalibration(rawNowPV, "live");
 
 // inverter cap
 nowPV = Math.min(nowPV, s.inverter);
@@ -987,7 +1022,8 @@ let basePV = estimatePV(
 );
 
   // calibration
-let pv = applyCalibration(basePV, "forecast");
+let rawPV = basePV;
+let pv = applyCalibration(rawPV, "forecast");
 
 // ✅ Store expected PV for today + tomorrow
 let data = getPVData();
