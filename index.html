@@ -771,9 +771,6 @@ let cloudFactorLive = cloudIntensityFactor(nowCloud, nowRad);
 // stronger but still stable cloud response
 let cloudFactorLiveSoft = 0.7 + (0.3 * cloudFactorLive);
 
-// less suppressive calibration for live
-let liveCal = 0.95 + (calibration * 0.25);
-
 // 🔧 radiation input (no change)
 let hour = new Date().getHours();
 
@@ -817,12 +814,16 @@ let nowPV =
   getOrientationFactor(s.orientation) *
   tiltFactor *
   (s.shading / 100) *
-  cloudFactorLiveSoft *
-  liveCal;
+  cloudFactorLiveSoft;
+
 nowPV *= sunDrop;
+
+// ✅ unified calibration
+nowPV *= calibration;
+
 // inverter cap only
 nowPV = Math.min(nowPV, s.inverter);
-
+  
 let status = "";
 
 if (nowRad < 20) {
