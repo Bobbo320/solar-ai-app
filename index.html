@@ -971,20 +971,12 @@ let basePV = estimatePV(
   s
 );
 
-  // inverter cap
-  let maxOutput = s.inverter * sun;
-let clipLoss = Math.max(0, basePV - maxOutput);
-
-basePV = Math.min(basePV, maxOutput);
-basePV -= clipLoss * 0.7;
-
   // calibration
   let calibration = getCalibrationFactor();
   
 
 // forecast should use stronger calibration effect (historical bias correction)
-let forecastCal = 0.8 + (calibration * 0.6);
-
+let forecastCal = 1 + ((calibration - 1) * 0.7);
 let pv = basePV * forecastCal;
 
 // ✅ Store expected PV for today + tomorrow
