@@ -293,7 +293,7 @@ factor = Math.max(0.75, Math.min(1.25, factor));
 return factor;
 }
 
-ffunction getCalibrationFactorUnified(type = "live") {
+function getCalibrationFactorUnified(type = "live") {
   let base = getCalibrationFactor();
 
   if (!isFinite(base) || isNaN(base)) return 1;
@@ -843,17 +843,14 @@ nowPV =
   temperatureEfficiency(nowTemp) *
   getOrientationFactor(s.orientation) *
   tiltFactor *
-  (s.shading / 100) *
-- cloudFactorLiveSoft;
-+ applySystemFactors(cloudFactorLiveSoft, s, "live");
+ s.shading / 100 *
+applySystemFactors(cloudFactorLiveSoft, s, "live");
 
 // apply calibrated correction
 nowPV *= calibration;
 
 // inverter cap
-- nowPV = Math.min(nowPV, s.inverter);
-- nowPV = Math.min(nowPV, s.inverter);
-+ nowPV = Math.min(nowPV, s.inverter);
+nowPV = Math.min(nowPV, s.inverter);
   
 let status = "";
 
@@ -1001,11 +998,12 @@ date.setDate(date.getDate() + d);
 
 let key = getLocalDateKey(date);
 
-- if (!data[key]?.manual) {
--   if (!data[key]) data[key] = {};
--   data[key].expected = pv;
--   savePVData(data);
-- }
+if (!data[key]) data[key] = {};
+
+if (data[key].manual === undefined) {
+  data[key].expected = pv;
+  savePVData(data);
+}
 
   // ✅ SOC calculation
   let risk = 1;
