@@ -807,151 +807,287 @@ function weatherSummary(c,r,t,h,p){
   `;
 }
 
-// ============================
-// V2 ARCHITECTURE LAYER
-// ============================
+// -------------------- MAIN --------------------
+async function runAI(){
 
-// ---------- STATE ----------
-const AppState = {
-  settings: null,
-  weather: null,
-  pvData: null,
-  now: new Date()
-};
+  let s=getSettings();
+  loading.innerText="Loading...";
+  let tomorrowSOCValue = null;
+  let data = preloadedWeather || await getWeather(s.postcode);
 
-// ---------- SERVICES ----------
-const Services = {
+  let cloud=data.hourly.cloudcover;
+  let rad=data.hourly.shortwave_radiation;
+  let temp=data.hourly.temperature_2m;
+  let hum=data.hourly.relativehumidity_2m;
+  let precip=data.hourly.precipitation;
+  let time = data.hourly.time;
 
-  async loadSettings() {
-    AppState.settings = getSettings();
-    return AppState.settings;
-  },
+  let html = "";
+let forecastHtml = "";
 
-  async loadWeather() {
-    if (!AppState.settings) await this.loadSettings();
-    AppState.weather = preloadedWeather || await getWeather(AppState.settings.postcode);
-    return AppState.weather;
-  },
+  // -------------------- LIVE NOW --------------------
+let now = new Date();
 
-  loadPVData() {
-    AppState.pvData = getPVData();
-    return AppState.pvData;
-  }
+// Find closest hour index
+let nowIndex = time.findIndex(t => new Date(t) > now);
+if (nowIndex <= 0) nowIndex = 0;
+else nowIndex -= 1;
 
-};
+// Extract current conditions
+let nowRad = rad[nowIndex];
+let nowCloud = cloud[nowIndex];
+let cloudInfo = getCloudThicknessLabel(nowCloud, nowRad); 
+let nowTemp = temp[nowIndex];
 
-// ---------- SOLAR ENGINE ----------
-const SolarEngine = {
+// -------------------- LIVE PV ESTIMATE --------------------
 
-  estimateDay(dayIndex) {
-    const s = AppState.settings;
-    const data = AppState.weather;
 
-    let start = dayIndex * 24;
+// Convert radiation to PV output (kW)
+let cloudFactorLive = cloudIntensityFactor(nowCloud, nowRad);
 
-    let pvRaw = estimatePV(
-      data.hourly.shortwave_radiation.slice(start, start + 24),
-      data.hourly.cloudcover.slice(start, start + 24),
-      data.hourly.temperature_2m.slice(start, start + 24),
-      s
-    );
+// stronger but still stable cloud response
+let cloudFactorLiveSoft = 0.85 + (0.25 * (cloudFactorLive - 1));
 
-    let pv = applyCalibration(pvRaw, "forecast");
+// 🔧 radiation input (no change)
+let hour = new Date().getHours();
 
-    storeExpectedPV(dayIndex, pv);
+// Radiation response curve (already good idea)
+let radBoost = 0.9 + (0.2 * (1 - Math.exp(-nowRad / 400)));
 
-    return {
-      pv,
-      raw: pvRaw
-    };
-  },
+let effectiveRad = nowRad * radBoost;
 
-  estimateNow() {
-    const s = AppState.settings;
-    const data = AppState.weather;
+// cap AFTER adjustments
+effectiveRad = Math.min(1000, effectiveRad);
 
-    let now = new Date();
-    let time = data.hourly.time;
+let tiltFactor = getTiltFactor(s.tilt, hour);
 
-    let idx = time.findIndex(t => new Date(t) > now);
-    if (idx <= 0) idx = 0; else idx -= 1;
+let nowPV =
+  s.pvSize *
+  (effectiveRad / 1000) *
+  (s.efficiency / 100) *
+  temperatureEfficiency(nowTemp) *
+  getOrientationFactor(s.orientation) *
+  tiltFactor *
+  (s.shading / 100) *
+  cloudFactorLiveSoft;
 
-    let rad = data.hourly.shortwave_radiation[idx];
-    let cloud = data.hourly.cloudcover[idx];
-    let temp = data.hourly.temperature_2m[idx];
+// apply calibrated correction
+  // raw physics model first
+let rawNowPV = nowPV;
+nowPV = applyCalibration(rawNowPV, "live");
 
-    let raw =
-      s.pvSize *
-      (rad / 1000) *
-      (s.efficiency / 100) *
-      temperatureEfficiency(temp) *
-      getOrientationFactor(s.orientation) *
-      getTiltFactor(s.tilt, new Date().getHours()) *
-      (s.shading / 100) *
-      cloudIntensityFactor(cloud, rad);
+// inverter cap
+nowPV = Math.min(nowPV, s.inverter);
+ 
+let status = "";
 
-    let pv = applyCalibration(raw, "live");
-    pv = Math.min(pv, s.inverter);
+if (nowRad < 20) {
+  status = "🌙 No solar → discharge or grid use";
 
-    return { pv, raw, rad, cloud, temp };
-  }
+} else if (nowPV < 0.3) {
+  status = "🌥️ Very weak → minimal charging";
 
-};
+} else if (nowPV < 1) {
+  status = "⚡ Low solar → partial charging";
 
-// ---------- BATTERY ENGINE ----------
-const BatteryEngine = {
+} else if (nowPV < 3) {
+  status = "☀️ Moderate solar → charging battery";
 
-  calculateTargetSOC(pvTomorrow) {
-    const s = AppState.settings;
+} else if (nowPV < s.inverter * 0.8) {
+  status = "🔋 Strong solar → high charging";
 
-    let risk = pvTomorrow < 5 ? 1.3 :
-               pvTomorrow < 10 ? 1.15 : 1;
+} else if (nowPV < s.inverter) {
+  status = "🚀 Near max → optimising export";
 
-    return recommendedSOC(pvTomorrow * (1 / risk), s);
-  }
-
-};
-
-// ---------- UI RENDER ----------
-const UI = {
-
-  renderNow(nowData) {
-
-    let cloudInfo = getCloudThicknessLabel(nowData.cloud, nowData.rad);
-    let nowTimeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-    return `
-      <div class="card">
-        <h3>☀️ Now (${nowTimeStr})</h3>
-
-        <b>Radiation:</b> ${nowData.rad.toFixed(0)} W/m²<br>
-        <b>Live PV:</b> ${nowData.pv.toFixed(2)} kW<br>
-        <b>Cloud:</b> ${nowData.cloud.toFixed(0)}%<br>
-        <b>Cloud Type:</b> ${cloudInfo.label}<br>
-
-        <div class="cloud-bar">
-          <div class="cloud-bar-fill" style="width:${(cloudInfo.intensity * 100).toFixed(0)}%"></div>
-        </div>
-
-        <b>Temp:</b> ${nowData.temp.toFixed(1)}°C<br>
-      </div>
-    `;
-  },
-
-  renderSOC(soc) {
-    return `
-      <div class="card">
-        <h3>🔋 Tonight's Grid Charge Target</h3>
-        <b>Recommended SOC:</b>
-        <span style="color:red;font-weight:bold; font-size:18px;">
-          ${soc}%
-        </span>
-      </div>
-    `;
-  }
-
-};
+} else {
+  status = "⚠️ Clipping zone → inverter limiting output";
+}
   
+// Format time nicely
+let nowTimeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+// Build UI card
+html += `
+  <div class="card">
+    <h3>☀️ Now (${nowTimeStr})</h3>
+
+    <b>Radiation:</b> ${nowRad.toFixed(0)} W/m²<br>
+    <b>Live PV:</b> ${nowPV.toFixed(2)} kW<br>
+    <b>Cloud:</b> ${nowCloud.toFixed(0)}%<br>
+    <b>Cloud Type:</b> ${cloudInfo.label}<br>
+
+<div class="cloud-bar">
+  <div class="cloud-bar-fill" style="width:${(Math.pow(cloudInfo.intensity, 0.7) * 100).toFixed(0)}%"></div>
+</div>
+    <b>Temp:</b> ${nowTemp.toFixed(1)}°C<br>
+    <b>Effective Tilt:</b> ${getSeasonalTilt(s.tilt).toFixed(1)}°<br>
+
+    <br><b>Status:</b> ${status}
+  </div>
+`;
+
+ for (let d = 0; d < 3; d++) {
+
+  let start = d * 24;
+
+  let dayRad = daylightHours(rad.slice(start, start + 24));
+
+  let avgRad = dayRad.length
+    ? dayRad.reduce((a, b) => a + b) / dayRad.length
+    : 0;
+
+  let validHours = 0;
+  let scoreSum = 0;
+
+  for (let i = 0; i < 24; i++) {
+    let rVal = rad[start + i];
+
+    if (rVal > SOLAR_THRESHOLD) {
+      scoreSum += hourlySolarScore(cloud[start + i], rVal);
+      validHours++;
+    }
+  }
+
+  let avgScore = validHours ? (scoreSum / validHours) : 0;
+
+  let split = sunshineSplit(rad, start);
+
+  let timeRange = getSolarTimeRange(
+    rad.slice(start, start + 24),
+    time.slice(start, start + 24)
+  );
+
+  let sun = split.morning + split.afternoon;
+
+  let midTemp = temp[start + 12] ?? temp[start]; // safety fallback
+
+  let cloudFactorDay = cloudIntensityFactor(
+    weightedCloudAverage(cloud, rad, start),
+    avgRad
+  );
+let cloudAvg = weightedCloudAverage(cloud, rad, start);
+
+// smooth radiation stability (important!)
+let radStd = 0;
+let count = 0;
+let mean = 0;
+
+// quick variance estimate (cheap + stable)
+for (let i = 0; i < 24; i++) {
+  let r = rad[start + i];
+  if (r > SOLAR_THRESHOLD) {
+    mean += r;
+    count++;
+  }
+}
+
+mean = count ? mean / count : 0;
+
+for (let i = 0; i < 24; i++) {
+  let r = rad[start + i];
+  if (r > SOLAR_THRESHOLD) {
+    radStd += Math.pow(r - mean, 2);
+  }
+}
+
+radStd = count ? Math.sqrt(radStd / count) : 0;
+
+// normalize instability (0 = stable, 1 = chaotic)
+let instability = Math.min(1, radStd / 400);
+
+// cloud penalty (soft curve, not linear)
+let cloudPenalty = Math.pow(cloudAvg / 100, 1.4);
+
+// final confidence blend
+let confidence =
+  100 *
+  (0.55 * (1 - cloudPenalty) +
+   0.45 * (1 - instability));
+
+// clamp
+confidence = Math.max(35, Math.min(98, confidence));
+let basePV = estimatePV(
+  rad.slice(start, start + 24),
+  cloud.slice(start, start + 24),
+  temp.slice(start, start + 24),
+  s
+);
+
+  // calibration
+let rawPV = basePV;
+let pv = applyCalibration(rawPV, "forecast");
+
+// ✅ Store expected PV for today + tomorrow
+let data = getPVData();
+
+let date = new Date();
+date.setDate(date.getDate() + d);
+
+let key = getLocalDateKey(date);
+
+storeExpectedPV(d, pv);
+
+  // ✅ SOC calculation
+  let risk = 1;
+
+if (pv < 5) risk = 1.3;
+else if (pv < 10) risk = 1.15;
+
+let soc = recommendedSOC(pv * (1 / risk), s);;
+
+  // ✅ Capture tomorrow SOC for display
+if (d === 1 && tomorrowSOCValue === null) {
+  tomorrowSOCValue = soc;
+}
+
+  // Label
+  let label = d === 0
+  ? "Today"
+  : d === 1
+    ? "<span style='font-weight:bold'>Tomorrow</span>"
+    : "The day after tomorrow";
+
+  // Render card
+  forecastHtml += `
+    <div class="card">
+      <h3>${label}</h3>
+
+      ${weatherSummary(
+        weightedCloudAverage(cloud, rad, start),
+        avgRad,
+        temp[start + 12] ?? temp[start],
+        hum[start + 12] ?? hum[start],
+        precip[start + 12] ?? precip[start]
+      )}
+
+      <br><b>🔆 Usable Solar Window:</b> ${sun} hours
+      <br><b>⏱️ Time Range:</b> ${timeRange}
+
+      <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
+<br><b>📊 Confidence:</b> ${confidence.toFixed(0)}%
+    </div>
+  `;
+}
+
+// -------------------- RENDER --------------------
+
+loading.innerText = "";
+
+// 1. Add SOC FIRST
+html += `
+  <div class="card">
+    <h3>🔋 Tonight's Grid Charge Target</h3>
+
+    <b>Recommended SOC:</b>
+    <span style="color:red;font-weight:bold; font-size:18px;">
+      ${tomorrowSOCValue !== null ? tomorrowSOCValue + "%" : "N/A"}
+    </span>
+  </div>
+`;
+
+// 2. Then append forecast cards
+html += forecastHtml;
+
 output.innerHTML = html;
   
 };
