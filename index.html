@@ -608,28 +608,69 @@ function getSeasonalTilt(baseTilt) {
 
   return summerTilt * (1 - seasonalFactor) + winterTilt * seasonalFactor;
 }
+
+// -------------------- REAL SOLAR GEOMETRY --------------------
+function getDayOfYear(date = new Date()) {
+  const start = new Date(date.getFullYear(), 0, 0);
+  return Math.floor((date - start) / 86400000);
+}
+
+function getSolarDeclination(dayOfYear) {
+  // Cooper equation (accurate enough for PV modelling)
+  return 23.45 * Math.sin((2 * Math.PI * (284 + dayOfYear)) / 365);
+}
+
+function getSolarElevation(lat, decl, hour) {
+  const latRad = lat * Math.PI / 180;
+  const declRad = decl * Math.PI / 180;
+
+  // Solar hour angle (0 at solar noon)
+  const h = (hour - 12) * 15 * Math.PI / 180;
+
+  const elevation = Math.asin(
+    Math.sin(latRad) * Math.sin(declRad) +
+    Math.cos(latRad) * Math.cos(declRad) * Math.cos(h)
+  );
+
+  return elevation * 180 / Math.PI;
+}
+
+function getLocationLatitude() {
+  // pull from cached coords if available
+  let s = getSettings();
+  let cache = getCache("coords_" + s.postcode);
+  return cache?.lat ?? 52.6; // fallback UK
+}
   
 function getTiltFactor(tilt, hour) {
 
+  const lat = getLocationLatitude();
+
+  const day = getDayOfYear();
+  const decl = getSolarDeclination(day);
+
+  const elevation = getSolarElevation(lat, decl, hour);
+
+  // below horizon
+  if (elevation <= 0) return 0;
+
+  // apply your seasonal tilt logic (UNCHANGED system)
   tilt = Math.max(0, Math.min(90, getSeasonalTilt(tilt)));
 
-  const optimalTilt = 35;
+  // convert to radians
+  const tiltRad = tilt * Math.PI / 180;
+  const elevRad = elevation * Math.PI / 180;
 
-  let tiltEffect = 1 - Math.pow((tilt - optimalTilt) / 55, 2);
-  tiltEffect = Math.max(0.75, Math.min(1.05, tiltEffect));
+  // incidence angle approximation (south-facing assumption preserved)
+  let incidence = Math.cos(tiltRad - elevRad);
 
-  let sunAngleFactor = 1;
+  // clamp (prevents negative generation)
+  incidence = Math.max(0, incidence);
 
-  let month = new Date().getMonth() + 1;
-let winterBoost = (month <= 2 || month >= 11) ? 1.15 : 1;
+  // mild smoothing to avoid overly sharp peaks
+  let smoothed = 0.85 + 0.15 * incidence;
 
-if (hour < 10) {
-  sunAngleFactor = (0.85 + (tilt / 90) * 0.3) * winterBoost;
-} else if (hour > 16) {
-  sunAngleFactor = (0.85 + (tilt / 90) * 0.3) * winterBoost;
-}
-
-  return tiltEffect * sunAngleFactor;
+  return smoothed;
 }
   
 function temperatureEfficiency(t) {
