@@ -829,11 +829,9 @@ let forecastHtml = "";
 let now = new Date();
 
 // Find closest hour index
-let nowIndex = time.findIndex(t => new Date(t) >= now) - 1;
-if (nowIndex < 0) nowIndex = 0;
-
-// fallback if not found
-if (nowIndex === -1) nowIndex = 0;
+let nowIndex = time.findIndex(t => new Date(t) > now);
+if (nowIndex <= 0) nowIndex = 0;
+else nowIndex -= 1;
 
 // Extract current conditions
 let nowRad = rad[nowIndex];
@@ -854,12 +852,9 @@ let cloudFactorLiveSoft = 0.85 + (0.25 * (cloudFactorLive - 1));
 let hour = new Date().getHours();
 
 // Radiation response curve (already good idea)
-let radBoost = 1 + (0.6 * Math.exp(-nowRad / 300));
+let radBoost = 0.9 + (0.2 * (1 - Math.exp(-nowRad / 400)));
 
 let effectiveRad = nowRad * radBoost;
-
-// apply orientation more gently
-effectiveRad *= (0.9 + (0.2 * getOrientationFactor(s.orientation)));
 
 // cap AFTER adjustments
 effectiveRad = Math.min(1000, effectiveRad);
@@ -883,10 +878,7 @@ nowPV = applyCalibration(rawNowPV, "live");
 
 // inverter cap
 nowPV = Math.min(nowPV, s.inverter);
-
-// inverter cap only
-nowPV = Math.min(nowPV, s.inverter);
-  
+ 
 let status = "";
 
 if (nowRad < 20) {
@@ -1033,12 +1025,7 @@ date.setDate(date.getDate() + d);
 
 let key = getLocalDateKey(date);
 
-// NEVER overwrite manual entries
-if (!data[key]?.manual) {
-  if (!data[key]) data[key] = {};
-  data[key].expected = pv;
-  savePVData(data);
-}
+storeExpectedPV(d, pv);
 
   // ✅ SOC calculation
   let risk = 1;
@@ -1126,7 +1113,8 @@ function saveEdit() {
   let data = getPVData();
 
   let newDate = document.getElementById("editDate").value;
-  let value = parseFloat(document.getElementById("editValue").value);
+ let value = parseFloat(document.getElementById("editValue").value);
+if (isNaN(value)) value = undefined;
 
   if (!newDate) return alert("Pick a date");
 
@@ -1141,7 +1129,11 @@ function saveEdit() {
   }
 
   if (!data[newDate]) data[newDate] = {};
+ if (value !== undefined) {
   data[newDate].manual = value;
+} else {
+  delete data[newDate].manual;
+}
 
   savePVData(data);
 
