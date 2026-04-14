@@ -320,9 +320,6 @@ function getCalibrationSystem() {
   // weak data → reduce correction strength
   let confidence = Math.min(1, sampleSize / 20);
 
-  let ageWeight = Math.exp(-diffDays / 20); // 20-day half-life
-weight *= ageWeight;
-
   return {
     bias,
     seasonalFactor,
@@ -832,9 +829,8 @@ let forecastHtml = "";
 let now = new Date();
 
 // Find closest hour index
-let nowIndex = time.findIndex(t => new Date(t) > now);
-if (nowIndex > 0) nowIndex--;
-else nowIndex = 0;
+let nowIndex = time.findIndex(t => new Date(t) >= now) - 1;
+if (nowIndex < 0) nowIndex = 0;
 
 // fallback if not found
 if (nowIndex === -1) nowIndex = 0;
@@ -886,6 +882,9 @@ let rawNowPV = nowPV;
 nowPV = applyCalibration(rawNowPV, "live");
 
 // inverter cap
+nowPV = Math.min(nowPV, s.inverter);
+
+// inverter cap only
 nowPV = Math.min(nowPV, s.inverter);
   
 let status = "";
