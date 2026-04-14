@@ -655,22 +655,35 @@ function getCloudThicknessLabel(cloud, rad) {
   return { label: "Clear / Light Cloud ☀️", intensity: intensity * 0.5 };
 }
   
-function estimatePV(avgScore, sun, temp, s) {
-  let orientationFactor = getOrientationFactor(s.orientation);
-  let shadingFactor = s.shading / 100;
+function estimatePV(radSlice, cloudSlice, tempSlice, s) {
 
-  let tiltFactor = getTiltFactor(s.tilt, 12); // midday reference
+  let total = 0;
 
-let raw = s.pvSize * sun * avgScore *
-          (s.efficiency/100) *
-          temperatureEfficiency(temp) *
-          orientationFactor *
-          tiltFactor *
-          shadingFactor;
+  for (let i = 0; i < 24; i++) {
 
-  let limit = s.inverter * sun;
+    let r = radSlice[i];
+    if (r < SOLAR_THRESHOLD) continue;
 
-  return Math.min(raw, limit);
+    let t = tempSlice[i] ?? 15;
+    let c = cloudSlice[i];
+
+    let hourPV =
+      s.pvSize *
+      (r / 1000) *
+      (s.efficiency / 100) *
+      temperatureEfficiency(t) *
+      getOrientationFactor(s.orientation) *
+      getTiltFactor(s.tilt, i) *
+      (s.shading / 100) *
+      cloudIntensityFactor(c, r);
+
+    // inverter cap per hour
+    hourPV = Math.min(hourPV, s.inverter);
+
+    total += hourPV;
+  }
+
+  return total;
 }
 
 
@@ -951,8 +964,12 @@ let confidence =
 
 // clamp
 confidence = Math.max(35, Math.min(98, confidence));
-  let basePV = estimatePV(avgScore, sun, midTemp, s);
-basePV *= cloudFactorDay;
+let basePV = estimatePV(
+  rad.slice(start, start + 24),
+  cloud.slice(start, start + 24),
+  temp.slice(start, start + 24),
+  s
+);
 
   // inverter cap
   let maxOutput = s.inverter * sun;
