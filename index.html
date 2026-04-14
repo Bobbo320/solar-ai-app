@@ -293,21 +293,29 @@ factor = Math.max(0.75, Math.min(1.25, factor));
 return factor;
 }
 
-function getLiveCalibrationFactor() {
+function getCalibrationFactorUnified(type = "live") {
   let base = getCalibrationFactor();
 
-  // Live should be LESS aggressive than forecast
-  // Pull toward 1 (neutral)
-  let damped = 1 + (base - 1) * 0.4;
+  // no calibration data yet
+  if (!base || isNaN(base)) return 1;
 
-  // Slight boost if system is consistently underpredicting
-  if (base > 1.05) {
-    damped += 0.05;
+  // strength controls how aggressive calibration is
+  let strength;
+
+  if (type === "live") {
+    strength = 0.35;   // smooth, stable
+  } else {
+    strength = 0.75;   // stronger correction for forecast
   }
 
-  // Clamp for stability
-  return Math.max(0.85, Math.min(1.15, damped));
-}
+  // pull toward 1 (neutral baseline)
+  let calibrated = 1 + (base - 1) * strength;
+
+  // clamp safety
+  calibrated = Math.max(0.85, Math.min(1.20, calibrated));
+
+  return calibrated;
+}  
   
 function renderPVTable() {
   let data = getPVData();
@@ -792,7 +800,7 @@ let nowTemp = temp[nowIndex];
 // -------------------- LIVE PV ESTIMATE --------------------
 
 // smoother live response (must come first)
-let calibration = getLiveCalibrationFactor();
+let calibration = getCalibrationFactorUnified("live");
 
 // Convert radiation to PV output (kW)
 let cloudFactorLive = cloudIntensityFactor(nowCloud, nowRad);
@@ -813,9 +821,6 @@ effectiveRad *= (0.9 + (0.2 * getOrientationFactor(s.orientation)));
 
 // cap AFTER adjustments
 effectiveRad = Math.min(1000, effectiveRad);
-
-// FORECAST (kept for later use)
-let forecastCal = 0.8 + (calibration * 0.6);
 
 let tiltFactor = getTiltFactor(s.tilt, hour);
 
@@ -973,12 +978,8 @@ let basePV = estimatePV(
 );
 
   // calibration
-  let calibration = getCalibrationFactor();
-  
-
-// forecast should use stronger calibration effect (historical bias correction)
-let forecastCal = 1 + ((calibration - 1) * 0.7);
-let pv = basePV * forecastCal;
+let calibration = getCalibrationFactorUnified("forecast");
+let pv = basePV * calibration;
 
 // ✅ Store expected PV for today + tomorrow
 let data = getPVData();
