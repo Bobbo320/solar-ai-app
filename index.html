@@ -661,31 +661,16 @@ function estimatePV(avgScore, sun, temp, s) {
 
   let tiltFactor = getTiltFactor(s.tilt, 12); // midday reference
 
-function estimatePVFromRadiation(rad, start, s, midTemp) {
+let raw = s.pvSize * sun * avgScore *
+          (s.efficiency/100) *
+          temperatureEfficiency(temp) *
+          orientationFactor *
+          tiltFactor *
+          shadingFactor;
 
-  let totalRad = 0;
-  let daylightHours = 0;
+  let limit = s.inverter * sun;
 
-  for (let i = 0; i < 24; i++) {
-    let r = rad[start + i];
-    if (r > SOLAR_THRESHOLD) {
-      totalRad += r;
-      daylightHours++;
-    }
-  }
-
-  let basePV =
-    s.pvSize *
-    (totalRad / 1000) *
-    (s.efficiency / 100) *
-    temperatureEfficiency(midTemp) *
-    getOrientationFactor(s.orientation) *
-    getTiltFactor(s.tilt, 12) *
-    (s.shading / 100);
-
-  let maxOutput = s.inverter * daylightHours;
-
-  return Math.min(basePV, maxOutput);
+  return Math.min(raw, limit);
 }
 
 
