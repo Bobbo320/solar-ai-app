@@ -296,38 +296,26 @@ return factor;
 function getCalibrationFactorUnified(type = "live") {
   let base = getCalibrationFactor();
 
-  if (!isFinite(base) || isNaN(base)) return 1;
+  // no calibration data yet
+  if (!base || isNaN(base)) return 1;
 
-  base = Math.max(0.75, Math.min(1.25, base));
-
+  // strength controls how aggressive calibration is
   let strength;
 
   if (type === "live") {
-    strength = 0.35;
+    strength = 0.35;   // smooth, stable
   } else {
-    strength = 0.75;
+    strength = 0.75;   // stronger correction for forecast
   }
 
+  // pull toward 1 (neutral baseline)
   let calibrated = 1 + (base - 1) * strength;
 
-  return Math.max(0.85, Math.min(1.20, calibrated));
-}
+  // clamp safety
+  calibrated = Math.max(0.85, Math.min(1.20, calibrated));
 
-function applySystemFactors(value, s, mode = "live") {
-
-  let systemFactor = 1;
-
-  // optional future hook for mode-based tuning
-  if (mode === "live") {
-    systemFactor = 1;
-  }
-
-  if (mode === "forecast") {
-    systemFactor = 1;
-  }
-
-  return value * systemFactor;
-}
+  return calibrated;
+}  
   
 function renderPVTable() {
   let data = getPVData();
@@ -818,7 +806,7 @@ let calibration = getCalibrationFactorUnified("live");
 let cloudFactorLive = cloudIntensityFactor(nowCloud, nowRad);
 
 // stronger but still stable cloud response
-let cloudFactorLiveSoft = cloudFactorLive;
+let cloudFactorLiveSoft = 0.85 + (0.25 * (cloudFactorLive - 1));
 
 // 🔧 radiation input (no change)
 let hour = new Date().getHours();
@@ -836,20 +824,23 @@ effectiveRad = Math.min(1000, effectiveRad);
 
 let tiltFactor = getTiltFactor(s.tilt, hour);
 
-nowPV =
+let nowPV =
   s.pvSize *
   (effectiveRad / 1000) *
   (s.efficiency / 100) *
   temperatureEfficiency(nowTemp) *
   getOrientationFactor(s.orientation) *
   tiltFactor *
- s.shading / 100 *
-applySystemFactors(cloudFactorLiveSoft, s, "live");
+  (s.shading / 100) *
+  cloudFactorLiveSoft;
 
 // apply calibrated correction
 nowPV *= calibration;
 
 // inverter cap
+nowPV = Math.min(nowPV, s.inverter);
+
+// inverter cap only
 nowPV = Math.min(nowPV, s.inverter);
   
 let status = "";
@@ -998,9 +989,9 @@ date.setDate(date.getDate() + d);
 
 let key = getLocalDateKey(date);
 
-if (!data[key]) data[key] = {};
-
-if (data[key].manual === undefined) {
+// NEVER overwrite manual entries
+if (!data[key]?.manual) {
+  if (!data[key]) data[key] = {};
   data[key].expected = pv;
   savePVData(data);
 }
