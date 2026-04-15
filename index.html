@@ -864,17 +864,15 @@ function getHourlyLoad(s, hour = new Date().getHours()) {
 function calculateChargePlan(pvForecast, s) {
 
   // ----------------------------
-  // STEP 1: Base energy need
+  // STEP 1: BASE ENERGY DEMAND
   // ----------------------------
-  // include night + evening demand shaping
-let nightLoad = s.dailyLoad * 0.16;
-let eveningLoad = s.dailyLoad * 0.30;
-let baseLoad = s.dailyLoad - nightLoad - eveningLoad;
+  let nightLoad = s.dailyLoad * 0.16;
+  let eveningLoad = s.dailyLoad * 0.30;
+  let baseLoad = s.dailyLoad - nightLoad - eveningLoad;
 
-// solar window offset correction
-let shortfall =
-  Math.max(0, baseLoad - pvForecast) +
-  nightLoad * 0.5; // half night not covered by solar
+  let shortfall =
+    Math.max(0, baseLoad - pvForecast) +
+    nightLoad * 0.5;
 
   let buffer = 1.15;
   if (shortfall > 5) buffer = 1.25;
@@ -883,38 +881,38 @@ let shortfall =
   let requiredEnergy = shortfall * buffer;
 
   // ----------------------------
-  // STEP 2: Battery constraint
+  // STEP 2: HARD SYSTEM LIMITS
   // ----------------------------
   let maxBatteryEnergy = s.battery;
+  let chargeHours = 6;
+  let maxGridEnergy = s.inverter * chargeHours;
+
+  let maxPossibleCharge = Math.min(maxBatteryEnergy, maxGridEnergy);
 
   // ----------------------------
-  // STEP 3: Inverter constraint
+  // STEP 3: APPLY HARD CAP FIRST
   // ----------------------------
-  let chargeHours = 6; // typical overnight cheap window (adjustable later)
-
-  let maxChargeFromInverter = s.inverter * chargeHours;
+  let actualCharge = Math.min(requiredEnergy, maxPossibleCharge);
 
   // ----------------------------
-  // STEP 4: TRUE maximum possible charge
+  // STEP 4: SOC SAFETY FLOOR (IMPORTANT FIX)
   // ----------------------------
-  let maxPossibleCharge = Math.min(maxBatteryEnergy, maxChargeFromInverter);
+  let minEnergy = s.battery * (s.socLow / 100);
+  actualCharge = Math.max(actualCharge, Math.min(minEnergy, maxPossibleCharge));
 
   // ----------------------------
- // STEP 5: Clamp required energy
-let actualCharge = Math.min(requiredEnergy, maxPossibleCharge);
+  // STEP 5: SOC CONVERSION (RAW)
+  // ----------------------------
+  let soc = (actualCharge / s.battery) * 100;
 
-// OPTIONAL safety floor (only if SOC low is a true reserve rule)
-const minEnergy = s.battery * (s.socLow / 100);
-actualCharge = Math.max(actualCharge, minEnergy);
+  // clamp SOC display only (not energy)
+  soc = Math.min(Math.max(soc, s.socLow), s.socHigh);
 
-// STEP 6: Convert to SOC (pure output metric)
-let soc = (actualCharge / s.battery) * 100;
-
-return {
-  soc: Math.round(soc),
-  energy: actualCharge,
-  capped: requiredEnergy > maxPossibleCharge
-};
+  return {
+    soc: Math.round(soc),
+    energy: actualCharge,
+    capped: requiredEnergy > maxPossibleCharge
+  };
 }
 
 function getChargePlanFromWindow(energy, s) {
