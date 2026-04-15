@@ -1000,29 +1000,20 @@ effectiveRad = Math.min(1000, effectiveRad);
 
 let tiltFactor = getTiltFactor(s.tilt, hour);
 
-let nowPV =
-  s.pvSize *
-  (effectiveRad / 1000) *
-  (s.efficiency / 100) *
-  temperatureEfficiency(nowTemp) *
-  getOrientationFactor(s.orientation) *
-  tiltFactor *
-  (s.shading / 100) *
-  cloudFactorLiveSoft;
-  let loadKW = getHourlyLoad(s);
-
-let batteryFull = true; // or replace with real SOC later
-let exportKW = 0;
-
-if (batteryFull) {
-  exportKW = Math.max(0, nowPV - loadKW);
-}
-let exportValue = exportKW * s.exportRate;
-
-// apply calibrated correction
-  // raw physics model first
 let rawNowPV = nowPV;
 nowPV = applyCalibration(rawNowPV, "live");
+
+// inverter cap
+nowPV = Math.min(nowPV, s.inverter);
+
+let loadKW = getHourlyLoad(s);
+
+// TODO: replace with real SOC later
+let batteryFull = true;
+
+let exportKW = batteryFull ? Math.max(0, nowPV - loadKW) : 0;
+
+let exportValue = exportKW * s.exportRate;
 
 // inverter cap
 nowPV = Math.min(nowPV, s.inverter);
