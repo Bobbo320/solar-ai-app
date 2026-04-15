@@ -947,7 +947,13 @@ function getSolarTimeRange(radSlice, timeSlice) {
 
   return `${start} – ${end}`;
 }
+function getLoadProfile(s) {
+  // Simple default split: most domestic load is evening + night
+  const dayLoad = s.dailyLoad * 0.6;   // daytime consumption
+  const nightLoad = s.dailyLoad * 0.4; // evening/night consumption
 
+  return { dayLoad, nightLoad };
+}
 function simulateBatterySOC(pvForecast, s) {
 
   const { dayLoad, nightLoad } = getLoadProfile(s);
