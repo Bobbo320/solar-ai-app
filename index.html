@@ -873,12 +873,26 @@ function calculateChargePlan(pvForecast, s) {
   let shortfall =
     Math.max(0, baseLoad - pvForecast) +
     nightLoad * 0.5;
-
+// prevent PV forecast already being double-penalised upstream
+pvForecast = pvForecast * 1.0;
   let buffer = 1.15;
   if (shortfall > 5) buffer = 1.25;
   if (shortfall > 10) buffer = 1.35;
 
   let requiredEnergy = shortfall * buffer;
+
+// ----------------------------
+// SINGLE UNCERTAINTY MODEL (FIX)
+// prevents double/triple penalisation
+// ----------------------------
+
+let uncertaintyFactor =
+  0.9 + (1 - (s.confidenceOverride ?? 40) / 100) * 0.2;
+
+// clamp safety
+uncertaintyFactor = Math.max(0.85, Math.min(1.15, uncertaintyFactor));
+
+requiredEnergy *= uncertaintyFactor;
 
   // ----------------------------
   // STEP 2: HARD SYSTEM LIMITS
