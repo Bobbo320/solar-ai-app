@@ -929,13 +929,21 @@ requiredEnergy *= uncertaintyFactor;
   };
 }
 
-function getChargePlanFromWindow(energy, s) {
-  if (!energy || energy <= 0) return { time: "None", cost: 0 };
+function getChargePlanFromWindow(targetEnergy, s) {
+  if (!targetEnergy || targetEnergy <= 0) {
+    return { time: "None", cost: 0, energy: 0 };
+  }
 
-  const blockHours = s.blockSize; // 0.5 = 30 mins
-  const powerPerBlock = s.inverter * blockHours;
+  const blockHours = s.blockSize;
+  const inverterPower = s.inverter;
 
-  // convert HH:MM → minutes
+  const blockGridEnergy = inverterPower * blockHours;
+
+  // 🔑 NEW: efficiency handling
+  const efficiency = s.efficiency / 100;
+
+  const blockStoredEnergy = blockGridEnergy * efficiency;
+
   function toMinutes(t) {
     let [h, m] = t.split(":").map(Number);
     return h * 60 + m;
@@ -946,39 +954,62 @@ function getChargePlanFromWindow(energy, s) {
 
   let totalBlocks = Math.floor((endMin - startMin) / (blockHours * 60));
 
-  let blocksNeeded = Math.ceil(energy / powerPerBlock);
-  let blocksUsed = Math.min(blocksNeeded, totalBlocks);
+  let stored = 0;
+  let gridUsed = 0;
+  let blocksUsed = 0;
 
-  // --- REAL ENERGY MODEL ---
+  let nightLoadPerHour = (s.dailyLoad * 0.16) / 8;
 
-let deliveredEnergy = energy;
+  for (let i = 0; i < totalBlocks; i++) {
 
-// total block duration (hours)
-let totalBlockTime = blocksUsed * blockHours;
+    if (stored >= targetEnergy) break;
 
-// time needed to charge battery at inverter rate
-let chargeTime = deliveredEnergy / s.inverter;
+    let remaining = targetEnergy - stored;
 
-// clamp (safety)
-chargeTime = Math.min(chargeTime, totalBlockTime);
+    // full block case
+    if (remaining >= blockStoredEnergy) {
 
-// remaining time in final block
-let tailTime = totalBlockTime - chargeTime;
+      stored += blockStoredEnergy;
+      gridUsed += blockGridEnergy;
 
-// night load (kW)
-let nightLoadKW = getHourlyLoad(s, 2); // ~2am typical
+    } else {
 
-// energy used after battery full
-let tailEnergy = tailTime * nightLoadKW;
+      // 🔑 PARTIAL BLOCK (realistic)
+      let hoursNeeded = remaining / (inverterPower * efficiency);
 
-// total grid energy
-let actualEnergy = deliveredEnergy + tailEnergy;
+      let gridForCharge = hoursNeeded * inverterPower;
 
-// cost
-let cost = actualEnergy * s.importRate;
+      // remainder of block = house load only
+      let remainderHours = blockHours - hoursNeeded;
+      let gridForHouse = remainderHours * nightLoadPerHour;
 
- let chargeEnd = endMin;
-let chargeStart = endMin - blocksUsed * blockHours * 60;
+      gridUsed += gridForCharge + gridForHouse;
+
+      stored = targetEnergy;
+    }
+
+    blocksUsed++;
+  }
+
+  let cost = gridUsed * s.importRate;
+
+  let chargeEnd = endMin;
+  let chargeStart = endMin - blocksUsed * blockHours * 60;
+
+  function fmt(mins) {
+    let h = Math.floor(mins / 60);
+    let m = mins % 60;
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  }
+
+  return {
+    time: `${fmt(chargeStart)} – ${fmt(chargeEnd)}`,
+    cost: cost,
+    energy: stored,        // actual stored energy (battery)
+    gridEnergy: gridUsed,  // what you paid for
+    capped: blocksUsed >= totalBlocks
+  };
+}
 
   function fmt(mins) {
     let h = Math.floor(mins / 60);
