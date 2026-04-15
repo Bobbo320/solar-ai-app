@@ -345,6 +345,31 @@ function getCalibrationSystem() {
   };
 }
 
+function getForecastExport() {
+  return JSON.parse(localStorage.getItem("forecastExport") || "{}");
+}
+
+function saveForecastExport(data) {
+  localStorage.setItem("forecastExport", JSON.stringify(data));
+}
+
+function buildForecastExport(dayIndex, pv, soc, chargePlan, confidence, weather, s) {
+
+  return {
+    date: getLocalDateKey(new Date(Date.now() + dayIndex * 86400000)),
+    pv_kwh: Number(pv.toFixed(2)),
+    soc_target: soc,
+    charge_energy_kwh: chargePlan.energy,
+    charge_time: chargePlan.time,
+    charge_cost: Number(chargePlan.cost.toFixed(2)),
+    confidence: confidence,
+    inverter_kw: s.inverter,
+    battery_kwh: s.battery,
+    export_rate: s.exportRate,
+    timestamp: new Date().toISOString()
+  };
+}
+  
 function applyCalibration(raw, mode = "live") {
 
   let { bias, seasonalFactor, confidence } = getCalibrationSystem();
@@ -1178,6 +1203,29 @@ date.setDate(date.getDate() + d);
 let key = getLocalDateKey(date);
 
 storeExpectedPV(d, pv);
+
+// -------------------------------
+// FORECAST EXPORT (SAFE ADDITION)
+// -------------------------------
+let exportData = getForecastExport();
+
+exportData[key] = buildForecastExport(
+  d,
+  pv,
+  soc,
+  chargePlan,
+  confidence,
+  {
+    cloud: weightedCloudAverage(cloud, rad, start),
+    rad: avgRad,
+    temp: temp[start + 12] ?? temp[start],
+    humidity: hum[start + 12] ?? hum[start],
+    precip: precip[start + 12] ?? precip[start]
+  },
+  s
+);
+
+saveForecastExport(exportData);
 
   // ✅ SOC calculation
   let risk = 1;
