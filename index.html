@@ -1010,20 +1010,6 @@ function getChargePlanFromWindow(targetEnergy, s) {
     capped: blocksUsed >= totalBlocks
   };
 }
-
-  function fmt(mins) {
-    let h = Math.floor(mins / 60);
-    let m = mins % 60;
-    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-  }
-
-  return {
-    time: `${fmt(chargeStart)} – ${fmt(chargeEnd)}`,
-    cost: cost,
-    energy: actualEnergy,
-    capped: blocksNeeded > totalBlocks
-  };
-}
   
 function getSolarTimeRange(radSlice, timeSlice) {
   let startTime = null;
