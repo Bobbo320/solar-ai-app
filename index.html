@@ -1234,16 +1234,18 @@ let key = getLocalDateKey(date);
 storeExpectedPV(d, pv);
 
   // ✅ SOC calculation
-  let risk = 1;
+  // ----------------------------
+// CLEAN ENERGY PIPELINE (FIXED)
+// ----------------------------
 
-if (pv < 5) risk = 1.3;
-else if (pv < 10) risk = 1.15;
+// Only subtract real expected usage (no artificial penalties)
+let adjustedPV = pv - getDeferredMorningLoad(s);
 
-let uncertaintyBuffer = 0.85; // assume 15% forecast error
+// Clamp to physical reality
+adjustedPV = Math.max(0, adjustedPV);
 
-let adjustedPV = (pv * uncertaintyBuffer) - getDeferredMorningLoad(s);
-
-let chargePlan = calculateChargePlan(adjustedPV * (1 / risk), s);
+// Pass clean PV into planner
+let chargePlan = calculateChargePlan(adjustedPV, s);
 let soc = chargePlan.soc;
 
 if (d === 1 && tomorrowSOCValue === null) {
