@@ -1353,7 +1353,8 @@ html += `
   let plan = getChargePlanFromWindow(tomorrowSOCValue.energy, s);
   return `
     ⏱️ ${plan.time}
-    <br>💷 £${plan.cost.toFixed(2)}
+<br>🔌 ${plan.gridEnergy.toFixed(2)} kWh imported
+<br>💷 £${plan.cost.toFixed(2)}
     ${plan.capped ? "<br>⚠️ Not enough cheap-rate time" : ""}
   `;
 })()
