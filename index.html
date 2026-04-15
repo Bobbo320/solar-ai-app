@@ -811,9 +811,7 @@ function recommendedSOC(pv, s){
   return Math.round(soc);
 }
 
-function getHourlyLoad(s) {
-  return s.dailyLoad / 24;
-}
+unction getHou
 
   function calculateExport(pvKW, loadKW, soc, s) {
 
@@ -938,6 +936,64 @@ function getSolarTimeRange(radSlice, timeSlice) {
   return `${start} – ${end}`;
 }
 
+function simulateBatterySOC(pvForecast, s) {
+
+  const { dayLoad, nightLoad } = getLoadProfile(s);
+
+  const batteryCapacity = s.battery;
+  const startSOC = s.socHigh / 100; // e.g. 95%
+
+  // ----------------------------
+  // STEP 1 — Daytime net usage
+  // 04:00–18:00 = 14 hours
+  // ----------------------------
+  const dayHoursToSunset = 14;
+
+  const totalDayLoad = dayLoad * dayHoursToSunset;
+  const netDayUsage = totalDayLoad - pvForecast;
+
+  let socAtSunset =
+    (startSOC * batteryCapacity - Math.max(0, netDayUsage)) / batteryCapacity;
+
+  socAtSunset = Math.max(0, Math.min(1, socAtSunset));
+
+  // ----------------------------
+  // STEP 2 — Evening discharge
+  // 18:00–22:00 (4h full load)
+  // ----------------------------
+  const eveningUse = dayLoad * 4;
+
+  let socAfterEvening =
+    (socAtSunset * batteryCapacity - eveningUse) / batteryCapacity;
+
+  socAfterEvening = Math.max(0, socAfterEvening);
+
+  // ----------------------------
+  // STEP 3 — Night discharge
+  // 22:00–04:00 (6h half load)
+  // ----------------------------
+  const nightUse = nightLoad * 6;
+
+  let socBeforeCharge =
+    (socAfterEvening * batteryCapacity - nightUse) / batteryCapacity;
+
+  socBeforeCharge = Math.max(0, socBeforeCharge);
+
+  // ----------------------------
+  // STEP 4 — Energy needed to recover to target SOC
+  // ----------------------------
+  const targetSOC = s.socHigh / 100;
+
+  const requiredEnergy =
+    Math.max(0, (targetSOC - socBeforeCharge) * batteryCapacity);
+
+  return {
+    socAtSunset,
+    socBeforeCharge,
+    requiredEnergy
+  };
+}
+  
 function weatherSummary(c,r,t,h,p){
   return `
     🌤️ Cloud (daylight): ${c.toFixed(0)}%<br>
@@ -1191,14 +1247,16 @@ let uncertaintyBuffer = 0.85; // assume 15% forecast error
 
 let adjustedPV = pv * uncertaintyBuffer;
 
-let chargePlan = calculateChargePlan(adjustedPV * (1 / risk), s);
-let soc = chargePlan.soc;
+// ----------------------------
+// NEW REAL SOC SIMULATION
+// ----------------------------
+let sim = simulateBatterySOC(pv, s);
 
-if (d === 1 && tomorrowSOCValue === null) {
+if (d === 0 && tomorrowSOCValue === null) {
   tomorrowSOCValue = {
-    soc: chargePlan.soc,
-    energy: chargePlan.energy,
-    capped: chargePlan.capped
+    energy: sim.requiredEnergy,
+    socSunset: sim.socAtSunset,
+    socBeforeCharge: sim.socBeforeCharge
   };
 }
 
@@ -1244,7 +1302,11 @@ html += `
      ${
   tomorrowSOCValue !== null
     ? `
-      ⚡ ${tomorrowSOCValue.energy.toFixed(1)} kWh charge
+      ⚡ ${tomorrowSOCValue.energy.toFixed(2)} kWh charge
+<br>
+🌇 SOC @ sunset: ${(tomorrowSOCValue.socSunset * 100).toFixed(0)}%
+<br>
+🌙 SOC before charge: ${(tomorrowSOCValue.socBeforeCharge * 100).toFixed(0)}%
       <br>
   ${
 (() => {
