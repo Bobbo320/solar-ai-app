@@ -120,6 +120,9 @@
   <option value="0.5">30 mins</option>
   <option value="1">60 mins</option>
 </select><br>
+
+  <label>Export Price (p/kWh):</label><br>
+<input id="exportRate" type="number" step="0.01"><br>
   
   <button onclick="saveSettings()">Save</button>
 </div>
@@ -465,7 +468,8 @@ function getSettings() {
     cheapStart: s.cheapStart || "01:00",
 cheapEnd: s.cheapEnd || "04:00",
 importRate: s.importRate ?? 0.15,
-blockSize: s.blockSize ?? 0.5
+blockSize: s.blockSize ?? 0.5,
+    exportRate: s.exportRate ?? 0.24,
   };
 }
 
@@ -486,7 +490,8 @@ function saveSettings() {
     cheapStart: cheapStart.value,
 cheapEnd: cheapEnd.value,
 importRate: +importRate.value,
-blockSize: +blockSize.value
+blockSize: +blockSize.value,
+    exportRate: +exportRate.value,
   };
 
   localStorage.setItem("settings", JSON.stringify(settings));
@@ -518,6 +523,7 @@ function loadSettingsToUI() {
 cheapEnd.value = s.cheapEnd;
 importRate.value = s.importRate;
 blockSize.value = s.blockSize;
+  exportRate.value = s.exportRate;
 }
 
 function toggleSettings() {
@@ -803,6 +809,21 @@ function recommendedSOC(pv, s){
   return Math.round(soc);
 }
 
+function getHourlyLoad(s) {
+  return s.dailyLoad / 24;
+}
+
+  function calculateExport(pvKW, loadKW, soc, s) {
+
+  const batteryFull = soc >= s.socHigh;
+
+  if (!batteryFull) return 0;
+
+  const surplus = pvKW - loadKW;
+
+  return Math.max(0, surplus);
+}
+  
 function calculateChargePlan(pvForecast, s) {
 
   // ----------------------------
@@ -988,6 +1009,15 @@ let nowPV =
   tiltFactor *
   (s.shading / 100) *
   cloudFactorLiveSoft;
+  let loadKW = getHourlyLoad(s);
+
+let batteryFull = true; // or replace with real SOC later
+let exportKW = 0;
+
+if (batteryFull) {
+  exportKW = Math.max(0, nowPV - loadKW);
+}
+let exportValue = exportKW * s.exportRate;
 
 // apply calibrated correction
   // raw physics model first
@@ -1031,8 +1061,12 @@ html += `
 
     <b>Radiation:</b> ${nowRad.toFixed(0)} W/m²<br>
     <b>Live PV:</b> ${nowPV.toFixed(2)} kW<br>
+
+   <b>Load:</b> ${loadKW.toFixed(2)} kW<br>
+<b>Export:</b> ${exportKW.toFixed(2)} kW<br>
+<b>Export Income:</b> £${exportValue.toFixed(2)}/hr<br>
+
     <b>Cloud:</b> ${nowCloud.toFixed(0)}%<br>
-    <b>Cloud Type:</b> ${cloudInfo.label}<br>
 
 <div class="cloud-bar">
   <div class="cloud-bar-fill" style="width:${(Math.pow(cloudInfo.intensity, 0.7) * 100).toFixed(0)}%"></div>
