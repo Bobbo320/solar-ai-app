@@ -1270,7 +1270,7 @@ let adjustedPV = pv * uncertaintyBuffer;
 // ----------------------------
 let sim = simulateBatterySOC(pv, s);
 
-if (d === 0 && tomorrowSOCValue === null) {
+if (d === 1 && tomorrowSOCValue === null)
   tomorrowSOCValue = {
     energy: sim.requiredEnergy,
     socSunset: sim.socAtSunset,
