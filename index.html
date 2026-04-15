@@ -826,6 +826,23 @@ function calculateChargePlan(pvForecast, s) {
     capped: requiredEnergy > maxPossibleCharge
   };
 }
+
+function getChargeTimeWindow(energy, inverterPower) {
+  if (!energy || energy <= 0) return "";
+
+  let hoursNeeded = energy / inverterPower;
+
+  // Anchor to cheap rate start (you can tweak this later)
+  let start = new Date();
+  start.setHours(3, 30, 0, 0); // 03:30 start
+
+  let end = new Date(start.getTime() + hoursNeeded * 60 * 60 * 1000);
+
+  let fmt = (d) =>
+    d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+  return `${fmt(start)} – ${fmt(end)}`;
+}
   
 function getSolarTimeRange(radSlice, timeSlice) {
   let startTime = null;
@@ -1133,15 +1150,15 @@ html += `
   <div class="card">
     <h3>🔋 Tonight's Grid Charge Target</h3>
 
-    <b>Recommended SOC:</b>
     <span style="color:red;font-weight:bold; font-size:18px;">
      ${
   tomorrowSOCValue !== null
-    ? `${tomorrowSOCValue.soc}% 
-       <br><small>
-       ⚡ ${tomorrowSOCValue.energy.toFixed(1)} kWh charge
-       ${tomorrowSOCValue.capped ? "<br>⚠️ Limited by inverter/battery" : ""}
-       </small>`
+    ? `
+      ⚡ ${tomorrowSOCValue.energy.toFixed(1)} kWh charge
+      <br>
+      ⏱️ ${getChargeTimeWindow(tomorrowSOCValue.energy, s.inverter)}
+      ${tomorrowSOCValue.capped ? "<br>⚠️ Limited by inverter/battery" : ""}
+    `
     : "N/A"
 }
     </span>
