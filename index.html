@@ -949,8 +949,33 @@ function getChargePlanFromWindow(energy, s) {
   let blocksNeeded = Math.ceil(energy / powerPerBlock);
   let blocksUsed = Math.min(blocksNeeded, totalBlocks);
 
-  let actualEnergy = blocksUsed * powerPerBlock;
-  let cost = actualEnergy * s.importRate;
+  // --- REAL ENERGY MODEL ---
+
+let deliveredEnergy = energy;
+
+// total block duration (hours)
+let totalBlockTime = blocksUsed * blockHours;
+
+// time needed to charge battery at inverter rate
+let chargeTime = deliveredEnergy / s.inverter;
+
+// clamp (safety)
+chargeTime = Math.min(chargeTime, totalBlockTime);
+
+// remaining time in final block
+let tailTime = totalBlockTime - chargeTime;
+
+// night load (kW)
+let nightLoadKW = getHourlyLoad(s, 2); // ~2am typical
+
+// energy used after battery full
+let tailEnergy = tailTime * nightLoadKW;
+
+// total grid energy
+let actualEnergy = deliveredEnergy + tailEnergy;
+
+// cost
+let cost = actualEnergy * s.importRate;
 
  let chargeEnd = endMin;
 let chargeStart = endMin - blocksUsed * blockHours * 60;
