@@ -789,7 +789,25 @@ function estimatePV(radSlice, cloudSlice, tempSlice, s) {
   return total;
 }
 
+function getNightLoadProfile(s) {
+  const total = s.dailyLoad;
 
+  // Night window split (2200–0600 = 8 hours)
+  const nightStart = 22;
+  const nightEnd = 6;
+
+  const nightHours = 8;
+
+  // 2% per hour overnight baseline (your rule)
+  const nightTotal = total * 0.16; // 8 * 2%
+
+  const nightPerHour = nightTotal / nightHours;
+
+  return {
+    hourly: nightPerHour,
+    total: nightTotal
+  };
+}
 
   
 // -------------------- SOC --------------------
@@ -811,8 +829,27 @@ function recommendedSOC(pv, s){
   return Math.round(soc);
 }
 
-function getHourlyLoad(s) {
-  return s.dailyLoad / 24;
+function getHourlyLoad(s, hour = new Date().getHours()) {
+  const total = s.dailyLoad;
+
+  // Night: 2200–0600 (reduced usage)
+  if (hour >= 22 || hour < 6) {
+    return (total * 0.16) / 8;
+  }
+
+  // Evening peak 1600–1900 = 30%
+  if (hour >= 16 && hour < 19) {
+    return (total * 0.30) / 3;
+  }
+
+  // Remaining daytime (rebalanced)
+  const night = total * 0.16;
+  const evening = total * 0.30;
+  const rest = total - night - evening;
+
+  const restHours = 24 - 8 - 3; // 13 hours
+
+  return rest / restHours;
 }
 
   function calculateExport(pvKW, loadKW, soc, s) {
@@ -831,7 +868,15 @@ function calculateChargePlan(pvForecast, s) {
   // ----------------------------
   // STEP 1: Base energy need
   // ----------------------------
-  let shortfall = Math.max(0, s.dailyLoad - pvForecast);
+  // include night + evening demand shaping
+let nightLoad = s.dailyLoad * 0.16;
+let eveningLoad = s.dailyLoad * 0.30;
+let baseLoad = s.dailyLoad - nightLoad - eveningLoad;
+
+// solar window offset correction
+let shortfall =
+  Math.max(0, baseLoad - pvForecast) +
+  nightLoad * 0.5; // half night not covered by solar
 
   let buffer = 1.15;
   if (shortfall > 5) buffer = 1.25;
@@ -1011,7 +1056,7 @@ let nowPV =
   tiltFactor *
   (s.shading / 100) *
   cloudFactorLiveSoft;
-  let loadKW = getHourlyLoad(s);
+  let loadKW = getHourlyLoad(s, hour);
 
 let batteryFull = true; // or replace with real SOC later
 let exportKW = 0;
@@ -1189,7 +1234,7 @@ else if (pv < 10) risk = 1.15;
 
 let uncertaintyBuffer = 0.85; // assume 15% forecast error
 
-let adjustedPV = pv * uncertaintyBuffer;
+let adjustedPV = (pv * uncertaintyBuffer) - getDeferredMorningLoad(s);
 
 let chargePlan = calculateChargePlan(adjustedPV * (1 / risk), s);
 let soc = chargePlan.soc;
@@ -1231,6 +1276,12 @@ if (d === 1 && tomorrowSOCValue === null) {
   `;
 }
 
+function getDeferredMorningLoad(s) {
+  // 4am–6am = catch-up usage
+  const catchUp = s.dailyLoad * 0.06; // 6% rebound load
+  return catchUp;
+}
+  
 // -------------------- RENDER --------------------
 
 loading.innerText = "";
