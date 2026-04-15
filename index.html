@@ -529,7 +529,8 @@ blockSize.value = s.blockSize;
 }
 
 function toggleSettings() {
-  settingsPanel.classList.toggle("hidden");
+  const panel = document.getElementById("settingsPanel");
+  panel.classList.toggle("hidden");
   loadSettingsToUI();
 }
 
@@ -810,8 +811,6 @@ function recommendedSOC(pv, s){
 
   return Math.round(soc);
 }
-
-unction getHou
 
   function calculateExport(pvKW, loadKW, soc, s) {
 
