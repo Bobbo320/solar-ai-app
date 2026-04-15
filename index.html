@@ -372,7 +372,7 @@ function applyCalibration(raw, mode = "live") {
   let corrected = 1 + (combined - 1) * strength;
 
   // hard safety clamp
-  corrected = Math.max(0.85, Math.min(1.20, corrected));
+corrected = Math.max(0.80, Math.min(1.60, corrected));
 
   return raw * corrected;
 }
@@ -649,7 +649,7 @@ function getTiltFactor(tilt, hour) {
   const optimalTilt = 35;
 
   let tiltEffect = 1 - Math.pow((tilt - optimalTilt) / 55, 2);
-  tiltEffect = Math.max(0.75, Math.min(1.05, tiltEffect));
+tiltEffect = Math.max(0.85, Math.min(1.10, tiltEffect));
 
   let sunAngleFactor = 1;
 
@@ -722,7 +722,7 @@ function cloudIntensityFactor(cloud, rad) {
 
   // Medium cloud → balanced scaling
   if (cloud >= 30 && cloud <= 70) {
-    return 0.85 + (rad / 1000) * 0.2;
+   return 0.90 + (rad / 1000) * 0.25;
   }
 
   // Thick cloud → strong reduction
@@ -985,7 +985,7 @@ let nowTemp = temp[nowIndex];
 let cloudFactorLive = cloudIntensityFactor(nowCloud, nowRad);
 
 // stronger but still stable cloud response
-let cloudFactorLiveSoft = 0.85 + (0.25 * (cloudFactorLive - 1));
+let cloudFactorLiveSoft = cloudFactorLive;
 
 // 🔧 radiation input (no change)
 let hour = new Date().getHours();
