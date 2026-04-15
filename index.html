@@ -776,6 +776,57 @@ function recommendedSOC(pv, s){
   return Math.round(soc);
 }
 
+function calculateChargePlan(pvForecast, s) {
+
+  // ----------------------------
+  // STEP 1: Base energy need
+  // ----------------------------
+  let shortfall = Math.max(0, s.dailyLoad - pvForecast);
+
+  let buffer = 1.15;
+  if (shortfall > 5) buffer = 1.25;
+  if (shortfall > 10) buffer = 1.35;
+
+  let requiredEnergy = shortfall * buffer;
+
+  // ----------------------------
+  // STEP 2: Battery constraint
+  // ----------------------------
+  let maxBatteryEnergy = s.battery;
+
+  // ----------------------------
+  // STEP 3: Inverter constraint
+  // ----------------------------
+  let chargeHours = 6; // typical overnight cheap window (adjustable later)
+
+  let maxChargeFromInverter = s.inverter * chargeHours;
+
+  // ----------------------------
+  // STEP 4: TRUE maximum possible charge
+  // ----------------------------
+  let maxPossibleCharge = Math.min(maxBatteryEnergy, maxChargeFromInverter);
+
+  // ----------------------------
+  // STEP 5: Clamp required energy
+  // ----------------------------
+  let actualCharge = Math.min(requiredEnergy, maxPossibleCharge);
+
+  // ----------------------------
+  // STEP 6: Convert to SOC %
+  // ----------------------------
+  let soc = (actualCharge / s.battery) * 100;
+
+  // Apply user limits
+  if (soc < s.socLow) soc = s.socLow;
+  if (soc > s.socHigh) soc = s.socHigh;
+
+  return {
+    soc: Math.round(soc),
+    energy: actualCharge,
+    capped: requiredEnergy > maxPossibleCharge
+  };
+}
+  
 function getSolarTimeRange(radSlice, timeSlice) {
   let startTime = null;
   let endTime = null;
@@ -1033,11 +1084,15 @@ storeExpectedPV(d, pv);
 if (pv < 5) risk = 1.3;
 else if (pv < 10) risk = 1.15;
 
-let soc = recommendedSOC(pv * (1 / risk), s);;
+let chargePlan = calculateChargePlan(pv * (1 / risk), s);
+let soc = chargePlan.soc;
 
-  // ✅ Capture tomorrow SOC for display
 if (d === 1 && tomorrowSOCValue === null) {
-  tomorrowSOCValue = soc;
+  tomorrowSOCValue = {
+    soc: chargePlan.soc,
+    energy: chargePlan.energy,
+    capped: chargePlan.capped
+  };
 }
 
   // Label
@@ -1080,7 +1135,15 @@ html += `
 
     <b>Recommended SOC:</b>
     <span style="color:red;font-weight:bold; font-size:18px;">
-      ${tomorrowSOCValue !== null ? tomorrowSOCValue + "%" : "N/A"}
+     ${
+  tomorrowSOCValue !== null
+    ? `${tomorrowSOCValue.soc}% 
+       <br><small>
+       ⚡ ${tomorrowSOCValue.energy.toFixed(1)} kWh charge
+       ${tomorrowSOCValue.capped ? "<br>⚠️ Limited by inverter/battery" : ""}
+       </small>`
+    : "N/A"
+}
     </span>
   </div>
 `;
