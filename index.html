@@ -823,8 +823,6 @@ function recommendedSOC(pv, s){
 
   let soc = (required / s.battery) * 100;
 
-  if(soc < s.socLow) soc = s.socLow;
-  if(soc > s.socHigh) soc = s.socHigh;
 
   return Math.round(soc);
 }
@@ -902,24 +900,21 @@ let shortfall =
   let maxPossibleCharge = Math.min(maxBatteryEnergy, maxChargeFromInverter);
 
   // ----------------------------
-  // STEP 5: Clamp required energy
-  // ----------------------------
-  let actualCharge = Math.min(requiredEnergy, maxPossibleCharge);
+ // STEP 5: Clamp required energy
+let actualCharge = Math.min(requiredEnergy, maxPossibleCharge);
 
-  // ----------------------------
-  // STEP 6: Convert to SOC %
-  // ----------------------------
-  let soc = (actualCharge / s.battery) * 100;
+// OPTIONAL safety floor (only if SOC low is a true reserve rule)
+const minEnergy = s.battery * (s.socLow / 100);
+actualCharge = Math.max(actualCharge, minEnergy);
 
-  // Apply user limits
-  if (soc < s.socLow) soc = s.socLow;
-  if (soc > s.socHigh) soc = s.socHigh;
+// STEP 6: Convert to SOC (pure output metric)
+let soc = (actualCharge / s.battery) * 100;
 
-  return {
-    soc: Math.round(soc),
-    energy: actualCharge,
-    capped: requiredEnergy > maxPossibleCharge
-  };
+return {
+  soc: Math.round(soc),
+  energy: actualCharge,
+  capped: requiredEnergy > maxPossibleCharge
+};
 }
 
 function getChargePlanFromWindow(energy, s) {
