@@ -825,7 +825,7 @@ let dhi = dayData?.dhi?.[i] ?? scaledRad * 0.35;
 );
     effectiveRad = Math.min(1100, effectiveRad);
 
-hourPV =
+let hourPV =
   s.pvSize *
   (effectiveRad / 1000) *
   (s.efficiency / 100) *
@@ -833,7 +833,7 @@ hourPV =
   temperatureEfficiency(t) *
   getOrientationFactor(s.orientation) *
   getTiltFactor(s.tilt, i) *
-  (s.shading / 100) *
+  (s.shading / 100);
 
 hourPV = inverterLimit(hourPV, s.inverter);
 
