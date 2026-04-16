@@ -201,8 +201,13 @@ function shouldUpdateExpectedPV() {
   // allow early-day creation, refine later
   return hour >= 10; // 10am+ improves forecast stability
 }
+function toggleSettings() {
+  document.getElementById("settingsPanel").classList.toggle("hidden");
+  loadSettingsToUI();
+}
+
 function togglePVTab() {
-  pvPanel.classList.toggle("hidden");
+  document.getElementById("pvPanel").classList.toggle("hidden");
   renderPVTable();
 }
 
@@ -1570,7 +1575,28 @@ if (value !== undefined) {
 } else {
   delete data[newDate].manual;
 }
+function deleteEdit() {
+  if (!currentEditDate) return;
 
+  let data = getPVData();
+
+  if (data[currentEditDate]) {
+    delete data[currentEditDate].manual;
+
+    // if empty row, remove it entirely
+    if (!data[currentEditDate].expected) {
+      delete data[currentEditDate];
+    }
+  }
+
+  savePVData(data);
+
+  refreshExpectedPVAfterManualChange();
+
+  closeEditor();
+  renderPVTable();
+  runAI();
+}
   savePVData(data);
 
 // 🔥 force PV recalculation after manual entry
