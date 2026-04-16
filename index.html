@@ -1122,10 +1122,9 @@ let cloudWeight = Math.max(0.15, 1 - (nowRad / 600));
 // high radiation → cloud has very little influence
 
 let cloudFactorLiveSoft =
-  1 - (nowCloud / 100) * 0.6 * cloudWeight;
+  1 - (nowCloud / 100) * 0.75 * cloudWeight;
 
-// keep sane limits
-cloudFactorLiveSoft = Math.max(0.75, Math.min(1.15, cloudFactorLiveSoft));
+cloudFactorLiveSoft = Math.max(0.65, Math.min(1.05, cloudFactorLiveSoft));
 
   // ☀️ If radiation is strong, override cloud pessimism
 if (nowRad > 250) {
@@ -1139,14 +1138,14 @@ let hour = new Date().getHours();
 let radScale;
 
 if (nowRad < 100) {
-  radScale = 1.6;
+  radScale = 1.2;
 } else if (nowRad < 300) {
-  radScale = 1.6 + (nowRad - 100) * 0.002;
+  radScale = 1.2 + (nowRad - 100) * 0.0012;
 } else {
-  radScale = 2.0 + (nowRad - 300) * 0.0005;
+  radScale = 1.5 + (nowRad - 300) * 0.0003;
 }
 
-radScale = Math.min(radScale, 2.2);
+radScale = Math.min(radScale, 1.8);
 
 // HARD PHYSICS CAP
 let effectiveRad = Math.min(nowRad * radScale, 1000);
@@ -1168,10 +1167,10 @@ let rawNowPV = nowPV;
 nowPV = applyCalibration(rawNowPV, "live") * GLOBAL_PV_BIAS_LIVE;
 
 // inverter constraint
-nowPV = Math.min(nowPV, s.inverter);
+nowPV = Math.min(nowPV, s.inverter * 0.98);
 
 // final sanity clamp (THIS is the important one)
-nowPV = Math.min(nowPV, s.pvSize * 1.25);
+nowPV = Math.min(nowPV, s.pvSize * 1.05);
   let loadKW = getHourlyLoad(s, hour);
 
 // -------------------- LIVE vs FORECAST RECONCILIATION --------------------
