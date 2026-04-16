@@ -1139,12 +1139,14 @@ let hour = new Date().getHours();
 let radScale;
 
 if (nowRad < 100) {
-  radScale = 1.8;
+  radScale = 1.6;
 } else if (nowRad < 300) {
-  radScale = 1.8 + (nowRad - 100) * 0.003;
+  radScale = 1.6 + (nowRad - 100) * 0.002;
 } else {
-  radScale = 2.4 + (nowRad - 300) * 0.001;
+  radScale = 2.0 + (nowRad - 300) * 0.0005;
 }
+
+radScale = Math.min(radScale, 2.2);
 
 // HARD PHYSICS CAP
 let effectiveRad = Math.min(nowRad * radScale, 1000);
@@ -1160,7 +1162,16 @@ let nowPV =
   tiltFactor *
   (s.shading / 100) *
   cloudFactorLiveSoft;
-  nowPV = Math.min(nowPV, s.pvSize * 1.15);
+
+// calibration + learning layer
+let rawNowPV = nowPV;
+nowPV = applyCalibration(rawNowPV, "live") * GLOBAL_PV_BIAS_LIVE;
+
+// inverter constraint
+nowPV = Math.min(nowPV, s.inverter);
+
+// final sanity clamp (THIS is the important one)
+nowPV = Math.min(nowPV, s.pvSize * 1.25);
   let loadKW = getHourlyLoad(s, hour);
 
 // -------------------- LIVE vs FORECAST RECONCILIATION --------------------
