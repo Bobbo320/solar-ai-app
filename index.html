@@ -1095,13 +1095,23 @@ if (nowRad > 250) {
 // 🔧 radiation input (no change)
 let hour = new Date().getHours();
 
-// Radiation response curve (already good idea)
-let radBoost = 0.95 + (0.35 * (1 - Math.exp(-nowRad / 300)));
+// 🔥 Convert horizontal radiation → effective panel radiation
+let radScale;
 
-let effectiveRad = nowRad * radBoost;
+// Strong non-linear lift (key fix)
+if (nowRad < 100) {
+  radScale = 2.8;
+} else if (nowRad < 300) {
+  radScale = 2.8 + (nowRad - 100) * 0.01; // ramps to ~4.8
+} else {
+  radScale = 4.8 + (nowRad - 300) * 0.002; // softer growth
+}
 
-// cap AFTER adjustments
-effectiveRad = Math.min(1000, effectiveRad);
+// Apply scaling
+let effectiveRad = nowRad * radScale;
+
+// Physical ceiling
+effectiveRad = Math.min(1100, effectiveRad);
 
 let tiltFactor = getTiltFactor(s.tilt, hour);
 
