@@ -1129,7 +1129,7 @@ cloudFactorLiveSoft = Math.max(0.75, Math.min(1.15, cloudFactorLiveSoft));
 
   // ☀️ If radiation is strong, override cloud pessimism
 if (nowRad > 250) {
-  cloudFactorLiveSoft = Math.max(cloudFactorLiveSoft, 1.05);
+  cloudFactorLiveSoft = Math.min(cloudFactorLiveSoft, 1.0);
 }
 
 // 🔧 radiation input (no change)
@@ -1138,19 +1138,16 @@ let hour = new Date().getHours();
 // 🔥 Convert horizontal radiation → effective panel radiation
 let radScale;
 
-// Strong non-linear lift (key fix)
 if (nowRad < 100) {
-  radScale = 2.4;
+  radScale = 1.8;
 } else if (nowRad < 300) {
-  radScale = 2.4 + (nowRad - 100) * 0.007;
+  radScale = 1.8 + (nowRad - 100) * 0.003;
 } else {
-  radScale = 3.8 + (nowRad - 300) * 0.0015;
+  radScale = 2.4 + (nowRad - 300) * 0.001;
 }
-// Apply scaling
-let effectiveRad = nowRad * radScale;
 
-// Physical ceiling
-effectiveRad = Math.min(1100, effectiveRad);
+// HARD PHYSICS CAP
+let effectiveRad = Math.min(nowRad * radScale, 1000);
 
 let tiltFactor = getTiltFactor(s.tilt, hour);
 
@@ -1163,6 +1160,7 @@ let nowPV =
   tiltFactor *
   (s.shading / 100) *
   cloudFactorLiveSoft;
+  nowPV = Math.min(nowPV, s.pvSize * 1.15);
   let loadKW = getHourlyLoad(s, hour);
 
 // -------------------- LIVE vs FORECAST RECONCILIATION --------------------
