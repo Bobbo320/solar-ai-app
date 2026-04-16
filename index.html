@@ -1366,7 +1366,7 @@ let confidence =
 
 // clamp
 confidence = Math.max(35, Math.min(98, confidence));
-let dayData = extractDay(data, d);
+let dayData = extractDay(weatherData, d);
 
 let basePV = estimatePV(
   rad.slice(start, start + 24),
@@ -1387,7 +1387,6 @@ let date = new Date();
 date.setDate(date.getDate() + d);
 
 let key = getLocalDateKey(date);
-
 let entry = pvData[key];
 
   // ✅ SOC calculation
