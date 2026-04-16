@@ -1147,13 +1147,13 @@ let nowPV =
   tiltFactor *
   (s.shading / 100) *
   cloudFactorLiveSoft;
-  let loadKW = getHourlyLoad(s, hour);
+ let loadKW = getHourlyLoad(s, hour);
 
-let batteryFull = nowPV > loadKW;
-let exportKW = 0;
+// 1. clamp PV to inverter first (IMPORTANT)
+let pvClipped = Math.min(nowPV, s.inverter);
 
-if (batteryFull) {
-  exportKW = Math.max(0, nowPV - loadKW);
+// 2. correct export physics
+let exportKW = Math.max(0, pvClipped - loadKW);
 }
 let exportValue = exportKW * s.exportRate;
 
@@ -1179,7 +1179,11 @@ if (nowRad < 20) {
 } else if (nowPV < 3) {
   status = "☀️ Moderate solar → charging battery";
 
-} else if (nowPV < s.inverter * 0.8) {
+let pvClippedForStatus = Math.min(nowPV, s.inverter);
+
+...
+
+} else if (pvClippedForStatus < s.inverter * 0.8) {
   status = "🔋 Strong solar → high charging";
 
 } else if (nowPV < s.inverter) {
