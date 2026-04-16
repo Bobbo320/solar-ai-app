@@ -216,18 +216,26 @@ function storeExpectedPV(dayIndex, pvValue) {
 
   if (!data[key]) data[key] = {};
 
-  // NEVER overwrite manual data
+  // ❌ NEVER overwrite manual data
   if (data[key].manual !== undefined) return;
 
-  // ALWAYS allow refresh if no manual override exists
+  const hour = new Date().getHours();
+  const isStableTime = hour >= 10;
+
+  if (!isStableTime && data[key].expected !== undefined) return;
+
   let existing = data[key].expected;
 
   if (existing === undefined) {
     data[key].expected = pvValue;
-  } else {
-    // FULL REFRESH MODEL (not damped blending anymore)
-    data[key].expected = pvValue;
+    savePVData(data);
+    return;
   }
+
+  let diff = Math.abs(existing - pvValue);
+  if (diff < 0.2) return;
+
+  data[key].expected = existing * 0.7 + pvValue * 0.3;
 
   savePVData(data);
 }
@@ -235,55 +243,19 @@ function storeExpectedPV(dayIndex, pvValue) {
 function refreshExpectedPVAfterManualChange() {
   let data = getPVData();
 
-  let today = new Date();
-
   for (let d = 0; d < 2; d++) {
-    let date = new Date(today);
-    date.setDate(today.getDate() + d);
+    let date = new Date();
+    date.setDate(date.getDate() + d);
 
     let key = getLocalDateKey(date);
 
-    if (!data[key]) data[key] = {};
+    if (data[key]?.manual !== undefined) continue;
 
-    // ONLY refresh expected if no manual override exists
-    if (data[key].manual === undefined) {
-      delete data[key].expected;
-    }
+    if (!data[key]) data[key] = {};
+    delete data[key].expected;
   }
 
   savePVData(data);
-function rebuildExpectedPVForWindow(pvToday) {
-  let data = getPVData();
-
-  let today = new Date();
-
-  for (let d = 0; d < 2; d++) {
-
-    let date = new Date(today);
-    date.setDate(today.getDate() + d);
-
-    let key = getLocalDateKey(date);
-
-    if (!data[key]) data[key] = {};
-
-    // NEVER touch manual entries
-    if (data[key].manual !== undefined) continue;
-
-    // SHIFT LOGIC:
-    // tomorrow inherits today adjusted expectation
-    if (d === 1) {
-      let todayVal = pvToday || data[getLocalDateKey(today)]?.expected || 0;
-
-      let cal = getCalibrationSystem();
-
-      let adjusted = todayVal * (cal.bias * cal.seasonalFactor);
-
-      data[key].expected = adjusted;
-    }
-  }
-
-  savePVData(data);
-}
 }
 function getCalibrationSystem() {
   let pvData = getPVData();
@@ -306,8 +278,7 @@ function getCalibrationSystem() {
     let entryDate = new Date(date);
     let diffDays = (today - entryDate) / 86400000;
 
-    // allow forward + backward smoothing window
-if (diffDays < -1 || diffDays > 90) return;
+    if (diffDays < 0 || diffDays > 90) return;
 
     let ratio = row.manual / row.expected;
     if (ratio < 0.3 || ratio > 1.7) return;
@@ -1432,15 +1403,7 @@ let basePV = estimatePV(
 
   // calibration
 let rawPV = basePV;
-let pv = applyCalibration(rawPV, "forecast");
-
-// store expected PV for today + tomorrow
-storeExpectedPV(d, pv);
-
-// ensure tomorrow updates if today changes
-if (d === 0) {
-  rebuildExpectedPVForWindow(pv);
-}
+let pv = rawPV * 1.02; // light physics bias only
 
 // ✅ Store expected PV for today + tomorrow
 let pvData = getPVData();
