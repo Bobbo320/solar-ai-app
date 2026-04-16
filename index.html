@@ -265,7 +265,7 @@ storeExpectedPV(d, pv);
 }
   
 function getCalibrationSystem() {
-  let data = getPVData();
+  let pvData = getPVData();
   let today = new Date();
 
   let weightedManual = 0;
@@ -1388,7 +1388,7 @@ let confidence =
 
 // clamp
 confidence = Math.max(35, Math.min(98, confidence));
-let dayData = extractDay(data, d);
+let dayData = extractDay(pvData, d);
 
 let basePV = estimatePV(
   rad.slice(start, start + 24),
