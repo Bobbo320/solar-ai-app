@@ -1285,6 +1285,7 @@ let forecastConfidence =
    0.45 * (1 - instability));
 
 // clamp
+let confidence = forecastConfidence;
 confidence = Math.max(35, Math.min(98, confidence));
 let basePV = estimatePV(
   rad.slice(start, start + 24),
@@ -1312,7 +1313,7 @@ storeExpectedPV(d, pv);
 // CLEAN ENERGY PIPELINE (FIXED)
 // ----------------------------
 
-let chargePlan = calculateChargePlan(pv, s, confidence);
+let chargePlan = calculateChargePlan(pv, s, forecastConfidence);
 let soc = chargePlan.soc;
 
 if (d === 1 && tomorrowSOCValue === null) {
