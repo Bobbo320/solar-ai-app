@@ -207,12 +207,14 @@ function togglePVTab() {
 }
 
 function storeExpectedPV(dayIndex, pvValue) {
-  let data = getPVData();
+let pvDataStore = getPVData();
 
-  let date = new Date();
-  date.setDate(date.getDate() + dayIndex);
+let date = new Date();
+date.setDate(date.getDate() + d);
 
-  let key = getLocalDateKey(date);
+let key = getLocalDateKey(date);
+
+storeExpectedPV(d, pv);
 
   if (!data[key]) data[key] = {};
 
@@ -246,7 +248,6 @@ function storeExpectedPV(dayIndex, pvValue) {
 }
 
   function refreshExpectedPVAfterManualChange() {
-  let data = getPVData();
 
   for (let d = 0; d < 2; d++) {
     let date = new Date();
