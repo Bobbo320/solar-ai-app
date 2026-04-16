@@ -171,216 +171,1367 @@
 <div id="output"></div>
 
 <script>
-/* =========================================================
-   SOLAR AI PRO — REWRITTEN PHYSICS CORE (CLEAN MODEL)
-   Fixes:
-   - solar geometry added
-   - cloud is not overpowered
-   - no fake radiation scaling
-   - Open-Meteo radiation used correctly
-========================================================= */
 
-const SOLAR_THRESHOLD = 50;
-const SOLAR_VISIBLE_THRESHOLD = 30;
-
+const SOLAR_THRESHOLD = 50;        // used for real PV calculations
+const SOLAR_VISIBLE_THRESHOLD = 30; // used for solar time window display
 let GLOBAL_PV_BIAS_LIVE = 1;
 let GLOBAL_PV_BIAS_FORECAST = 1;
+
 let preloadedWeather = null;
-
-/* =========================
-   BASIC UTILS
-========================= */
-
+  
 function getLocalDateKey(d = new Date()) {
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000)
     .toISOString()
     .split("T")[0];
 }
+// -------------------- PV DATA + AUTO TUNING --------------------
 
-/* =========================
-   SOLAR POSITION MODEL (NEW CORE FIX)
-   Simplified solar altitude approximation
-   (good enough for UK PV modelling)
-========================= */
-
-function solarAltitudeFactor(hour, dayOfYear, lat = 52.6) {
-  const decl = 23.45 * Math.sin((2 * Math.PI / 365) * (284 + dayOfYear));
-  const hourAngle = 15 * (hour - 12);
-
-  const rad =
-    Math.sin((lat * Math.PI / 180)) * Math.sin((decl * Math.PI / 180)) +
-    Math.cos((lat * Math.PI / 180)) *
-    Math.cos((decl * Math.PI / 180)) *
-    Math.cos((hourAngle * Math.PI / 180));
-
-  return Math.max(0, rad);
+function getPVData() {
+  return JSON.parse(localStorage.getItem("pvData") || "{}");
 }
 
-/* =========================
-   WEATHER (UNCHANGED API)
-========================= */
+function savePVData(data) {
+  localStorage.setItem("pvData", JSON.stringify(data));
+}
+function shouldUpdateExpectedPV() {
+  const hour = new Date().getHours();
 
+  // allow early-day creation, refine later
+  return hour >= 10; // 10am+ improves forecast stability
+}
+function togglePVTab() {
+  pvPanel.classList.toggle("hidden");
+  renderPVTable();
+}
+
+function storeExpectedPV(dayIndex, pvValue) {
+  let data = getPVData();
+
+  let date = new Date();
+  date.setDate(date.getDate() + dayIndex);
+
+  let key = getLocalDateKey(date);
+
+  if (!data[key]) data[key] = {};
+
+  // ❌ NEVER overwrite manual data
+  if (data[key].manual !== undefined) return;
+
+  let existing = data[key].expected;
+
+  // 🕒 time lock (prevents early unstable writes)
+  const hour = new Date().getHours();
+  const isStableTime = hour >= 10;
+
+  // If no existing value → always allow
+  if (existing === undefined) {
+    data[key].expected = pvValue;
+    savePVData(data);
+    return;
+  }
+
+  // If early in day → never update
+  if (!isStableTime) return;
+
+  // Only update if meaningful change
+  let diff = Math.abs(existing - pvValue);
+  if (diff < 0.2) return;
+
+  // Optional: dampen updates instead of replacing
+  data[key].expected = existing * 0.7 + pvValue * 0.3;
+
+  savePVData(data);
+}
+
+  function refreshExpectedPVAfterManualChange() {
+  let data = getPVData();
+
+  for (let d = 0; d < 2; d++) {
+    let date = new Date();
+    date.setDate(date.getDate() + d);
+
+    let key = getLocalDateKey(date);
+
+    if (data[key]?.manual !== undefined) continue;
+
+    if (!data[key]) data[key] = {};
+    delete data[key].expected;
+  }
+
+  savePVData(data);
+}
+  
+function getCalibrationSystem() {
+  let data = getPVData();
+  let today = new Date();
+
+  let weightedManual = 0;
+  let weightedExpected = 0;
+
+  // seasonal buckets
+  let seasonal = {
+    winter: { m: 0, e: 0 },
+    spring: { m: 0, e: 0 },
+    summer: { m: 0, e: 0 },
+    autumn: { m: 0, e: 0 }
+  };
+
+  Object.keys(data).forEach(date => {
+    let row = data[date];
+    if (!row.expected || !row.manual) return;
+
+    let entryDate = new Date(date);
+    let diffDays = (today - entryDate) / 86400000;
+
+   if (diffDays < 0 || diffDays > 90) return;
+
+    let ratio = row.manual / row.expected;
+    if (ratio < 0.3 || ratio > 1.7) return;
+    if (row.expected < 1) return;
+
+    let weight = Math.pow(row.expected, 1.2);
+
+    weightedManual += row.manual * weight;
+    weightedExpected += row.expected * weight;
+
+    let month = entryDate.getMonth() + 1;
+
+    let season =
+      (month <= 2 || month === 12) ? "winter" :
+      (month <= 5) ? "spring" :
+      (month <= 8) ? "summer" : "autumn";
+
+    seasonal[season].m += row.manual * weight;
+    seasonal[season].e += row.expected * weight;
+  });
+
+  // ---------------------------
+  // LAYER 1: SYSTEM BIAS
+  // ---------------------------
+  let bias = weightedExpected
+    ? weightedManual / weightedExpected
+    : 1;
+
+  bias = Math.max(0.75, Math.min(1.25, bias));
+
+  // ---------------------------
+  // LAYER 2: SEASONAL DRIFT
+  // ---------------------------
+  let month = new Date().getMonth() + 1;
+
+  let currentSeason =
+    (month <= 2 || month === 12) ? "winter" :
+    (month <= 5) ? "spring" :
+    (month <= 8) ? "summer" : "autumn";
+
+  let s = seasonal[currentSeason];
+
+  let seasonalFactor = s.e > 0 ? (s.m / s.e) : 1;
+
+  seasonalFactor = Math.max(0.85, Math.min(1.15, seasonalFactor));
+
+  // ---------------------------
+  // LAYER 3: DATA CONFIDENCE (NEW)
+  // ---------------------------
+  let sampleSize = Object.values(data)
+    .filter(d => d.manual && d.expected)
+    .length;
+
+  // weak data → reduce correction strength
+  let confidence = Math.min(1, sampleSize / 20);
+
+  return {
+    bias,
+    seasonalFactor,
+    confidence
+  };
+}
+
+function applyCalibration(raw, mode = "live") {
+
+  let { bias, seasonalFactor, confidence } = getCalibrationSystem();
+
+  // combine layers
+  let combined = bias * seasonalFactor;
+
+  // ---------------------------
+  // RESPONSIVENESS MODEL (NEW CORE IDEA)
+  // ---------------------------
+  let strength;
+
+  if (mode === "live") {
+    strength = 0.25;   // stable, avoids noise chasing
+  } else if (mode === "forecast") {
+    strength = 0.60;   // allows learning from trends
+  } else {
+    strength = 0.40;
+  }
+
+  // reduce effect when data is weak
+  strength *= (0.4 + 0.6 * confidence);
+
+  // blend toward 1 (neutral baseline)
+  let corrected = 1 + (combined - 1) * strength;
+
+  // hard safety clamp
+corrected = Math.max(0.80, Math.min(1.60, corrected));
+
+  return raw * corrected;
+}
+  
+function renderPVTable() {
+  let data = getPVData();
+  let tbody = document.getElementById("pvTable");
+
+  tbody.innerHTML = "";
+
+  let mode = document.getElementById("pvViewMode")?.value || "today";
+
+let today = new Date();
+let todayStr = getLocalDateKey(new Date());
+
+Object.keys(data)
+  .sort((a, b) => new Date(a) - new Date(b))
+  .forEach(date => {
+
+  let include = false;
+  let entryDate = new Date(date);
+
+  if (mode === "today") {
+    include = (date === todayStr);
+  }
+
+  if (mode === "7days") {
+    let diff = (today - entryDate) / (1000 * 60 * 60 * 24);
+    include = diff >= 0 && diff <= 7;
+  }
+
+  if (mode === "all") {
+    include = true;
+  }
+
+  if (!include) return;
+
+    let row = data[date];
+
+    let tr = document.createElement("tr");
+
+    tr.setAttribute("data-date", date);
+
+    tr.innerHTML = `
+      <td>${date}</td>
+      <td>${row.expected ? row.expected.toFixed(1) : "-"}</td>
+      <td>${row.manual ? row.manual.toFixed(1) : "-"}</td>
+<td>
+  <button onclick="openEditor('${date}')">Edit</button>
+  <button onclick="deletePVRow('${date}')">Delete</button>
+</td>
+    `;
+
+    tbody.appendChild(tr);
+  });
+
+  // ✅ Calibration factor display (run once)
+let { bias, seasonalFactor } = getCalibrationSystem();
+
+let factor = bias * seasonalFactor;
+  document.getElementById("calFactor").innerText = factor.toFixed(2);
+}
+
+
+function deletePVRow(date) {
+  let data = getPVData();
+  delete data[date];
+  savePVData(data);
+
+refreshExpectedPVAfterManualChange();
+
+renderPVTable();
+runAI();
+}
+  
+// -------------------- SETTINGS --------------------
+function getSettings() {
+  let s = JSON.parse(localStorage.getItem("settings") || "{}");
+
+  return {
+    postcode: s.postcode || "Norwich",
+    pvSize: s.pvSize ?? 6.5,
+    inverter: s.inverter ?? 5,
+    battery: s.battery ?? 10.64,
+    orientation: s.orientation || "south",
+    tilt: s.tilt ?? 44,
+    seasonalTilt: s.seasonalTilt ?? "on",
+    shading: s.shading ?? 100,
+    dailyLoad: s.dailyLoad ?? 12,
+    efficiency: s.efficiency ?? 85,
+    socLow: s.socLow ?? 20,
+    socHigh: s.socHigh ?? 95,
+    cheapStart: s.cheapStart || "01:00",
+cheapEnd: s.cheapEnd || "04:00",
+importRate: s.importRate ?? 0.15,
+blockSize: s.blockSize ?? 0.5,
+    exportRate: s.exportRate ?? 0.24,
+  };
+}
+
+function saveSettings() {
+  let settings = {
+    postcode: postcode.value,
+    pvSize: +pvSize.value,
+    inverter: +inverter.value,
+    battery: +battery.value,
+    orientation: orientation.value,
+    tilt: +tilt.value,
+    seasonalTilt: seasonalTilt.value,
+    shading: +shading.value,
+    dailyLoad: +dailyLoad.value,
+    efficiency: +efficiency.value,
+    socLow: +socLow.value,
+    socHigh: +socHigh.value,
+    cheapStart: cheapStart.value,
+cheapEnd: cheapEnd.value,
+importRate: +importRate.value,
+blockSize: +blockSize.value,
+    exportRate: +exportRate.value,
+  };
+
+  localStorage.setItem("settings", JSON.stringify(settings));
+  preloadWeather();
+
+  alert("Saved");
+  toggleSettings();
+
+  if (!localStorage.getItem("firstUseDate")) {
+  localStorage.setItem("firstUseDate", new Date().toISOString().split("T")[0]);
+}
+}
+
+function loadSettingsToUI() {
+  let s = getSettings();
+
+  postcode.value = s.postcode;
+  pvSize.value = s.pvSize;
+  inverter.value = s.inverter;
+  battery.value = s.battery;
+  orientation.value = s.orientation;
+  tilt.value = s.tilt;
+  shading.value = s.shading;
+  dailyLoad.value = s.dailyLoad;
+  efficiency.value = s.efficiency;
+  socLow.value = s.socLow;
+  socHigh.value = s.socHigh;
+  cheapStart.value = s.cheapStart;
+cheapEnd.value = s.cheapEnd;
+importRate.value = s.importRate;
+blockSize.value = s.blockSize;
+  exportRate.value = s.exportRate;
+}
+
+function toggleSettings() {
+  settingsPanel.classList.toggle("hidden");
+  loadSettingsToUI();
+}
+
+// -------------------- CACHE --------------------
+function getCache(key) {
+  return JSON.parse(localStorage.getItem(key) || "null");
+}
+
+function setCache(key, value) {
+  localStorage.setItem(key, JSON.stringify(value));
+}
+
+// -------------------- PRELOAD --------------------
+async function preloadWeather() {
+  try {
+    let s = getSettings();
+    preloadedWeather = await getWeather(s.postcode);
+  } catch {}
+}
+
+// -------------------- GEOCODING --------------------
+async function getCoordinates(postcode) {
+  try {
+    let cacheKey = "coords_" + postcode;
+    let cached = getCache(cacheKey);
+
+    if (cached) return cached;
+
+    let res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(postcode)}&count=1`);
+    let data = await res.json();
+
+    if (!data.results || data.results.length === 0) throw new Error();
+
+    let coords = {
+      lat: data.results[0].latitude,
+      lon: data.results[0].longitude
+    };
+
+    setCache(cacheKey, coords);
+    return coords;
+
+  } catch {
+    return { lat: 52.6309, lon: 1.2974 };
+  }
+}
+
+// -------------------- WEATHER --------------------
 async function getWeather(postcode) {
-  let cacheKey = "weather_" + postcode;
-  let cached = JSON.parse(localStorage.getItem(cacheKey) || "null");
-  let now = Date.now();
+  try {
+    let cacheKey = "weather_" + postcode;
+    let cached = getCache(cacheKey);
+    let now = Date.now();
 
-  if (cached && now - cached.timestamp < 1800000) return cached.data;
+    if (cached && (now - cached.timestamp < 1800000)) {
+      return cached.data;
+    }
 
-  let res = await fetch(
-    `https://api.open-meteo.com/v1/forecast?latitude=52.6&longitude=1.3&hourly=cloudcover,temperature_2m,shortwave_radiation,relativehumidity_2m,precipitation&forecast_days=3&timezone=auto`
-  );
+    let c = await getCoordinates(postcode);
 
-  let data = await res.json();
-
-  localStorage.setItem(
-    cacheKey,
-    JSON.stringify({ timestamp: now, data })
-  );
-
-  return data;
-}
-
-/* =========================
-   CLOUD MODEL (FIXED)
-   - cloud = uncertainty, not physics driver
-========================= */
-
-function cloudAttenuation(cloud) {
-  let c = cloud / 100;
-  return 1 - Math.pow(c, 1.3) * 0.65;
-}
-
-/* =========================
-   TEMPERATURE EFFECT
-========================= */
-
-function temperatureEfficiency(t) {
-  return Math.min(1.05, Math.max(0.8, 1 - (t - 25) * 0.004));
-}
-
-/* =========================
-   CORE PV MODEL (FIXED)
-========================= */
-
-function estimatePV(hourly, s) {
-  let total = 0;
-
-  for (let i = 0; i < 72; i++) {
-    let r = hourly.shortwave_radiation[i];
-    if (r < SOLAR_THRESHOLD) continue;
-
-    let t = hourly.temperature_2m[i];
-    let c = hourly.cloudcover[i];
-
-    let date = new Date(hourly.time[i]);
-    let hour = date.getHours();
-    let dayOfYear = Math.floor(
-      (date - new Date(date.getFullYear(), 0, 0)) / 86400000
+    let res = await fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}&hourly=cloudcover,temperature_2m,shortwave_radiation,relativehumidity_2m,precipitation&forecast_days=3&timezone=auto`
     );
 
-    let sun = solarAltitudeFactor(hour, dayOfYear);
+    let data = await res.json();
 
-    let pv =
-      s.pvSize *
-      (r / 1000) *
-      sun *
-      temperatureEfficiency(t) *
-      (s.efficiency / 100) *
-      (s.shading / 100) *
-      cloudAttenuation(c);
+    setCache(cacheKey, { timestamp: now, data });
+    return data;
 
-    pv = Math.min(pv, s.inverter);
-    total += pv;
+  } catch {
+    return {
+      hourly: {
+        cloudcover: new Array(72).fill(50),
+        shortwave_radiation: new Array(72).fill(200),
+        temperature_2m: new Array(72).fill(15),
+        relativehumidity_2m: new Array(72).fill(70),
+        precipitation: new Array(72).fill(0)
+      }
+    };
+  }
+}
+
+// -------------------- SOLAR --------------------
+function getOrientationFactor(o) {
+  if (o==="south") return 1;
+  if (o==="se_sw") return 0.92;
+  if (o==="east_west") return 0.85;
+  if (o==="north") return 0.65;
+  return 1;
+}
+
+function getForecastRadScale(r) {
+  if (r < 100) return 2.6;
+  if (r < 300) return 2.6 + (r - 100) * 0.008;
+  return 4.2 + (r - 300) * 0.0018;
+}
+
+function cloudFactorForecast(cloud, rad) {
+
+  let radBoost = Math.min(1, rad / 600);
+  let cloudPenalty = Math.pow(cloud / 100, 1.6);
+
+  let factor = 1 - cloudPenalty * (1 - 0.4 * radBoost);
+
+  if (cloud < 20 && rad > 400) {
+    factor = Math.max(factor, 1.05);
+  }
+
+  return Math.max(0.35, Math.min(1.10, factor));
+}
+  
+// -------------------- SEASONAL TILT --------------------
+function getSeasonalTilt(baseTilt) {
+  let s = getSettings();
+  if (s.seasonalTilt === "off") return baseTilt;
+
+  let now = new Date();
+
+  let start = new Date(now.getFullYear(), 0, 0);
+  let diff = now - start;
+  let day = Math.floor(diff / (1000 * 60 * 60 * 24));
+
+  let winterTilt = Math.min(60, baseTilt + 20);
+  let summerTilt = Math.max(15, baseTilt - 15);
+
+  let seasonalFactor =
+    (Math.cos((2 * Math.PI * (day - 172)) / 365) + 1) / 2;
+
+  return summerTilt * (1 - seasonalFactor) + winterTilt * seasonalFactor;
+}
+  
+function getTiltFactor(tilt, hour) {
+
+  tilt = Math.max(0, Math.min(90, getSeasonalTilt(tilt)));
+
+  const optimalTilt = 35;
+
+  let tiltEffect = 1 - Math.pow((tilt - optimalTilt) / 55, 2);
+tiltEffect = Math.max(0.85, Math.min(1.10, tiltEffect));
+
+  let sunAngleFactor = 1;
+
+  let month = new Date().getMonth() + 1;
+let winterBoost = (month <= 2 || month >= 11) ? 1.15 : 1;
+
+if (hour < 10) {
+  sunAngleFactor = (0.85 + (tilt / 90) * 0.3) * winterBoost;
+} else if (hour > 16) {
+  sunAngleFactor = (0.85 + (tilt / 90) * 0.3) * winterBoost;
+}
+
+  return tiltEffect * sunAngleFactor;
+}
+  
+function temperatureEfficiency(t) {
+  let f = 1 + ((t - 25) * -0.004);
+  return Math.min(1.05, Math.max(0.8, f));
+}
+
+function daylightHours(radSlice) {
+  return radSlice.filter(r => r > SOLAR_THRESHOLD);
+}
+
+function sunshineSplit(r,start){
+  let morning=0, afternoon=0;
+
+  for(let i=0;i<24;i++){
+    if(r[start+i] > SOLAR_THRESHOLD){
+      if(i < 12) morning++;
+      else afternoon++;
+    }
+  }
+
+  return {morning, afternoon};
+}
+
+function hourlySolarScore(c, r) {
+  return Math.min(1, r / 1000);
+}
+
+function weightedCloudAverage(c, r, start){
+
+  let sum = 0, wSum = 0;
+
+  for(let i=0;i<24;i++){
+    let radVal = r[start+i];
+
+    if(radVal > SOLAR_THRESHOLD){
+      let weight = radVal;
+
+      sum += c[start+i] * weight;
+      wSum += weight;
+    }
+  }
+
+  if(wSum === 0) wSum = 1;
+
+  return sum / wSum;
+}
+
+function cloudIntensityFactor(cloud, rad) {
+  let cloudFactor = cloud / 100;
+
+  // Thin cloud → strong boost (sun breaks)
+  if (cloud < 30) {
+    if (rad > 200) return 1.25;
+    return 1.1;
+  }
+
+  // Medium cloud → balanced scaling
+  if (cloud >= 30 && cloud <= 70) {
+   return 0.90 + (rad / 1000) * 0.25;
+  }
+
+  // Thick cloud → strong reduction
+  if (cloud > 70) {
+    return 0.6 + (rad / 1000) * 0.1;
+  }
+
+  return 1;
+}
+
+function getCloudThicknessLabel(cloud, rad) {
+  let radFactor = rad / 1000;
+
+  let score = Math.pow(cloud / 100, 1.2) * (1 - Math.pow(radFactor, 0.7));
+
+  // Normalize score to 0–1 range for UI
+  let intensity = Math.min(1, Math.max(0, score));
+
+  if (cloud < 30 && rad > 300) {
+    return { label: "Thin / Broken Cloud ☁️", intensity };
+  }
+
+  if (cloud >= 30 && cloud <= 70) {
+    return { label: "Moderate Cloud 🌥️", intensity };
+  }
+
+  if (cloud > 70) {
+    return { label: "Thick Cloud ☁️☁️", intensity };
+  }
+
+  return { label: "Clear / Light Cloud ☀️", intensity: intensity * 0.5 };
+}
+  
+function estimatePV(radSlice, cloudSlice, tempSlice, s) {
+
+  let total = 0;
+
+  for (let i = 0; i < 24; i++) {
+
+    let r = radSlice[i];
+    if (r < SOLAR_THRESHOLD) continue;
+
+    let t = tempSlice[i] ?? 15;
+    let c = cloudSlice[i];
+
+    let scaledRad = r * getForecastRadScale(r);
+scaledRad = Math.min(1100, scaledRad);
+
+let hourPV =
+  s.pvSize *
+  (scaledRad / 1000) *
+  (s.efficiency / 100) *
+  temperatureEfficiency(t) *
+  getOrientationFactor(s.orientation) *
+  getTiltFactor(s.tilt, i) *
+  (s.shading / 100) *
+  cloudFactorForecast(c, r);
+
+    // inverter cap per hour
+    hourPV = Math.min(hourPV, s.inverter);
+
+    total += hourPV;
   }
 
   return total;
 }
 
-/* =========================
-   CURRENT HOUR PV (FIXED)
-========================= */
+function getNightLoadProfile(s) {
+  const total = s.dailyLoad;
 
-function estimateCurrentHourPV(hourly, index, s) {
-  let r = hourly.shortwave_radiation[index];
-  let c = hourly.cloudcover[index];
-  let t = hourly.temperature_2m[index];
+  // Night window split (2200–0600 = 8 hours)
+  const nightStart = 22;
+  const nightEnd = 6;
 
-  if (r < SOLAR_THRESHOLD) return 0;
+  const nightHours = 8;
 
-  let date = new Date(hourly.time[index]);
-  let hour = date.getHours();
-  let dayOfYear = Math.floor(
-    (date - new Date(date.getFullYear(), 0, 0)) / 86400000
-  );
+  // 2% per hour overnight baseline (your rule)
+  const nightTotal = total * 0.16; // 8 * 2%
 
-  let sun = solarAltitudeFactor(hour, dayOfYear);
+  const nightPerHour = nightTotal / nightHours;
 
-  return (
-    s.pvSize *
-    (r / 1000) *
-    sun *
-    temperatureEfficiency(t) *
-    (s.efficiency / 100) *
-    (s.shading / 100) *
-    cloudAttenuation(c)
-  );
+  return {
+    hourly: nightPerHour,
+    total: nightTotal
+  };
 }
 
-/* =========================
-   EXPORT LOGIC (UNCHANGED CORE)
-========================= */
+  
+// -------------------- SOC --------------------
+function recommendedSOC(pv, s){
+
+  let shortfall = Math.max(0, s.dailyLoad - pv);
+
+  let buffer = 1.15;
+  if (shortfall > 5) buffer = 1.25;
+  if (shortfall > 10) buffer = 1.35;
+
+  let required = shortfall * buffer;
+
+  let soc = (required / s.battery) * 100;
+
+
+  return Math.round(soc);
+}
 
 function getHourlyLoad(s, hour = new Date().getHours()) {
   const total = s.dailyLoad;
 
-  if (hour >= 22 || hour < 6) return (total * 0.16) / 8;
-  if (hour >= 16 && hour < 19) return (total * 0.30) / 3;
+  // Night: 2200–0600 (reduced usage)
+  if (hour >= 22 || hour < 6) {
+    return (total * 0.16) / 8;
+  }
 
-  const rest = total - total * 0.16 - total * 0.30;
-  return rest / 13;
+  // Evening peak 1600–1900 = 30%
+  if (hour >= 16 && hour < 19) {
+    return (total * 0.30) / 3;
+  }
+
+  // Remaining daytime (rebalanced)
+  const night = total * 0.16;
+  const evening = total * 0.30;
+  const rest = total - night - evening;
+
+  const restHours = 24 - 8 - 3; // 13 hours
+
+  return rest / restHours;
 }
 
-/* =========================
-   MAIN ENGINE (SIMPLIFIED BUT SAME OUTPUT STRUCTURE)
-========================= */
+  function calculateExport(pvKW, loadKW, soc, s) {
 
-async function runAI() {
-  let s = JSON.parse(localStorage.getItem("settings") || "{}");
+  const batteryFull = soc >= s.socHigh;
+
+  if (!batteryFull) return 0;
+
+  const surplus = pvKW - loadKW;
+
+  return Math.max(0, surplus);
+}
+  
+function calculateChargePlan(pvForecast, s, confidence) {
+
+  // ----------------------------
+  // STEP 1: BASE ENERGY DEMAND
+  // ----------------------------
+  let nightLoad = s.dailyLoad * 0.16;
+  let eveningLoad = s.dailyLoad * 0.30;
+  let baseLoad = s.dailyLoad - nightLoad - eveningLoad;
+
+  let shortfall =
+    Math.max(0, baseLoad - pvForecast) +
+    nightLoad * 0.5;
+  let buffer = 1.15;
+  if (shortfall > 5) buffer = 1.25;
+  if (shortfall > 10) buffer = 1.35;
+
+  let requiredEnergy = shortfall * buffer;
+
+// ----------------------------
+// SINGLE UNCERTAINTY MODEL (FIX)
+// prevents double/triple penalisation
+// ----------------------------
+
+let uncertaintyFactor =
+  0.9 + (1 - confidence / 100) * 0.25;
+
+// clamp safety
+uncertaintyFactor = Math.max(0.85, Math.min(1.15, uncertaintyFactor));
+
+requiredEnergy *= uncertaintyFactor;
+
+  // ----------------------------
+  // STEP 2: HARD SYSTEM LIMITS
+  // ----------------------------
+  let maxBatteryEnergy = s.battery;
+  let chargeHours = 6;
+  let maxGridEnergy = s.inverter * chargeHours;
+
+  let maxPossibleCharge = Math.min(maxBatteryEnergy, maxGridEnergy);
+
+  // ----------------------------
+  // STEP 3: APPLY HARD CAP FIRST
+  // ----------------------------
+  let actualCharge = Math.min(requiredEnergy, maxPossibleCharge);
+
+  // ----------------------------
+  // STEP 4: SOC SAFETY FLOOR (IMPORTANT FIX)
+  // ----------------------------
+  let minEnergy = s.battery * (s.socLow / 100);
+  actualCharge = Math.max(actualCharge, Math.min(minEnergy, maxPossibleCharge));
+
+  // ----------------------------
+  // STEP 5: SOC CONVERSION (RAW)
+  // ----------------------------
+  let soc = (actualCharge / s.battery) * 100;
+
+  // clamp SOC display only (not energy)
+  soc = Math.min(Math.max(soc, s.socLow), s.socHigh);
+
+  return {
+    soc: Math.round(soc),
+    energy: actualCharge,
+    capped: requiredEnergy > maxPossibleCharge
+  };
+}
+
+function getChargePlanFromWindow(targetEnergy, s) {
+  if (!targetEnergy || targetEnergy <= 0) {
+    return { time: "None", cost: 0, energy: 0 };
+  }
+
+  const blockHours = s.blockSize;
+  const inverterPower = s.inverter;
+
+  const blockGridEnergy = inverterPower * blockHours;
+
+  // 🔑 NEW: efficiency handling
+  const efficiency = s.efficiency / 100;
+
+  const blockStoredEnergy = blockGridEnergy * efficiency;
+
+  function toMinutes(t) {
+    let [h, m] = t.split(":").map(Number);
+    return h * 60 + m;
+  }
+
+  let startMin = toMinutes(s.cheapStart);
+  let endMin = toMinutes(s.cheapEnd);
+
+  let totalBlocks = Math.floor((endMin - startMin) / (blockHours * 60));
+
+  let stored = 0;
+  let gridUsed = 0;
+  let blocksUsed = 0;
+
+  let nightLoadPerHour = (s.dailyLoad * 0.16) / 8;
+
+  for (let i = 0; i < totalBlocks; i++) {
+
+    if (stored >= targetEnergy) break;
+
+    let remaining = targetEnergy - stored;
+
+    // full block case
+    if (remaining >= blockStoredEnergy) {
+
+      stored += blockStoredEnergy;
+      gridUsed += blockGridEnergy;
+
+    } else {
+
+      // 🔑 PARTIAL BLOCK (realistic)
+      let hoursNeeded = remaining / (inverterPower * efficiency);
+
+      let gridForCharge = hoursNeeded * inverterPower;
+
+      // remainder of block = house load only
+      let remainderHours = blockHours - hoursNeeded;
+      let gridForHouse = remainderHours * nightLoadPerHour;
+
+      gridUsed += gridForCharge + gridForHouse;
+
+      stored = targetEnergy;
+    }
+
+    blocksUsed++;
+  }
+
+  let cost = gridUsed * s.importRate;
+
+  let chargeEnd = endMin;
+  let chargeStart = endMin - blocksUsed * blockHours * 60;
+
+  function fmt(mins) {
+    let h = Math.floor(mins / 60);
+    let m = mins % 60;
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  }
+
+  return {
+    time: `${fmt(chargeStart)} – ${fmt(chargeEnd)}`,
+    cost: cost,
+    energy: stored,        // actual stored energy (battery)
+    gridEnergy: gridUsed,  // what you paid for
+    capped: blocksUsed >= totalBlocks
+  };
+}
+  
+function getSolarTimeRange(radSlice, timeSlice) {
+  let startTime = null;
+  let endTime = null;
+
+  for (let i = 0; i < 24; i++) {
+  if (radSlice[i] > SOLAR_VISIBLE_THRESHOLD) {
+      if (startTime === null) {
+        startTime = timeSlice[i];
+      }
+      endTime = timeSlice[i];
+    }
+  }
+
+  if (!startTime || !endTime) return "No data";
+
+  let start = new Date(startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  let end = new Date(endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  return `${start} – ${end}`;
+}
+
+function weatherSummary(c,r,t,h,p){
+  return `
+    🌤️ Cloud (daylight): ${c.toFixed(0)}%<br>
+    ☀️ Radiation (daylight avg): ${r.toFixed(0)} W/m²<br>
+    🌡️ Temp (daylight avg): ${t.toFixed(1)}°C<br>
+    💧 Humidity (daylight avg): ${h.toFixed(0)}%<br>
+    🌧️ Precip (daylight total): ${p.toFixed(2)} mm
+  `;
+}
+
+function estimateCurrentHourPV(s, cloud, rad, temp, hourIndex) {
+
+  let r = rad[hourIndex];
+  let c = cloud[hourIndex];
+  let t = temp[hourIndex];
+
+  if (r < SOLAR_THRESHOLD) return 0;
+
+  let scaledRad = r * getForecastRadScale(r);
+  scaledRad = Math.min(1100, scaledRad);
+
+  return (
+    s.pvSize *
+    (scaledRad / 1000) *
+    (s.efficiency / 100) *
+    temperatureEfficiency(t) *
+    getOrientationFactor(s.orientation) *
+    getTiltFactor(s.tilt, hourIndex) *
+    (s.shading / 100) *
+    cloudFactorForecast(c, r)
+  );
+}
+  
+// -------------------- MAIN --------------------
+async function runAI(){
+
+  let s=getSettings();
+  loading.innerText="Loading...";
+  let tomorrowSOCValue = null;
   let data = preloadedWeather || await getWeather(s.postcode);
 
-  let now = new Date();
+  let cloud=data.hourly.cloudcover;
+  let rad=data.hourly.shortwave_radiation;
+  let temp=data.hourly.temperature_2m;
+  let hum=data.hourly.relativehumidity_2m;
+  let precip=data.hourly.precipitation;
   let time = data.hourly.time;
 
-  let nowIndex = time.findIndex(t => new Date(t) > now) - 1;
-  if (nowIndex < 0) nowIndex = 0;
+  let html = "";
+let forecastHtml = "";
 
-  let nowPV = estimateCurrentHourPV(data.hourly, nowIndex, s);
-  let loadKW = getHourlyLoad(s);
+  // -------------------- LIVE NOW --------------------
+let now = new Date();
 
-  let exportKW = Math.max(0, nowPV - loadKW);
-  let exportValue = exportKW * (s.exportRate || 0.24);
+// Find closest hour index
+let nowIndex = time.findIndex(t => new Date(t) > now);
+if (nowIndex <= 0) nowIndex = 0;
+else nowIndex -= 1;
 
-  let html = `
-    <div class="card">
-      <h3>☀️ Now</h3>
-      <b>PV:</b> ${nowPV.toFixed(2)} kW<br>
-      <b>Load:</b> ${loadKW.toFixed(2)} kW<br>
-      <b>Export:</b> ${exportKW.toFixed(2)} kW<br>
-      <b>Export Value:</b> £${exportValue.toFixed(2)}/hr<br>
-    </div>
-  `;
+// Extract current conditions
+let nowRad = rad[nowIndex];
+let nowCloud = cloud[nowIndex];
+let cloudInfo = getCloudThicknessLabel(nowCloud, nowRad); 
+let nowTemp = temp[nowIndex];
 
-  document.getElementById("output").innerHTML = html;
+// -------------------- LIVE PV ESTIMATE --------------------
+
+
+// 🌤️ Radiation-led model (cloud becomes secondary hint only)
+let cloudWeight = Math.max(0.15, 1 - (nowRad / 600)); 
+// high radiation → cloud has very little influence
+
+let cloudFactorLiveSoft =
+  1 - (nowCloud / 100) * 0.75 * cloudWeight;
+
+cloudFactorLiveSoft = Math.max(0.65, Math.min(1.05, cloudFactorLiveSoft));
+
+  // ☀️ If radiation is strong, override cloud pessimism
+if (nowRad > 250) {
+  cloudFactorLiveSoft = Math.min(cloudFactorLiveSoft, 1.0);
 }
 
-/* =========================
-   INIT
-========================= */
+// 🔧 radiation input (no change)
+let hour = new Date().getHours();
 
-window.onload = async () => {
-  let s = JSON.parse(localStorage.getItem("settings") || "{}");
-  preloadedWeather = await getWeather(s.postcode || "Norwich");
+// 🔥 Convert horizontal radiation → effective panel radiation
+let radScale;
+
+if (nowRad < 100) {
+  radScale = 1.2;
+} else if (nowRad < 300) {
+  radScale = 1.2 + (nowRad - 100) * 0.0012;
+} else {
+  radScale = 1.5 + (nowRad - 300) * 0.0003;
+}
+
+radScale = Math.min(radScale, 1.8);
+
+// HARD PHYSICS CAP
+let effectiveRad = Math.min(nowRad * radScale, 1000);
+
+let tiltFactor = getTiltFactor(s.tilt, hour);
+
+let nowPV =
+  s.pvSize *
+  (effectiveRad / 1000) *
+  (s.efficiency / 100) *
+  temperatureEfficiency(nowTemp) *
+  getOrientationFactor(s.orientation) *
+  tiltFactor *
+  (s.shading / 100) *
+  cloudFactorLiveSoft;
+
+// calibration + learning layer
+let rawNowPV = nowPV;
+nowPV = applyCalibration(rawNowPV, "live") * GLOBAL_PV_BIAS_LIVE;
+
+// inverter constraint
+nowPV = Math.min(nowPV, s.inverter * 0.98);
+
+// final sanity clamp (THIS is the important one)
+nowPV = Math.min(nowPV, s.pvSize * 1.05);
+  let loadKW = getHourlyLoad(s, hour);
+
+// -------------------- LIVE vs FORECAST RECONCILIATION --------------------
+
+let forecastNowPV_raw = estimateCurrentHourPV(
+  s, cloud, rad, temp, nowIndex
+);
+
+let forecastNowPV = applyCalibration(forecastNowPV_raw, "forecast");
+ GLOBAL_PV_BIAS_LIVE = Math.max(0.7, Math.min(1.3, GLOBAL_PV_BIAS_LIVE));
+
+// avoid divide-by-zero instability
+let liveErrorRatio =
+  forecastNowPV > 0 ? nowPV / forecastNowPV : 1;
+
+// clamp extreme spikes
+liveErrorRatio = Math.max(0.6, Math.min(1.4, liveErrorRatio));
+
+// smooth global bias update (slow learning)
+GLOBAL_PV_BIAS_LIVE =
+  GLOBAL_PV_BIAS_LIVE * 0.8 + liveErrorRatio * 0.2;
+  
+// -------------------- EXPORT (FIXED PHYSICS MODEL) --------------------
+
+// inverter headroom = max possible output minus household load
+let inverterHeadroom = Math.max(0, s.inverter - loadKW);
+
+// actual PV surplus
+let pvSurplus = Math.max(0, nowPV - loadKW);
+
+// export is limited by BOTH PV surplus and inverter headroom
+let exportKW = Math.min(pvSurplus, inverterHeadroom);
+
+// export value
+let exportValue = exportKW * s.exportRate;
+ 
+// NOW compute status using FINAL value
+let status = "";
+
+if (nowRad < 20) {
+  status = "🌙 No solar → discharge or grid use";
+
+} else if (nowPV < 0.3) {
+  status = "🌥️ Very weak → minimal charging";
+
+} else if (nowPV < 1) {
+  status = "⚡ Low solar → partial charging";
+
+} else if (nowPV < 3) {
+  status = "☀️ Moderate solar → charging battery";
+
+} else if (nowPV < s.inverter * 0.8) {
+  status = "🔋 Strong solar → high charging";
+
+} else if (nowPV < s.inverter) {
+  status = "🚀 Near max → optimising export";
+
+} else {
+  status = "⚠️ Clipping zone → inverter limiting output";
+}
+  
+// Format time nicely
+let nowTimeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+// Build UI card
+html += `
+  <div class="card">
+    <h3>☀️ Now (${nowTimeStr})</h3>
+
+    <b>Radiation:</b> ${nowRad.toFixed(0)} W/m²<br>
+    <b>Estimated Live PV:</b> ${nowPV.toFixed(2)} kW<br>
+
+   <b>Estimated Load:</b> ${loadKW.toFixed(2)} kW<br>
+<b>Estimated Export:</b> ${exportKW.toFixed(2)} kW<br>
+<b>Estimated Export Income:</b> £${exportValue.toFixed(2)}/hr<br>
+
+    <b>Cloud:</b> ${nowCloud.toFixed(0)}%<br>
+    <b>Cloud Type:</b> ${cloudInfo.label}<br>
+
+<div class="cloud-bar">
+  <div class="cloud-bar-fill" style="width:${(Math.pow(cloudInfo.intensity, 0.7) * 100).toFixed(0)}%"></div>
+</div>
+    <b>Temp:</b> ${nowTemp.toFixed(1)}°C<br>
+    <b>Effective Tilt:</b> ${getSeasonalTilt(s.tilt).toFixed(1)}°<br>
+
+    <br><b>Status:</b> ${status}
+  </div>
+`;
+
+ for (let d = 0; d < 3; d++) {
+
+  let start = d * 24;
+
+  let dayRad = daylightHours(rad.slice(start, start + 24));
+
+  let avgRad = dayRad.length
+    ? dayRad.reduce((a, b) => a + b) / dayRad.length
+    : 0;
+
+  let validHours = 0;
+  let scoreSum = 0;
+
+  for (let i = 0; i < 24; i++) {
+    let rVal = rad[start + i];
+
+    if (rVal > SOLAR_THRESHOLD) {
+      scoreSum += hourlySolarScore(cloud[start + i], rVal);
+      validHours++;
+    }
+  }
+
+  let avgScore = validHours ? (scoreSum / validHours) : 0;
+
+  let split = sunshineSplit(rad, start);
+
+  let timeRange = getSolarTimeRange(
+    rad.slice(start, start + 24),
+    time.slice(start, start + 24)
+  );
+
+  let sun = split.morning + split.afternoon;
+
+  let midTemp = temp[start + 12] ?? temp[start]; // safety fallback
+
+let cloudAvg = weightedCloudAverage(cloud, rad, start);
+
+// smooth radiation stability (important!)
+let radStd = 0;
+let count = 0;
+let mean = 0;
+
+// quick variance estimate (cheap + stable)
+for (let i = 0; i < 24; i++) {
+  let r = rad[start + i];
+  if (r > SOLAR_THRESHOLD) {
+    mean += r;
+    count++;
+  }
+}
+
+mean = count ? mean / count : 0;
+
+for (let i = 0; i < 24; i++) {
+  let r = rad[start + i];
+  if (r > SOLAR_THRESHOLD) {
+    radStd += Math.pow(r - mean, 2);
+  }
+}
+
+radStd = count ? Math.sqrt(radStd / count) : 0;
+
+// normalize instability (0 = stable, 1 = chaotic)
+let instability = Math.min(1, radStd / 400);
+
+// cloud penalty (soft curve, not linear)
+let cloudPenalty = Math.pow(cloudAvg / 100, 1.4);
+
+// final confidence blend
+let confidence =
+  100 *
+  (0.55 * (1 - cloudPenalty) +
+   0.45 * (1 - instability));
+
+// clamp
+confidence = Math.max(35, Math.min(98, confidence));
+let basePV = estimatePV(
+  rad.slice(start, start + 24),
+  cloud.slice(start, start + 24),
+  temp.slice(start, start + 24),
+  s
+);
+
+  // calibration
+let rawPV = basePV;
+let pv = applyCalibration(rawPV, "forecast") * GLOBAL_PV_BIAS_FORECAST;
+
+// ✅ Store expected PV for today + tomorrow
+let data = getPVData();
+
+let date = new Date();
+date.setDate(date.getDate() + d);
+
+let key = getLocalDateKey(date);
+
+storeExpectedPV(d, pv);
+
+  // ✅ SOC calculation
+  // ----------------------------
+// CLEAN ENERGY PIPELINE (FIXED)
+// ----------------------------
+
+let chargePlan = calculateChargePlan(pv, s, confidence);
+let soc = chargePlan.soc;
+
+if (d === 1 && tomorrowSOCValue === null) {
+  tomorrowSOCValue = {
+    soc: chargePlan.soc,
+    energy: chargePlan.energy,
+    capped: chargePlan.capped
+  };
+}
+
+  // Label
+  let label = d === 0
+  ? "Today"
+  : d === 1
+    ? "<span style='font-weight:bold'>Tomorrow</span>"
+    : "The day after tomorrow";
+
+  // Render card
+  forecastHtml += `
+    <div class="card">
+      <h3>${label}</h3>
+
+      ${weatherSummary(
+        weightedCloudAverage(cloud, rad, start),
+        avgRad,
+        temp[start + 12] ?? temp[start],
+        hum[start + 12] ?? hum[start],
+        precip[start + 12] ?? precip[start]
+      )}
+
+      <br><b>🔆 Usable Solar Window:</b> ${sun} hours
+      <br><b>⏱️ Time Range:</b> ${timeRange}
+
+      <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
+<br><b>📊 Confidence:</b> ${confidence.toFixed(0)}%
+    </div>
+  `;
+}
+
+function getDeferredMorningLoad(s) {
+  // 4am–6am = catch-up usage
+  const catchUp = s.dailyLoad * 0.06; // 6% rebound load
+  return catchUp;
+}
+  
+// -------------------- RENDER --------------------
+
+loading.innerText = "";
+
+// 1. Add SOC FIRST
+html += `
+  <div class="card">
+    <h3>🔋 Tonight's Grid Charge Target</h3>
+
+    <span style="color:red;font-weight:bold; font-size:18px;">
+     ${
+  tomorrowSOCValue !== null
+    ? `
+      ⚡ ${tomorrowSOCValue.energy.toFixed(1)} kWh charge
+      <br>
+  ${
+(() => {
+  let plan = getChargePlanFromWindow(tomorrowSOCValue.energy, s);
+  return `
+    ⏱️ ${plan.time}
+<br>🔌 ${plan.gridEnergy.toFixed(2)} kWh imported
+<br>💷 £${plan.cost.toFixed(2)}
+    ${plan.capped ? "<br>⚠️ Not enough cheap-rate time" : ""}
+  `;
+})()
+}
+      ${tomorrowSOCValue.capped ? "<br>⚠️ Limited by inverter/battery" : ""}
+    `
+    : "N/A"
+}
+    </span>
+  </div>
+`;
+
+// 2. Then append forecast cards
+html += forecastHtml;
+
+output.innerHTML = html;
+  
+};
+let currentEditDate = null;
+
+function openEditor(date) {
+  let data = getPVData();
+
+  currentEditDate = date;
+
+  document.getElementById("editDate").value = date;
+  document.getElementById("editValue").value = data[date]?.manual || "";
+
+  pvEditor.classList.remove("hidden");
+}
+
+function closeEditor() {
+  pvEditor.classList.add("hidden");
+  currentEditDate = null;
+}
+
+function saveEdit() {
+  let data = getPVData();
+
+  let newDate = document.getElementById("editDate").value;
+ let value = parseFloat(document.getElementById("editValue").value);
+if (isNaN(value)) value = undefined;
+
+  if (!newDate) return alert("Pick a date");
+
+  // move entry if date changed
+  if (currentEditDate !== newDate) {
+    if (data[newDate]) {
+      alert("Date already exists");
+      return;
+    }
+    data[newDate] = data[currentEditDate] || {};
+    delete data[currentEditDate];
+  }
+
+if (value !== undefined) {
+
+  let s = getSettings();
+
+  let maxPV = Math.max(
+    s.pvSize * 6,
+    s.inverter * 8
+  );
+
+  if (value < 0 || value > maxPV) {
+    alert(`Value must be between 0 and ${maxPV.toFixed(1)} kWh`);
+    return;
+  }
+
+  data[newDate].manual = value;
+} else {
+  delete data[newDate].manual;
+}
+
+  savePVData(data);
+
+// 🔥 force PV recalculation after manual entry
+refreshExpectedPVAfterManualChange();
+
+closeEditor();
+renderPVTable();
+runAI(); // optional but recommended
+}
+
+function deleteEdit() {
+  if (!currentEditDate) return;
+
+  let data = getPVData();
+  delete data[currentEditDate];
+
+  savePVData(data);
+
+refreshExpectedPVAfterManualChange();
+
+closeEditor();
+renderPVTable();
+runAI();
+}
+// -------------------- INIT --------------------
+window.onload = () => {
+  preloadWeather();
+  renderPVTable();	
 };
 </script>
 
