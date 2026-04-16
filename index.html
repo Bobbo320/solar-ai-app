@@ -374,8 +374,10 @@ function renderPVTable() {
   let todayStr = getLocalDateKey(new Date());
 
   Object.keys(data)
-    .sort((a, b) => new Date(a) - new Date(b))
-    .forEach(date => {
+  .sort(function (a, b) {
+    return new Date(a) - new Date(b);
+  })
+  .forEach(function (date) {
 
       let include = false;
       let entryDate = new Date(date);
@@ -1117,14 +1119,14 @@ async function runAI(){
   let s=getSettings();
   loading.innerText="Loading...";
   let tomorrowSOCValue = null;
-  let data = preloadedWeather || await getWeather(s.postcode);
+let weatherData = preloadedWeather || await getWeather(s.postcode);
 
-  let cloud=data.hourly.cloudcover;
-  let rad=data.hourly.shortwave_radiation;
-  let temp=data.hourly.temperature_2m;
-  let hum=data.hourly.relativehumidity_2m;
-  let precip=data.hourly.precipitation;
-  let time = data.hourly.time;
+ let cloud = weatherData.hourly.cloudcover;
+let rad = weatherData.hourly.shortwave_radiation;
+let temp = weatherData.hourly.temperature_2m;
+let hum = weatherData.hourly.relativehumidity_2m;
+let precip = weatherData.hourly.precipitation;
+let time = weatherData.hourly.time;
 
   let html = "";
 let forecastHtml = "";
@@ -1379,12 +1381,12 @@ let rawPV = basePV;
 let pv = applyCalibration(rawPV, "forecast") * GLOBAL_PV_BIAS_FORECAST;
 
 // ✅ Store expected PV for today + tomorrow
-let data = getPVData();
+let pvData = getPVData();
 
 let date = new Date();
 date.setDate(date.getDate() + d);
 
-let key = getLocalDateKey(date);
+let entry = pvData[key];
 
   // ✅ SOC calculation
   // ----------------------------
@@ -1561,7 +1563,17 @@ runAI();
 window.onload = () => {
   preloadWeather();
   renderPVTable();	
+    window.toggleSettings = toggleSettings;
+window.runAI = runAI;
+window.togglePVTab = togglePVTab;
+
+window.openEditor = openEditor;
+window.saveEdit = saveEdit;
+window.deleteEdit = deleteEdit;
+
+window.saveSettings = saveSettings;
 };
+
 </script>
 
 </body>
