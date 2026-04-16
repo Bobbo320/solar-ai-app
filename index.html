@@ -271,7 +271,6 @@ function getCalibrationSystem() {
   let weightedManual = 0;
   let weightedExpected = 0;
 
-  // seasonal buckets
   let seasonal = {
     winter: { m: 0, e: 0 },
     spring: { m: 0, e: 0 },
@@ -279,8 +278,8 @@ function getCalibrationSystem() {
     autumn: { m: 0, e: 0 }
   };
 
-  Object.keys(data).forEach(date => {
-    let row = data[date];
+  Object.keys(pvData).forEach(date => {
+    let row = pvData[date];
     if (!row.expected || !row.manual) return;
 
     let entryDate = new Date(date);
@@ -336,7 +335,7 @@ function getCalibrationSystem() {
   // ---------------------------
   // LAYER 3: DATA CONFIDENCE (NEW)
   // ---------------------------
-  let sampleSize = Object.values(data)
+  let sampleSize = Object.values(pvData)
     .filter(d => d.manual && d.expected)
     .length;
 
@@ -383,7 +382,9 @@ corrected = Math.max(0.80, Math.min(1.60, corrected));
 }
   
 function renderPVTable() {
-  let data = getPVData();
+ let pvDataStore = getPVData();
+
+if (!pvDataStore[key]) pvDataStore[key] = {};
   let tbody = document.getElementById("pvTable");
 
   tbody.innerHTML = "";
@@ -1409,8 +1410,6 @@ let date = new Date();
 date.setDate(date.getDate() + d);
 
 let key = getLocalDateKey(date);
-
-storeExpectedPV(d, pv);
 
   // ✅ SOC calculation
   // ----------------------------
