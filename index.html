@@ -1403,7 +1403,7 @@ let basePV = estimatePV(
 
   // calibration
 let rawPV = basePV;
-let pv = rawPV * 1.02; // light physics bias only
+let pv = applyCalibration(rawPV, "forecast");
 
 // ✅ Store expected PV for today + tomorrow
 let pvData = getPVData();
