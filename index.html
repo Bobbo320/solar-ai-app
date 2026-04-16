@@ -1403,7 +1403,6 @@ html += `
   return `
     ⏱️ ${plan.time}
 <br>🔌 ${plan.gridEnergy.toFixed(2)} kWh imported
-<br>🔋 ${plan.energy.toFixed(2)} kWh stored
 <br>💷 £${plan.cost.toFixed(2)}
     ${plan.capped ? "<br>⚠️ Not enough cheap-rate time" : ""}
   `;
