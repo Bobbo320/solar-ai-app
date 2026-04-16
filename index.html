@@ -207,39 +207,34 @@ function togglePVTab() {
 }
 
 function storeExpectedPV(dayIndex, pvValue) {
-let pvDataStore = getPVData();
+  let data = getPVData();
 
-let date = new Date();
-date.setDate(date.getDate() + d);
+  let date = new Date();
+  date.setDate(date.getDate() + dayIndex);
 
-let key = getLocalDateKey(date);
+  let key = getLocalDateKey(date);
 
   if (!data[key]) data[key] = {};
 
   // ❌ NEVER overwrite manual data
   if (data[key].manual !== undefined) return;
 
-  let existing = data[key].expected;
-
-  // 🕒 time lock (prevents early unstable writes)
   const hour = new Date().getHours();
   const isStableTime = hour >= 10;
 
-  // If no existing value → always allow
+  if (!isStableTime && data[key].expected !== undefined) return;
+
+  let existing = data[key].expected;
+
   if (existing === undefined) {
     data[key].expected = pvValue;
     savePVData(data);
     return;
   }
 
-  // If early in day → never update
-  if (!isStableTime) return;
-
-  // Only update if meaningful change
   let diff = Math.abs(existing - pvValue);
   if (diff < 0.2) return;
 
-  // Optional: dampen updates instead of replacing
   data[key].expected = existing * 0.7 + pvValue * 0.3;
 
   savePVData(data);
