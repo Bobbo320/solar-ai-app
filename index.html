@@ -880,7 +880,7 @@ function getHourlyLoad(s, hour = new Date().getHours()) {
   return Math.max(0, surplus);
 }
   
-function calculateChargePlan(pvForecast, s) {
+function calculateChargePlan(pvForecast, s, confidence) {
 
   // ----------------------------
   // STEP 1: BASE ENERGY DEMAND
@@ -892,8 +892,6 @@ function calculateChargePlan(pvForecast, s) {
   let shortfall =
     Math.max(0, baseLoad - pvForecast) +
     nightLoad * 0.5;
-// prevent PV forecast already being double-penalised upstream
-pvForecast = pvForecast * 1.0;
   let buffer = 1.15;
   if (shortfall > 5) buffer = 1.25;
   if (shortfall > 10) buffer = 1.35;
