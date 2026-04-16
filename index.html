@@ -1285,8 +1285,10 @@ let forecastConfidence =
    0.45 * (1 - instability));
 
 // clamp
-let confidence = forecastConfidence;
-confidence = Math.max(35, Math.min(98, confidence));
+let forecastConfidenceRaw = forecastConfidence;
+
+let forecastConfidencePct =
+  Math.max(35, Math.min(98, forecastConfidenceRaw));
 let basePV = estimatePV(
   rad.slice(start, start + 24),
   cloud.slice(start, start + 24),
@@ -1348,7 +1350,7 @@ if (d === 1 && tomorrowSOCValue === null) {
       <br><b>⏱️ Time Range:</b> ${timeRange}
 
       <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
-<br><b>📊 Confidence:</b> ${confidence.toFixed(0)}%
+📊 Confidence: ${forecastConfidencePct.toFixed(0)}%
     </div>
   `;
 }
