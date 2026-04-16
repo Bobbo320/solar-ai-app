@@ -346,8 +346,8 @@ function applyCalibration(raw, mode = "live") {
   if (mode === "live") {
     strength = 0.25;   // stable, avoids noise chasing
   } else if (mode === "forecast") {
-    strength = 0.60;   // allows learning from trends
-  } else {
+  strength = 0.85;
+} else {
     strength = 0.40;
   }
 
@@ -653,7 +653,23 @@ function cloudFactorForecast(cloud, rad) {
   // radiation already contains cloud effects from API → soften impact
   let radWeight = Math.min(1, rad / 500);
 
-  let factor = 1 - cloudNorm * (0.6 - 0.3 * radWeight);
+ function cloudFactorForecast(cloud, rad) {
+
+  let cloudNorm = cloud / 100;
+
+  let radWeight = Math.min(1, rad / 500);
+
+  // softened curve (critical fix)
+  let factor =
+    1 - cloudNorm * (0.45 - 0.25 * radWeight);
+
+  // light cloud enhancement
+  if (cloud < 35 && rad > 200) {
+    factor *= 1.06;
+  }
+
+  return Math.max(0.72, Math.min(1.08, factor));
+}
 
   // light cloud boost realism
   if (cloud < 30 && rad > 250) {
@@ -812,8 +828,9 @@ function estimatePV(radSlice, cloudSlice, tempSlice, s, dayData) {
 
     let r = radSlice[i];
     if (r < SOLAR_THRESHOLD) continue;
-let scaledRad = r * getForecastRadScale(r);
-scaledRad = Math.min(1100, scaledRad);
+// single controlled uplift (NOT exponential scaling)
+let scaledRad = r * (1 + (getForecastRadScale(r) - 1) * 0.6);
+scaledRad = Math.min(1000, scaledRad);
     let t = tempSlice[i] ?? 15;
     let c = cloudSlice[i];
 
@@ -835,7 +852,6 @@ hourPV =
   SYSTEM_LOSS *
   temperatureEfficiency(t) *
   getOrientationFactor(s.orientation) *
-  getTiltFactor(s.tilt, i) *
   (s.shading / 100) *
   cloudFactorForecast(c, r);
 
