@@ -817,15 +817,7 @@ function inverterLimit(pv, inverter) {
 }
   
 function estimatePV(radSlice, cloudSlice, tempSlice, s, dayData) {
-let dayData = extractDay(data, d);
 
-let basePV = estimatePV(
-  rad.slice(start, start + 24),
-  cloud.slice(start, start + 24),
-  temp.slice(start, start + 24),
-  s,
-  dayData
-);
   let total = 0;
 
   for (let i = 0; i < 24; i++) {
