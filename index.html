@@ -664,7 +664,8 @@ function getEffectiveIrradiance(dni, dhi, tiltFactor) {
 function cloudFactorForecast(cloud, rad) {
 
   let radBoost = Math.min(1, rad / 600);
-return Math.max(0.45, Math.min(1.10, factor));
+
+  let cloudPenalty = cloud / 100;
 
   let factor = 1 - cloudPenalty * (1 - 0.4 * radBoost);
 
@@ -672,7 +673,7 @@ return Math.max(0.45, Math.min(1.10, factor));
     factor = Math.max(factor, 1.05);
   }
 
-  return Math.max(0.35, Math.min(1.10, factor));
+  return Math.max(0.45, Math.min(1.10, factor));
 }
 
 // -------------------- SEASONAL TILT --------------------
