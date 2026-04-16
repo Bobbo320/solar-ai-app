@@ -45,7 +45,6 @@
   transition: width 0.3s ease;
 }
   </style>
-  <link rel="icon" href="data:,">
 </head>
 
 <body>
@@ -342,15 +341,15 @@ function getCalibrationSystem() {
   let confidence = Math.min(1, sampleSize / 20);
 
   return {
-  bias,
-  seasonalFactor,
-  calibrationConfidence: confidence
-};
+    bias,
+    seasonalFactor,
+    confidence
+  };
 }
 
 function applyCalibration(raw, mode = "live") {
 
- let { bias, seasonalFactor, calibrationConfidence } = getCalibrationSystem();
+  let { bias, seasonalFactor, confidence } = getCalibrationSystem();
 
   // combine layers
   let combined = bias * seasonalFactor;
@@ -369,7 +368,7 @@ function applyCalibration(raw, mode = "live") {
   }
 
   // reduce effect when data is weak
-  strength *= (0.4 + 0.6 * calibrationConfidence);
+  strength *= (0.4 + 0.6 * confidence);
 
   // blend toward 1 (neutral baseline)
   let corrected = 1 + (combined - 1) * strength;
@@ -881,7 +880,7 @@ function getHourlyLoad(s, hour = new Date().getHours()) {
   return Math.max(0, surplus);
 }
   
-function calculateChargePlan(pvForecast, s, forecastConfidence) {
+function calculateChargePlan(pvForecast, s, confidence) {
 
   // ----------------------------
   // STEP 1: BASE ENERGY DEMAND
@@ -905,7 +904,7 @@ function calculateChargePlan(pvForecast, s, forecastConfidence) {
 // ----------------------------
 
 let uncertaintyFactor =
-  0.9 + (1 - forecastConfidence / 100) * 0.25;
+  0.9 + (1 - confidence / 100) * 0.25;
 
 // clamp safety
 uncertaintyFactor = Math.max(0.85, Math.min(1.15, uncertaintyFactor));
@@ -1141,20 +1140,14 @@ let nowPV =
   tiltFactor *
   (s.shading / 100) *
   cloudFactorLiveSoft;
-let loadKW = getHourlyLoad(s, hour);
+  let loadKW = getHourlyLoad(s, hour);
 
-// ✅ FINAL physical inverter limit FIRST
-let pvAC = Math.min(nowPV, s.inverter);
+let batteryFull = nowPV > loadKW;
+let exportKW = 0;
 
-// ⚡ Self consumption (load takes priority)
-let selfConsumption = Math.min(pvAC, loadKW);
-
-// 🔌 Export is ONLY surplus AFTER load
-let exportKW = Math.max(0, pvAC - loadKW);
-
-// 🚨 HARD SAFETY: export can never exceed inverter
-exportKW = Math.min(exportKW, s.inverter);
-
+if (batteryFull) {
+  exportKW = Math.max(0, nowPV - loadKW);
+}
 let exportValue = exportKW * s.exportRate;
 
 // apply calibrated correction
@@ -1179,11 +1172,14 @@ if (nowRad < 20) {
 } else if (nowPV < 3) {
   status = "☀️ Moderate solar → charging battery";
 
-} else if (pvAC < s.inverter * 0.8) {
+} else if (nowPV < s.inverter * 0.8) {
   status = "🔋 Strong solar → high charging";
 
+} else if (nowPV < s.inverter) {
+  status = "🚀 Near max → optimising export";
+
 } else {
-  status = "🚀 Near max → inverter clipping active";
+  status = "⚠️ Clipping zone → inverter limiting output";
 }
   
 // Format time nicely
@@ -1283,16 +1279,13 @@ let instability = Math.min(1, radStd / 400);
 let cloudPenalty = Math.pow(cloudAvg / 100, 1.4);
 
 // final confidence blend
-let forecastConfidence =
+let confidence =
   100 *
   (0.55 * (1 - cloudPenalty) +
    0.45 * (1 - instability));
 
 // clamp
-let forecastConfidenceRaw = forecastConfidence;
-
-let forecastConfidencePct =
-  Math.max(35, Math.min(98, forecastConfidenceRaw));
+confidence = Math.max(35, Math.min(98, confidence));
 let basePV = estimatePV(
   rad.slice(start, start + 24),
   cloud.slice(start, start + 24),
@@ -1303,9 +1296,6 @@ let basePV = estimatePV(
   // calibration
 let rawPV = basePV;
 let pv = applyCalibration(rawPV, "forecast") * GLOBAL_PV_BIAS_FORECAST;
-
-// 🔒 enforce inverter limit BEFORE SOC model
-pv = Math.min(pv, s.inverter);
 
 // ✅ Store expected PV for today + tomorrow
 let data = getPVData();
@@ -1322,7 +1312,7 @@ storeExpectedPV(d, pv);
 // CLEAN ENERGY PIPELINE (FIXED)
 // ----------------------------
 
-let chargePlan = calculateChargePlan(pv, s, forecastConfidence);
+let chargePlan = calculateChargePlan(pv, s, confidence);
 let soc = chargePlan.soc;
 
 if (d === 1 && tomorrowSOCValue === null) {
@@ -1357,7 +1347,7 @@ if (d === 1 && tomorrowSOCValue === null) {
       <br><b>⏱️ Time Range:</b> ${timeRange}
 
       <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
-📊 Confidence: ${forecastConfidencePct.toFixed(0)}%
+<br><b>📊 Confidence:</b> ${confidence.toFixed(0)}%
     </div>
   `;
 }
