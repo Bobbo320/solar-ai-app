@@ -175,7 +175,7 @@
 
 const SOLAR_THRESHOLD = 50;        // used for real PV calculations
 const SOLAR_VISIBLE_THRESHOLD = 30; // used for solar time window display
-  const SYSTEM_LOSS = 0.92; // wiring, inverter, mismatch
+  const SYSTEM_LOSS = 0.98; // wiring, inverter, mismatch
 let GLOBAL_PV_BIAS_LIVE = 1;
 let GLOBAL_PV_BIAS_FORECAST = 1;
 let LIVE_ADJUSTMENT = 1;
@@ -352,13 +352,13 @@ function applyCalibration(raw, mode = "live") {
   }
 
   // reduce effect when data is weak
-  strength *= (0.4 + 0.6 * confidence);
+ strength *= (0.7 + 0.3 * confidence);
 
   // blend toward 1 (neutral baseline)
   let corrected = 1 + (combined - 1) * strength;
 
   // hard safety clamp
-corrected = Math.max(0.80, Math.min(1.60, corrected));
+corrected = Math.max(0.95, Math.min(1.25, corrected));
 
   return raw * corrected;
 }
@@ -812,20 +812,17 @@ function estimatePV(radSlice, cloudSlice, tempSlice, s, dayData) {
 
     let r = radSlice[i];
     if (r < SOLAR_THRESHOLD) continue;
-let scaledRad = r * getForecastRadScale(r);
-scaledRad = Math.min(1100, scaledRad);
     let t = tempSlice[i] ?? 15;
     let c = cloudSlice[i];
 
     let dni = dayData?.dni?.[i] ?? scaledRad;
 let dhi = dayData?.dhi?.[i] ?? scaledRad * 0.35;
 
-    let effectiveRad = getEffectiveIrradiance(
-      dni,
-      dhi,
-      getTiltFactor(s.tilt, i)
-    );
-
+   let effectiveRad = getEffectiveIrradiance(
+  dni,
+  dhi,
+  getTiltFactor(s.tilt, i)
+);
     effectiveRad = Math.min(1100, effectiveRad);
 
 hourPV =
@@ -837,7 +834,6 @@ hourPV =
   getOrientationFactor(s.orientation) *
   getTiltFactor(s.tilt, i) *
   (s.shading / 100) *
-  cloudFactorForecast(c, r);
 
 hourPV = inverterLimit(hourPV, s.inverter);
 
