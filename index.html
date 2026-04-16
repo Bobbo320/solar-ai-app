@@ -633,17 +633,22 @@ function getForecastRadScale(r) {
 
 function cloudFactorForecast(cloud, rad) {
 
-  let cloudWeight = Math.max(0.25, 1 - (rad / 700));
+  // base radiation influence (less cloud impact when sun is strong)
+  let radBoost = Math.min(1, rad / 600);
 
-  let factor =
-    1 - (cloud / 100) * 0.5 * cloudWeight;
+  // NON-LINEAR cloud penalty (key fix)
+  let cloudPenalty = Math.pow(cloud / 100, 1.6);
 
-  // allow upside when radiation is good
-  if (rad > 250) {
-    factor = Math.max(factor, 1.02);
+  // combine
+  let factor = 1 - cloudPenalty * (1 - 0.4 * radBoost);
+
+  // allow slight upside only in very good conditions
+  if (cloud < 20 && rad > 400) {
+    factor = Math.max(factor, 1.05);
   }
 
-  return Math.max(0.7, Math.min(1.15, factor));
+  // realistic bounds
+  return Math.max(0.35, Math.min(1.10, factor));
 }
   
 // -------------------- SEASONAL TILT --------------------
