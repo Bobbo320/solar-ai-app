@@ -45,6 +45,7 @@
   transition: width 0.3s ease;
 }
   </style>
+  <link rel="icon" href="data:,">
 </head>
 
 <body>
@@ -176,7 +177,7 @@ const SOLAR_THRESHOLD = 50;        // used for real PV calculations
 const SOLAR_VISIBLE_THRESHOLD = 30; // used for solar time window display
 let GLOBAL_PV_BIAS_LIVE = 1;
 let GLOBAL_PV_BIAS_FORECAST = 1;
-
+let LIVE_ADJUSTMENT = 1;
 let preloadedWeather = null;
   
 function getLocalDateKey(d = new Date()) {
@@ -590,11 +591,19 @@ async function getWeather(postcode) {
     let c = await getCoordinates(postcode);
 
     let res = await fetch(
-     `https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}&hourly=cloudcover,temperature_2m,shortwave_radiation,direct_radiation,diffuse_radiation,relativehumidity_2m,precipitation&forecast_days=3&timezone=auto`
-   data.hourly.direct_radiation ||= data.hourly.shortwave_radiation;
-data.hourly.diffuse_radiation ||= data.hourly.shortwave_radiation * 0.3;
-      
-      let data = await res.json();
+      `https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}&hourly=cloudcover,temperature_2m,shortwave_radiation,direct_radiation,diffuse_radiation,relativehumidity_2m,precipitation&forecast_days=3&timezone=auto`
+    );
+
+    let data = await res.json();
+
+    if (!data.hourly.direct_radiation) {
+      data.hourly.direct_radiation = data.hourly.shortwave_radiation;
+    }
+
+    if (!data.hourly.diffuse_radiation) {
+      data.hourly.diffuse_radiation =
+        data.hourly.shortwave_radiation.map(v => v * 0.3);
+    }
 
     setCache(cacheKey, { timestamp: now, data });
     return data;
@@ -606,7 +615,10 @@ data.hourly.diffuse_radiation ||= data.hourly.shortwave_radiation * 0.3;
         shortwave_radiation: new Array(72).fill(200),
         temperature_2m: new Array(72).fill(15),
         relativehumidity_2m: new Array(72).fill(70),
-        precipitation: new Array(72).fill(0)
+        precipitation: new Array(72).fill(0),
+        direct_radiation: new Array(72).fill(200),
+        diffuse_radiation: new Array(72).fill(60),
+        time: new Array(72).fill(new Date().toISOString())
       }
     };
   }
@@ -804,8 +816,16 @@ function inverterLimit(pv, inverter) {
   return inverter * (1 + Math.tanh(overload - 1) * 0.2);
 }
   
-function estimatePV(radSlice, cloudSlice, tempSlice, s) {
+function estimatePV(radSlice, cloudSlice, tempSlice, s, dayData) {
+let dayData = extractDay(data, d);
 
+let basePV = estimatePV(
+  rad.slice(start, start + 24),
+  cloud.slice(start, start + 24),
+  temp.slice(start, start + 24),
+  s,
+  dayData
+);
   let total = 0;
 
   for (let i = 0; i < 24; i++) {
@@ -1229,8 +1249,7 @@ LIVE_ADJUSTMENT =
   LIVE_ADJUSTMENT * 0.7 + liveErrorRatio * 0.3;
 
 nowPV = forecastNowPV * LIVE_ADJUSTMENT;
-  
-let LIVE_ADJUSTMENT = 1; 
+
 // -------------------- EXPORT (FIXED PHYSICS MODEL) --------------------
 
 // inverter headroom = max possible output minus household load
