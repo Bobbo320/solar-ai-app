@@ -629,14 +629,16 @@ function extractDay(weather, dayIndex) {
 }
 
 function lowLightFactor(rad) {
-  if (rad < 200) return 0.7 + (rad / 200) * 0.3;
+  if (rad < 150) return 0.85 + (rad / 150) * 0.15;
   return 1;
 }
   
 function getForecastRadScale(r) {
-  if (r < 100) return 2.6;
-  if (r < 300) return 2.6 + (r - 100) * 0.008;
-  return 4.2 + (r - 300) * 0.0018;
+  // smoother UK-realistic curve
+  if (r < 80) return 1.6;
+  if (r < 200) return 1.6 + (r - 80) * 0.004;
+  if (r < 500) return 2.1 + (r - 200) * 0.0022;
+  return 2.75;
 }
 
 function getEffectiveIrradiance(dni, dhi, tiltFactor) {
@@ -645,19 +647,21 @@ function getEffectiveIrradiance(dni, dhi, tiltFactor) {
   
 function cloudFactorForecast(cloud, rad) {
 
-  let radBoost = Math.min(1, rad / 600);
+  // reduce aggressive stacking with radiation
+  let cloudNorm = cloud / 100;
 
-  let cloudPenalty = cloud / 100;
+  // radiation already contains cloud effects from API → soften impact
+  let radWeight = Math.min(1, rad / 500);
 
-  let factor = 1 - cloudPenalty * (1 - 0.4 * radBoost);
+  let factor = 1 - cloudNorm * (0.6 - 0.3 * radWeight);
 
-  if (cloud < 20 && rad > 400) {
-    factor = Math.max(factor, 1.05);
+  // light cloud boost realism
+  if (cloud < 30 && rad > 250) {
+    factor *= 1.08;
   }
 
-  return Math.max(0.45, Math.min(1.10, factor));
+  return Math.max(0.65, Math.min(1.08, factor));
 }
-
 // -------------------- SEASONAL TILT --------------------
 function getSeasonalTilt(baseTilt) {
   let s = getSettings();
@@ -831,11 +835,11 @@ hourPV =
   SYSTEM_LOSS *
   temperatureEfficiency(t) *
   getOrientationFactor(s.orientation) *
+  getTiltFactor(s.tilt, i) *
   (s.shading / 100) *
-  cloudFactorForecast(c, r) *
-  lowLightFactor(effectiveRad);
+  cloudFactorForecast(c, r);
 
-    hourPV = inverterLimit(hourPV, s.inverter);
+hourPV = inverterLimit(hourPV, s.inverter);
 
     total += hourPV;
   }
@@ -919,13 +923,27 @@ function calculateChargePlan(pvForecast, s, confidence) {
   // ----------------------------
   // STEP 1: BASE ENERGY DEMAND
   // ----------------------------
-  let nightLoad = s.dailyLoad * 0.16;
-  let eveningLoad = s.dailyLoad * 0.30;
-  let baseLoad = s.dailyLoad - nightLoad - eveningLoad;
+// ----------------------------
+// FIXED LOAD + TOU MODEL
+// ----------------------------
 
-  let shortfall =
-    Math.max(0, baseLoad - pvForecast) +
-    nightLoad * 0.5;
+// total daily load
+let loadDaily = s.dailyLoad;
+
+// split energy (still your idea, but not double-counted)
+let nightEnergy = s.dailyLoad * 0.16;
+let eveningEnergy = s.dailyLoad * 0.30;
+
+// base comparison (PV vs total demand)
+let baseShortfall = Math.max(0, loadDaily - pvForecast);
+
+// TOU urgency weighting (NOT extra energy subtraction)
+let touPenalty =
+  (nightEnergy * 0.6) +
+  (eveningEnergy * 0.3);
+
+// final required energy
+let shortfall = baseShortfall + touPenalty;
   let buffer = 1.15;
   if (shortfall > 5) buffer = 1.25;
   if (shortfall > 10) buffer = 1.35;
@@ -979,7 +997,15 @@ requiredEnergy *= uncertaintyFactor;
     capped: requiredEnergy > maxPossibleCharge
   };
 }
+function getLoadEnergyByWindow(s, startHour, endHour) {
+  let total = 0;
 
+  for (let h = startHour; h < endHour; h++) {
+    total += getHourlyLoad(s, h);
+  }
+
+  return total;
+}
 function getChargePlanFromWindow(targetEnergy, s) {
   if (!targetEnergy || targetEnergy <= 0) {
     return { time: "None", cost: 0, energy: 0 };
@@ -1381,7 +1407,7 @@ let basePV = estimatePV(
 
   // calibration
 let rawPV = basePV;
-let pv = applyCalibration(rawPV, "forecast") * GLOBAL_PV_BIAS_FORECAST;
+let pv = rawPV * 1.02; // light physics bias only
 
 // ✅ Store expected PV for today + tomorrow
 let pvData = getPVData();
