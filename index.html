@@ -1142,12 +1142,18 @@ let nowPV =
   cloudFactorLiveSoft;
   let loadKW = getHourlyLoad(s, hour);
 
-let batteryFull = nowPV > loadKW;
-let exportKW = 0;
+// -------------------- EXPORT (FIXED PHYSICS MODEL) --------------------
 
-if (batteryFull) {
-  exportKW = Math.max(0, nowPV - loadKW);
-}
+// inverter headroom = max possible output minus household load
+let inverterHeadroom = Math.max(0, s.inverter - loadKW);
+
+// actual PV surplus
+let pvSurplus = Math.max(0, nowPV - loadKW);
+
+// export is limited by BOTH PV surplus and inverter headroom
+let exportKW = Math.min(pvSurplus, inverterHeadroom);
+
+// export value
 let exportValue = exportKW * s.exportRate;
 
 // apply calibrated correction
