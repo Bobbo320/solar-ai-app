@@ -1168,7 +1168,7 @@ let inverterLimitedPV = Math.min(nowPV, s.inverter);
 let exportKW = Math.max(0, inverterLimitedPV - loadKW);
 
 // export is limited by BOTH PV surplus and inverter headroom
-let exportKW = Math.min(pvSurplus, inverterHeadroom);
+let exportPowerKW = Math.min(pvSurplus, inverterHeadroom);
 
 // export value
 let exportValue = exportKW * s.exportRate;
