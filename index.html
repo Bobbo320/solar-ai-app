@@ -1098,8 +1098,20 @@ let nowTemp = temp[nowIndex];
 let cloudWeight = Math.max(0.15, 1 - (nowRad / 600)); 
 // high radiation → cloud has very little influence
 
+// single-pass cloud attenuation model (prevents over/under correction)
+let cloudRatio = nowCloud / 100;
+
+// radiation already encodes cloud partially → reduce sensitivity
 let cloudFactorLiveSoft =
-  1 - (nowCloud / 100) * 0.6 * cloudWeight;
+  Math.pow(1 - cloudRatio, 1.6);
+
+// allow broken-cloud boosts
+if (nowCloud < 35 && nowRad > 250) {
+  cloudFactorLiveSoft *= 1.08;
+}
+
+// clamp realism
+cloudFactorLiveSoft = Math.max(0.55, Math.min(1.15, cloudFactorLiveSoft));
 
 // keep sane limits
 cloudFactorLiveSoft = Math.max(0.75, Math.min(1.15, cloudFactorLiveSoft));
@@ -1113,16 +1125,21 @@ if (nowRad > 250) {
 let hour = new Date().getHours();
 
 // 🔥 Convert horizontal radiation → effective panel radiation
-let radScale;
+// REALISTIC POA ESTIMATION (cloud-sensitive)
+let clearSkyFactor = 3.2; // Norwich typical peak scaling
 
-// Strong non-linear lift (key fix)
-if (nowRad < 100) {
-  radScale = 2.4;
-} else if (nowRad < 300) {
-  radScale = 2.4 + (nowRad - 100) * 0.007;
-} else {
-  radScale = 3.8 + (nowRad - 300) * 0.0015;
-}
+// radiation efficiency curve (diminishing returns at low sun)
+let radCurve = Math.pow(Math.max(nowRad, 1) / 1000, 1.15);
+
+// cloud suppression (stronger under thick cloud)
+let cloudSuppression = 1 - Math.pow(nowCloud / 100, 2.2) * 0.85;
+
+// final scaling
+let radScale = clearSkyFactor * radCurve * cloudSuppression;
+
+// clamp
+radScale = Math.max(0.6, Math.min(3.5, radScale));
+  
 // Apply scaling
 let effectiveRad = nowRad * radScale;
 
@@ -1144,11 +1161,11 @@ let nowPV =
 
 // -------------------- EXPORT (FIXED PHYSICS MODEL) --------------------
 
-// inverter headroom = max possible output minus household load
-let inverterHeadroom = Math.max(0, s.inverter - loadKW);
+// inverter limits PV first, then export happens
+let inverterLimitedPV = Math.min(nowPV, s.inverter);
 
-// actual PV surplus
-let pvSurplus = Math.max(0, nowPV - loadKW);
+// surplus after load
+let exportKW = Math.max(0, inverterLimitedPV - loadKW);
 
 // export is limited by BOTH PV surplus and inverter headroom
 let exportKW = Math.min(pvSurplus, inverterHeadroom);
@@ -1163,7 +1180,17 @@ nowPV = applyCalibration(rawNowPV, "live") * GLOBAL_PV_BIAS_LIVE;
 
 // inverter cap
 nowPV = Math.min(nowPV, s.inverter);
- 
+  
+let liveAccuracyRatio = 2.8 / nowPV; // your real vs model
+
+html += `
+  <div class="card">
+    <h3>📡 Live Model Accuracy Check</h3>
+    <b>Actual PV:</b> 2.80 kW<br>
+    <b>Model PV:</b> ${nowPV.toFixed(2)} kW<br>
+    <b>Ratio:</b> ${liveAccuracyRatio.toFixed(2)}x correction needed<br>
+  </div>
+`; 
 let status = "";
 
 if (nowRad < 20) {
