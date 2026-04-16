@@ -240,7 +240,8 @@ function storeExpectedPV(dayIndex, pvValue) {
   savePVData(data);
 }
 
-  function refreshExpectedPVAfterManualChange() {
+function refreshExpectedPVAfterManualChange() {
+  let data = getPVData();
 
   for (let d = 0; d < 2; d++) {
     let date = new Date();
@@ -256,7 +257,6 @@ function storeExpectedPV(dayIndex, pvValue) {
 
   savePVData(data);
 }
-  
 function getCalibrationSystem() {
   let pvData = getPVData();
   let today = new Date();
@@ -1385,6 +1385,8 @@ let pvData = getPVData();
 
 let date = new Date();
 date.setDate(date.getDate() + d);
+
+let key = getLocalDateKey(date);
 
 let entry = pvData[key];
 
