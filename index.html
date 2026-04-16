@@ -366,59 +366,55 @@ corrected = Math.max(0.80, Math.min(1.60, corrected));
 function renderPVTable() {
   let data = getPVData();
   let tbody = document.getElementById("pvTable");
-
   tbody.innerHTML = "";
- let pvDataStore = getPVData();
+
   let mode = document.getElementById("pvViewMode")?.value || "today";
 
-let today = new Date();
-let todayStr = getLocalDateKey(new Date());
+  let today = new Date();
+  let todayStr = getLocalDateKey(new Date());
 
-  .sort((a, b) => new Date(a) - new Date(b))
-  .forEach(date => {
+  Object.keys(data)
+    .sort((a, b) => new Date(a) - new Date(b))
+    .forEach(date => {
 
-  let include = false;
-  let entryDate = new Date(date);
+      let include = false;
+      let entryDate = new Date(date);
 
-  if (mode === "today") {
-    include = (date === todayStr);
-  }
+      if (mode === "today") {
+        include = (date === todayStr);
+      }
 
-  if (mode === "7days") {
-    let diff = (today - entryDate) / (1000 * 60 * 60 * 24);
-    include = diff >= 0 && diff <= 7;
-  }
+      if (mode === "7days") {
+        let diff = (today - entryDate) / (1000 * 60 * 60 * 24);
+        include = diff >= 0 && diff <= 7;
+      }
 
-  if (mode === "all") {
-    include = true;
-  }
+      if (mode === "all") {
+        include = true;
+      }
 
-  if (!include) return;
+      if (!include) return;
 
-    let row = data[date];
+      let row = data[date];
 
-    let tr = document.createElement("tr");
+      let tr = document.createElement("tr");
 
-    tr.setAttribute("data-date", date);
+      tr.innerHTML = `
+        <td>${date}</td>
+        <td>${row.expected ? row.expected.toFixed(1) : "-"}</td>
+        <td>${row.manual ? row.manual.toFixed(1) : "-"}</td>
+        <td>
+          <button onclick="openEditor('${date}')">Edit</button>
+          <button onclick="deletePVRow('${date}')">Delete</button>
+        </td>
+      `;
 
-    tr.innerHTML = `
-      <td>${date}</td>
-      <td>${row.expected ? row.expected.toFixed(1) : "-"}</td>
-      <td>${row.manual ? row.manual.toFixed(1) : "-"}</td>
-<td>
-  <button onclick="openEditor('${date}')">Edit</button>
-  <button onclick="deletePVRow('${date}')">Delete</button>
-</td>
-    `;
+      tbody.appendChild(tr);
+    });
 
-    tbody.appendChild(tr);
-  });
-
-  // ✅ Calibration factor display (run once)
-let { bias, seasonalFactor } = getCalibrationSystem();
-
-let factor = bias * seasonalFactor;
-  document.getElementById("calFactor").innerText = factor.toFixed(2);
+  let { bias, seasonalFactor } = getCalibrationSystem();
+  document.getElementById("calFactor").innerText =
+    (bias * seasonalFactor).toFixed(2);
 }
 
 
