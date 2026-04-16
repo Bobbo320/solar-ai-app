@@ -1077,17 +1077,26 @@ let nowTemp = temp[nowIndex];
 // -------------------- LIVE PV ESTIMATE --------------------
 
 
-// Convert radiation to PV output (kW)
-let cloudFactorLive = cloudIntensityFactor(nowCloud, nowRad);
+// 🌤️ Radiation-led model (cloud becomes secondary hint only)
+let cloudWeight = Math.max(0.15, 1 - (nowRad / 600)); 
+// high radiation → cloud has very little influence
 
-// stronger but still stable cloud response
-let cloudFactorLiveSoft = cloudFactorLive;
+let cloudFactorLiveSoft =
+  1 - (nowCloud / 100) * 0.6 * cloudWeight;
+
+// keep sane limits
+cloudFactorLiveSoft = Math.max(0.75, Math.min(1.15, cloudFactorLiveSoft));
+
+  // ☀️ If radiation is strong, override cloud pessimism
+if (nowRad > 250) {
+  cloudFactorLiveSoft = Math.max(cloudFactorLiveSoft, 1.05);
+}
 
 // 🔧 radiation input (no change)
 let hour = new Date().getHours();
 
 // Radiation response curve (already good idea)
-let radBoost = 0.9 + (0.2 * (1 - Math.exp(-nowRad / 400)));
+let radBoost = 0.95 + (0.35 * (1 - Math.exp(-nowRad / 300)));
 
 let effectiveRad = nowRad * radBoost;
 
@@ -1354,6 +1363,7 @@ html += `
   return `
     ⏱️ ${plan.time}
 <br>🔌 ${plan.gridEnergy.toFixed(2)} kWh imported
+<br>🔋 ${plan.energy.toFixed(2)} kWh stored
 <br>💷 £${plan.cost.toFixed(2)}
     ${plan.capped ? "<br>⚠️ Not enough cheap-rate time" : ""}
   `;
