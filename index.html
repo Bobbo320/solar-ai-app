@@ -45,6 +45,7 @@
   transition: width 0.3s ease;
 }
   </style>
+  <link rel="icon" href="favicon.ico">
 </head>
 
 <body>
@@ -1180,8 +1181,6 @@ if (nowRad < 20) {
   status = "☀️ Moderate solar → charging battery";
 
 let pvClippedForStatus = Math.min(nowPV, s.inverter);
-
-...
 
 } else if (pvClippedForStatus < s.inverter * 0.8) {
   status = "🔋 Strong solar → high charging";
