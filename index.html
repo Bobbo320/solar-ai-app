@@ -539,15 +539,18 @@ async function getCoordinates(postcode) {
 
     if (cached) return cached;
 
-    let res = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(postcode)}&count=1`);
-    let data = await res.json();
+ let res = await fetch(
+  `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(postcode)}&count=1`
+);
 
-    if (!data.results || data.results.length === 0) throw new Error();
+let geo = await res.json();
 
-    let coords = {
-      lat: data.results[0].latitude,
-      lon: data.results[0].longitude
-    };
+if (!geo.results || geo.results.length === 0) throw new Error();
+
+let coords = {
+  lat: geo.results[0].latitude,
+  lon: geo.results[0].longitude
+};
 
     setCache(cacheKey, coords);
     return coords;
