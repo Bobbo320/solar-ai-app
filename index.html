@@ -1155,7 +1155,6 @@ let pvClipped = Math.min(nowPV, s.inverter);
 
 // 2. correct export physics
 let exportKW = Math.max(0, pvClipped - loadKW);
-}
 let exportValue = exportKW * s.exportRate;
 
 // apply calibrated correction
