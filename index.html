@@ -341,15 +341,15 @@ function getCalibrationSystem() {
   let confidence = Math.min(1, sampleSize / 20);
 
   return {
-    bias,
-    seasonalFactor,
-    confidence
-  };
+  bias,
+  seasonalFactor,
+  calibrationConfidence: confidence
+};
 }
 
 function applyCalibration(raw, mode = "live") {
 
-  let { bias, seasonalFactor, confidence } = getCalibrationSystem();
+ let { bias, seasonalFactor, calibrationConfidence } = getCalibrationSystem();
 
   // combine layers
   let combined = bias * seasonalFactor;
@@ -368,7 +368,7 @@ function applyCalibration(raw, mode = "live") {
   }
 
   // reduce effect when data is weak
-  strength *= (0.4 + 0.6 * confidence);
+  strength *= (0.4 + 0.6 * calibrationConfidence);
 
   // blend toward 1 (neutral baseline)
   let corrected = 1 + (combined - 1) * strength;
@@ -880,7 +880,7 @@ function getHourlyLoad(s, hour = new Date().getHours()) {
   return Math.max(0, surplus);
 }
   
-function calculateChargePlan(pvForecast, s, confidence) {
+function calculateChargePlan(pvForecast, s, forecastConfidence)
 
   // ----------------------------
   // STEP 1: BASE ENERGY DEMAND
@@ -904,7 +904,7 @@ function calculateChargePlan(pvForecast, s, confidence) {
 // ----------------------------
 
 let uncertaintyFactor =
-  0.9 + (1 - confidence / 100) * 0.25;
+  0.9 + (1 - forecastConfidence / 100) * 0.25;
 
 // clamp safety
 uncertaintyFactor = Math.max(0.85, Math.min(1.15, uncertaintyFactor));
@@ -1279,7 +1279,7 @@ let instability = Math.min(1, radStd / 400);
 let cloudPenalty = Math.pow(cloudAvg / 100, 1.4);
 
 // final confidence blend
-let confidence =
+let forecastConfidence =
   100 *
   (0.55 * (1 - cloudPenalty) +
    0.45 * (1 - instability));
