@@ -621,14 +621,9 @@ function getOrientationFactor(o) {
 }
 
 function getForecastRadScale(r) {
-
-  if (r < 100) {
-    return 2.2;
-  } else if (r < 300) {
-    return 2.2 + (r - 100) * 0.006; // smoother ramp
-  } else {
-    return 3.4 + (r - 300) * 0.0015;
-  }
+  if (r < 100) return 2.6;
+  if (r < 300) return 2.6 + (r - 100) * 0.008;
+  return 4.2 + (r - 300) * 0.0018;
 }
 
 function cloudFactorForecast(cloud, rad) {
@@ -649,7 +644,11 @@ function cloudFactorForecast(cloud, rad) {
 
   // realistic bounds
   return Math.max(0.35, Math.min(1.10, factor));
+
+  if (cloud > 60 && rad > 200) {
+  factor = Math.max(factor, 1.02);
 }
+
   
 // -------------------- SEASONAL TILT --------------------
 function getSeasonalTilt(baseTilt) {
