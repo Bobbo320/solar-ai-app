@@ -369,19 +369,16 @@ corrected = Math.max(0.80, Math.min(1.60, corrected));
 }
   
 function renderPVTable() {
- let pvDataStore = getPVData();
-
-if (!pvDataStore[key]) pvDataStore[key] = {};
+  let data = getPVData();
   let tbody = document.getElementById("pvTable");
 
   tbody.innerHTML = "";
-
+ let pvDataStore = getPVData();
   let mode = document.getElementById("pvViewMode")?.value || "today";
 
 let today = new Date();
 let todayStr = getLocalDateKey(new Date());
 
-Object.keys(data)
   .sort((a, b) => new Date(a) - new Date(b))
   .forEach(date => {
 
@@ -1376,7 +1373,7 @@ let confidence =
 
 // clamp
 confidence = Math.max(35, Math.min(98, confidence));
-let dayData = extractDay(pvData, d);
+let dayData = extractDay(data, d);
 
 let basePV = estimatePV(
   rad.slice(start, start + 24),
