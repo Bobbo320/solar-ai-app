@@ -45,7 +45,6 @@
   transition: width 0.3s ease;
 }
   </style>
-  <link rel="icon" href="favicon.ico">
 </head>
 
 <body>
@@ -876,16 +875,9 @@ function getHourlyLoad(s, hour = new Date().getHours()) {
 
   if (!batteryFull) return 0;
 
-  // remaining inverter headroom after serving load
-  const inverterHeadroom = Math.max(0, s.inverter - loadKW);
+  const surplus = pvKW - loadKW;
 
-  // PV surplus after load
-  const pvSurplus = Math.max(0, pvKW - loadKW);
-
-  // export is limited by BOTH PV surplus and inverter headroom
-  const exportKW = Math.min(pvSurplus, inverterHeadroom);
-
-  return exportKW;
+  return Math.max(0, surplus);
 }
   
 function calculateChargePlan(pvForecast, s, confidence) {
@@ -1148,13 +1140,14 @@ let nowPV =
   tiltFactor *
   (s.shading / 100) *
   cloudFactorLiveSoft;
- let loadKW = getHourlyLoad(s, hour);
+  let loadKW = getHourlyLoad(s, hour);
 
-// 1. clamp PV to inverter first (IMPORTANT)
-let pvClipped = Math.min(nowPV, s.inverter);
+let batteryFull = nowPV > loadKW;
+let exportKW = 0;
 
-// 2. correct export physics
-let exportKW = Math.max(0, pvClipped - loadKW);
+if (batteryFull) {
+  exportKW = Math.max(0, nowPV - loadKW);
+}
 let exportValue = exportKW * s.exportRate;
 
 // apply calibrated correction
@@ -1179,9 +1172,7 @@ if (nowRad < 20) {
 } else if (nowPV < 3) {
   status = "☀️ Moderate solar → charging battery";
 
-let pvClippedForStatus = Math.min(nowPV, s.inverter);
-
-} else if (pvClippedForStatus < s.inverter * 0.8) {
+} else if (nowPV < s.inverter * 0.8) {
   status = "🔋 Strong solar → high charging";
 
 } else if (nowPV < s.inverter) {
