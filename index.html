@@ -1140,14 +1140,20 @@ let nowPV =
   tiltFactor *
   (s.shading / 100) *
   cloudFactorLiveSoft;
-  let loadKW = getHourlyLoad(s, hour);
+let loadKW = getHourlyLoad(s, hour);
 
-let batteryFull = nowPV > loadKW;
-let exportKW = 0;
+// ✅ FINAL physical inverter limit FIRST
+let pvAC = Math.min(nowPV, s.inverter);
 
-if (batteryFull) {
-  exportKW = Math.max(0, nowPV - loadKW);
-}
+// ⚡ Self consumption (load takes priority)
+let selfConsumption = Math.min(pvAC, loadKW);
+
+// 🔌 Export is ONLY surplus AFTER load
+let exportKW = Math.max(0, pvAC - loadKW);
+
+// 🚨 HARD SAFETY: export can never exceed inverter
+exportKW = Math.min(exportKW, s.inverter);
+
 let exportValue = exportKW * s.exportRate;
 
 // apply calibrated correction
@@ -1172,11 +1178,12 @@ if (nowRad < 20) {
 } else if (nowPV < 3) {
   status = "☀️ Moderate solar → charging battery";
 
-} else if (nowPV < s.inverter * 0.8) {
+} else if (pvAC < s.inverter * 0.8) {
   status = "🔋 Strong solar → high charging";
 
-} else if (nowPV < s.inverter) {
-  status = "🚀 Near max → optimising export";
+} else {
+  status = "🚀 Near max → inverter clipping active";
+}
 
 } else {
   status = "⚠️ Clipping zone → inverter limiting output";
@@ -1299,6 +1306,9 @@ let basePV = estimatePV(
   // calibration
 let rawPV = basePV;
 let pv = applyCalibration(rawPV, "forecast") * GLOBAL_PV_BIAS_FORECAST;
+
+// 🔒 enforce inverter limit BEFORE SOC model
+pv = Math.min(pv, s.inverter);
 
 // ✅ Store expected PV for today + tomorrow
 let data = getPVData();
