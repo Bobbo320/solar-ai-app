@@ -216,26 +216,8 @@ function storeExpectedPV(dayIndex, pvValue) {
 
   if (!data[key]) data[key] = {};
 
-  // ❌ NEVER overwrite manual data
-  if (data[key].manual !== undefined) return;
-
-  const hour = new Date().getHours();
-  const isStableTime = hour >= 10;
-
-  if (!isStableTime && data[key].expected !== undefined) return;
-
-  let existing = data[key].expected;
-
-  if (existing === undefined) {
-    data[key].expected = pvValue;
-    savePVData(data);
-    return;
-  }
-
-  let diff = Math.abs(existing - pvValue);
-  if (diff < 0.2) return;
-
-  data[key].expected = existing * 0.7 + pvValue * 0.3;
+  // ALWAYS allow forecast overwrite
+  data[key].expected = pvValue;
 
   savePVData(data);
 }
@@ -246,17 +228,44 @@ function refreshExpectedPVAfterManualChange() {
   for (let d = 0; d < 2; d++) {
     let date = new Date();
     date.setDate(date.getDate() + d);
-
     let key = getLocalDateKey(date);
 
-    if (data[key]?.manual !== undefined) continue;
-
-    if (!data[key]) data[key] = {};
-    delete data[key].expected;
+    if (data[key]) {
+      delete data[key].expected;
+    }
   }
 
   savePVData(data);
 }
+
+function updateExpectedForecast(pvData, s, weatherData) {
+
+  for (let d = 0; d < 2; d++) { // today + tomorrow only
+
+    let date = new Date();
+    date.setDate(date.getDate() + d);
+    let key = getLocalDateKey(date);
+
+    if (!pvData[key]) pvData[key] = {};
+
+    let dayData = extractDay(weatherData, d);
+
+    let basePV = estimatePV(
+      dayData.rad,
+      dayData.cloud,
+      dayData.temp,
+      s,
+      dayData
+    );
+
+    let calibratedPV = applyCalibration(basePV, "forecast");
+
+    pvData[key].expected = calibratedPV;
+  }
+
+  savePVData(pvData);
+}
+  
 function getCalibrationSystem() {
   let pvData = getPVData();
   let today = new Date();
@@ -1145,7 +1154,8 @@ async function runAI(){
   loading.innerText="Loading...";
   let tomorrowSOCValue = null;
 let weatherData = preloadedWeather || await getWeather(s.postcode);
-
+let pvData = getPVData();
+updateExpectedForecast(pvData, s, weatherData);
  let cloud = weatherData.hourly.cloudcover;
 let rad = weatherData.hourly.shortwave_radiation;
 let temp = weatherData.hourly.temperature_2m;
@@ -1568,23 +1578,33 @@ refreshExpectedPVAfterManualChange();
 
 closeEditor();
 renderPVTable();
-runAI(); // optional but recommended
-}
-
-function deleteEdit() {
-  if (!currentEditDate) return;
-
-  let data = getPVData();
-  delete data[currentEditDate];
-
-  savePVData(data);
-
 refreshExpectedPVAfterManualChange();
 
-closeEditor();
+// reload PV system state
+let pvData = getPVData();
+let s = getSettings();
+let weatherData = preloadedWeather;
+
+if (weatherData) {
+
+  // rebuild ONLY tomorrow forecast after calibration shift
+  let tomorrowData = {
+    ...weatherData,
+    hourly: {
+      cloudcover: weatherData.hourly.cloudcover.slice(24),
+      shortwave_radiation: weatherData.hourly.shortwave_radiation.slice(24),
+      temperature_2m: weatherData.hourly.temperature_2m.slice(24),
+      relativehumidity_2m: weatherData.hourly.relativehumidity_2m.slice(24),
+      precipitation: weatherData.hourly.precipitation.slice(24),
+      time: weatherData.hourly.time.slice(24)
+    }
+  };
+
+  updateExpectedForecast(pvData, s, tomorrowData);
+}
+
 renderPVTable();
 runAI();
-}
 // -------------------- INIT --------------------
 window.onload = () => {
   preloadWeather();
