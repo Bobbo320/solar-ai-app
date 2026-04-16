@@ -1207,6 +1207,12 @@ nowPV = applyCalibration(rawNowPV, "live") * GLOBAL_PV_BIAS_LIVE;
 // inverter cap
 nowPV = Math.min(nowPV, s.inverter);
  
+// FINAL corrected PV FIRST
+let rawNowPV = nowPV;
+nowPV = applyCalibration(rawNowPV, "live") * GLOBAL_PV_BIAS_LIVE;
+nowPV = Math.min(nowPV, s.inverter);
+
+// NOW compute status using FINAL value
 let status = "";
 
 if (nowRad < 20) {
