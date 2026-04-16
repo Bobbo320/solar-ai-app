@@ -174,8 +174,8 @@
 
 const SOLAR_THRESHOLD = 50;        // used for real PV calculations
 const SOLAR_VISIBLE_THRESHOLD = 30; // used for solar time window display
-const GLOBAL_PV_BIAS_LIVE = 1;
-const GLOBAL_PV_BIAS_FORECAST = 1;
+let GLOBAL_PV_BIAS_LIVE = 1;
+let GLOBAL_PV_BIAS_FORECAST = 1;
 
 let preloadedWeather = null;
   
@@ -1059,6 +1059,29 @@ function weatherSummary(c,r,t,h,p){
   `;
 }
 
+function estimateCurrentHourPV(s, cloud, rad, temp, hourIndex) {
+
+  let r = rad[hourIndex];
+  let c = cloud[hourIndex];
+  let t = temp[hourIndex];
+
+  if (r < SOLAR_THRESHOLD) return 0;
+
+  let scaledRad = r * getForecastRadScale(r);
+  scaledRad = Math.min(1100, scaledRad);
+
+  return (
+    s.pvSize *
+    (scaledRad / 1000) *
+    (s.efficiency / 100) *
+    temperatureEfficiency(t) *
+    getOrientationFactor(s.orientation) *
+    getTiltFactor(s.tilt, hourIndex) *
+    (s.shading / 100) *
+    cloudFactorForecast(c, r)
+  );
+}
+  
 // -------------------- MAIN --------------------
 async function runAI(){
 
@@ -1142,6 +1165,26 @@ let nowPV =
   cloudFactorLiveSoft;
   let loadKW = getHourlyLoad(s, hour);
 
+// -------------------- LIVE vs FORECAST RECONCILIATION --------------------
+
+let forecastNowPV_raw = estimateCurrentHourPV(
+  s, cloud, rad, temp, nowIndex
+);
+
+let forecastNowPV = applyCalibration(forecastNowPV_raw, "forecast");
+ GLOBAL_PV_BIAS_LIVE = Math.max(0.7, Math.min(1.3, GLOBAL_PV_BIAS_LIVE));
+
+// avoid divide-by-zero instability
+let liveErrorRatio =
+  forecastNowPV > 0 ? nowPV / forecastNowPV : 1;
+
+// clamp extreme spikes
+liveErrorRatio = Math.max(0.6, Math.min(1.4, liveErrorRatio));
+
+// smooth global bias update (slow learning)
+GLOBAL_PV_BIAS_LIVE =
+  GLOBAL_PV_BIAS_LIVE * 0.8 + liveErrorRatio * 0.2;
+  
 // -------------------- EXPORT (FIXED PHYSICS MODEL) --------------------
 
 // inverter headroom = max possible output minus household load
