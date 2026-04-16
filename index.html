@@ -590,10 +590,11 @@ async function getWeather(postcode) {
     let c = await getCoordinates(postcode);
 
     let res = await fetch(
-      `https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}&hourly=cloudcover,temperature_2m,shortwave_radiation,relativehumidity_2m,precipitation&forecast_days=3&timezone=auto`
-    );
-
-    let data = await res.json();
+     `https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}&hourly=cloudcover,temperature_2m,shortwave_radiation,direct_radiation,diffuse_radiation,relativehumidity_2m,precipitation&forecast_days=3&timezone=auto`
+   data.hourly.direct_radiation ||= data.hourly.shortwave_radiation;
+data.hourly.diffuse_radiation ||= data.hourly.shortwave_radiation * 0.3;
+      
+      let data = await res.json();
 
     setCache(cacheKey, { timestamp: now, data });
     return data;
@@ -620,12 +621,33 @@ function getOrientationFactor(o) {
   return 1;
 }
 
+function extractDay(weather, dayIndex) {
+  const start = dayIndex * 24;
+
+  return {
+    rad: weather.hourly.shortwave_radiation.slice(start, start + 24),
+    cloud: weather.hourly.cloudcover.slice(start, start + 24),
+    temp: weather.hourly.temperature_2m.slice(start, start + 24),
+    dni: weather.hourly.direct_radiation.slice(start, start + 24),
+    dhi: weather.hourly.diffuse_radiation.slice(start, start + 24)
+  };
+}
+
+function lowLightFactor(rad) {
+  if (rad < 200) return 0.7 + (rad / 200) * 0.3;
+  return 1;
+}
+  
 function getForecastRadScale(r) {
   if (r < 100) return 2.6;
   if (r < 300) return 2.6 + (r - 100) * 0.008;
   return 4.2 + (r - 300) * 0.0018;
 }
 
+function getEffectiveIrradiance(dni, dhi, tiltFactor) {
+  return (dni * tiltFactor) + dhi;
+}
+  
 function cloudFactorForecast(cloud, rad) {
 
   let radBoost = Math.min(1, rad / 600);
@@ -773,6 +795,14 @@ function getCloudThicknessLabel(cloud, rad) {
 
   return { label: "Clear / Light Cloud ☀️", intensity: intensity * 0.5 };
 }
+
+function inverterLimit(pv, inverter) {
+  const overload = pv / inverter;
+
+  if (overload <= 1) return pv;
+
+  return inverter * (1 + Math.tanh(overload - 1) * 0.2);
+}
   
 function estimatePV(radSlice, cloudSlice, tempSlice, s) {
 
@@ -786,21 +816,29 @@ function estimatePV(radSlice, cloudSlice, tempSlice, s) {
     let t = tempSlice[i] ?? 15;
     let c = cloudSlice[i];
 
-    let scaledRad = r * getForecastRadScale(r);
-scaledRad = Math.min(1100, scaledRad);
+let dni = dayData?.dni?.[i] ?? r;
+let dhi = dayData?.dhi?.[i] ?? r * 0.3;
 
-let hourPV =
+let effectiveRad = getEffectiveIrradiance(
+  dni,
+  dhi,
+  getTiltFactor(s.tilt, i)
+);
+
+effectiveRad = Math.min(1100, effectiveRad);
+
+hourPV =
   s.pvSize *
-  (scaledRad / 1000) *
+  (effectiveRad / 1000) *
   (s.efficiency / 100) *
   temperatureEfficiency(t) *
   getOrientationFactor(s.orientation) *
-  getTiltFactor(s.tilt, i) *
   (s.shading / 100) *
-  cloudFactorForecast(c, r);
+  cloudFactorForecast(c, r) *
+  lowLightFactor(effectiveRad);
 
     // inverter cap per hour
-    hourPV = Math.min(hourPV, s.inverter);
+    hourPV = inverterLimit(hourPV, s.inverter);
 
     total += hourPV;
   }
@@ -1180,19 +1218,19 @@ let forecastNowPV_raw = estimateCurrentHourPV(
 );
 
 let forecastNowPV = applyCalibration(forecastNowPV_raw, "forecast");
- GLOBAL_PV_BIAS_LIVE = Math.max(0.7, Math.min(1.3, GLOBAL_PV_BIAS_LIVE));
 
-// avoid divide-by-zero instability
 let liveErrorRatio =
   forecastNowPV > 0 ? nowPV / forecastNowPV : 1;
 
-// clamp extreme spikes
 liveErrorRatio = Math.max(0.6, Math.min(1.4, liveErrorRatio));
 
-// smooth global bias update (slow learning)
-GLOBAL_PV_BIAS_LIVE =
-  GLOBAL_PV_BIAS_LIVE * 0.8 + liveErrorRatio * 0.2;
+// smooth but LOCAL (not global)
+LIVE_ADJUSTMENT =
+  LIVE_ADJUSTMENT * 0.7 + liveErrorRatio * 0.3;
+
+nowPV = forecastNowPV * LIVE_ADJUSTMENT;
   
+let LIVE_ADJUSTMENT = 1; 
 // -------------------- EXPORT (FIXED PHYSICS MODEL) --------------------
 
 // inverter headroom = max possible output minus household load
