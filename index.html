@@ -620,6 +620,32 @@ function getOrientationFactor(o) {
   return 1;
 }
 
+function getForecastRadScale(r) {
+
+  if (r < 100) {
+    return 2.2;
+  } else if (r < 300) {
+    return 2.2 + (r - 100) * 0.006; // smoother ramp
+  } else {
+    return 3.4 + (r - 300) * 0.0015;
+  }
+}
+
+function cloudFactorForecast(cloud, rad) {
+
+  let cloudWeight = Math.max(0.25, 1 - (rad / 700));
+
+  let factor =
+    1 - (cloud / 100) * 0.5 * cloudWeight;
+
+  // allow upside when radiation is good
+  if (rad > 250) {
+    factor = Math.max(factor, 1.02);
+  }
+
+  return Math.max(0.7, Math.min(1.15, factor));
+}
+  
 // -------------------- SEASONAL TILT --------------------
 function getSeasonalTilt(baseTilt) {
   let s = getSettings();
@@ -770,15 +796,18 @@ function estimatePV(radSlice, cloudSlice, tempSlice, s) {
     let t = tempSlice[i] ?? 15;
     let c = cloudSlice[i];
 
-    let hourPV =
-      s.pvSize *
-      (r / 1000) *
-      (s.efficiency / 100) *
-      temperatureEfficiency(t) *
-      getOrientationFactor(s.orientation) *
-      getTiltFactor(s.tilt, i) *
-      (s.shading / 100) *
-      cloudIntensityFactor(c, r);
+    let scaledRad = r * getForecastRadScale(r);
+scaledRad = Math.min(1100, scaledRad);
+
+let hourPV =
+  s.pvSize *
+  (scaledRad / 1000) *
+  (s.efficiency / 100) *
+  temperatureEfficiency(t) *
+  getOrientationFactor(s.orientation) *
+  getTiltFactor(s.tilt, i) *
+  (s.shading / 100) *
+  cloudFactorForecast(c, r);
 
     // inverter cap per hour
     hourPV = Math.min(hourPV, s.inverter);
@@ -1228,10 +1257,6 @@ html += `
 
   let midTemp = temp[start + 12] ?? temp[start]; // safety fallback
 
-  let cloudFactorDay = cloudIntensityFactor(
-    weightedCloudAverage(cloud, rad, start),
-    avgRad
-  );
 let cloudAvg = weightedCloudAverage(cloud, rad, start);
 
 // smooth radiation stability (important!)
