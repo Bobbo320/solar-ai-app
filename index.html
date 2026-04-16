@@ -1208,11 +1208,6 @@ let exportKW = Math.min(pvSurplus, inverterHeadroom);
 // export value
 let exportValue = exportKW * s.exportRate;
  
-// FINAL corrected PV FIRST
-let rawNowPV = nowPV;
-nowPV = applyCalibration(rawNowPV, "live") * GLOBAL_PV_BIAS_LIVE;
-nowPV = Math.min(nowPV, s.inverter);
-
 // NOW compute status using FINAL value
 let status = "";
 
