@@ -875,9 +875,16 @@ function getHourlyLoad(s, hour = new Date().getHours()) {
 
   if (!batteryFull) return 0;
 
-  const surplus = pvKW - loadKW;
+  // remaining inverter headroom after serving load
+  const inverterHeadroom = Math.max(0, s.inverter - loadKW);
 
-  return Math.max(0, surplus);
+  // PV surplus after load
+  const pvSurplus = Math.max(0, pvKW - loadKW);
+
+  // export is limited by BOTH PV surplus and inverter headroom
+  const exportKW = Math.min(pvSurplus, inverterHeadroom);
+
+  return exportKW;
 }
   
 function calculateChargePlan(pvForecast, s, confidence) {
