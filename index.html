@@ -176,6 +176,25 @@
 const SOLAR_THRESHOLD = 50;        // used for real PV calculations
 const SOLAR_VISIBLE_THRESHOLD = 30; // used for solar time window display
   const SYSTEM_LOSS = 0.98; // wiring, inverter, mismatch
+
+const Store = {
+  getPV() {
+    return JSON.parse(localStorage.getItem("pvData") || "{}");
+  },
+
+  setPV(data) {
+    localStorage.setItem("pvData", JSON.stringify(data));
+  },
+
+  getSettings() {
+    return JSON.parse(localStorage.getItem("settings") || "{}");
+  },
+
+  setSettings(settings) {
+    localStorage.setItem("settings", JSON.stringify(settings));
+  }
+};
+  
 let GLOBAL_PV_BIAS_LIVE = 1;
 let GLOBAL_PV_BIAS_FORECAST = 1;
 let LIVE_ADJUSTMENT = 1;
@@ -189,11 +208,10 @@ function getLocalDateKey(d = new Date()) {
 // -------------------- PV DATA + AUTO TUNING --------------------
 
 function getPVData() {
-  return JSON.parse(localStorage.getItem("pvData") || "{}");
+  return Store.getPV();
 }
-
 function savePVData(data) {
-  localStorage.setItem("pvData", JSON.stringify(data));
+  Store.setPV(data);
 }
 function shouldUpdateExpectedPV() {
   const hour = new Date().getHours();
@@ -465,7 +483,7 @@ runAI();
   
 // -------------------- SETTINGS --------------------
 function getSettings() {
-  let s = JSON.parse(localStorage.getItem("settings") || "{}");
+  let s = Store.getSettings();
 
   return {
     postcode: s.postcode || "Norwich",
@@ -509,7 +527,7 @@ blockSize: +blockSize.value,
     exportRate: +exportRate.value,
   };
 
-  localStorage.setItem("settings", JSON.stringify(settings));
+Store.setSettings(settings);
   preloadWeather();
 
   alert("Saved");
