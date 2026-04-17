@@ -197,7 +197,7 @@ const Store = {
   
 let GLOBAL_PV_BIAS_LIVE = 1;
 let GLOBAL_PV_BIAS_FORECAST = 1;
-  let LIVE_ADJUSTMENT = 1;
+let LIVE_ADJUSTMENT = 1;
 let preloadedWeather = null;
   
 function getLocalDateKey(d = new Date()) {
@@ -1213,6 +1213,7 @@ preloadedWeather = null;
   let forecastHtml = "";
 
   // -------------------- LIVE NOW --------------------
+LIVE_ADJUSTMENT = 1;
 // Find closest hour index
 let nowIndex = time.findIndex(t => new Date(t) > now);
 if (nowIndex <= 0) nowIndex = 0;
@@ -1259,28 +1260,46 @@ let effectiveRad = Math.min(nowRad * radScale, 1000);
 
 let tiltFactor = getTiltFactor(s.tilt, hour);
 
-let nowPV = estimateCurrentHourPV(
-  s, cloud, rad, temp, nowIndex
-);
+let nowPV =
+  s.pvSize *
+  (effectiveRad / 1000) *
+  (s.efficiency / 100) *
+  temperatureEfficiency(nowTemp) *
+  getOrientationFactor(s.orientation) *
+  tiltFactor *
+  (s.shading / 100) *
+  cloudFactorLiveSoft;
 
-// apply calibration ONCE
-nowPV = applyCalibration(nowPV, "live");
+// calibration + learning layer
+let rawNowPV = nowPV;
+nowPV = applyCalibration(rawNowPV, "live") * GLOBAL_PV_BIAS_LIVE;
 
-// safety caps only
+// inverter constraint
 nowPV = Math.min(nowPV, s.inverter * 0.98);
+
+// final sanity clamp (THIS is the important one)
 nowPV = Math.min(nowPV, s.pvSize * 1.05);
+  let loadKW = getHourlyLoad(s, hour);
 
 // -------------------- LIVE vs FORECAST RECONCILIATION --------------------
 
-let forecastNowPV = estimateCurrentHourPV(
+let forecastNowPV_raw = estimateCurrentHourPV(
   s, cloud, rad, temp, nowIndex
 );
 
-forecastNowPV = applyCalibration(forecastNowPV, "forecast");
+let forecastNowPV = applyCalibration(forecastNowPV_raw, "forecast");
 
-// choose ONE stable interpretation:
-let nowPV = forecastNowPV;
-  
+let liveErrorRatio =
+  forecastNowPV > 0 ? nowPV / forecastNowPV : 1;
+
+liveErrorRatio = Math.max(0.6, Math.min(1.4, liveErrorRatio));
+
+// smooth but LOCAL (not global)
+LIVE_ADJUSTMENT =
+  LIVE_ADJUSTMENT * 0.7 + liveErrorRatio * 0.3;
+
+nowPV = forecastNowPV * LIVE_ADJUSTMENT;
+
 // -------------------- EXPORT (FIXED PHYSICS MODEL) --------------------
 
 // inverter headroom = max possible output minus household load
