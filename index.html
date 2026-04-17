@@ -1314,9 +1314,6 @@ localStorage.setItem("liveAdjustment", LIVE_ADJUSTMENT);
 // FINAL APPLY (keep this)
 nowPV = forecastNowPV * LIVE_ADJUSTMENT;
   
-if (Math.abs(liveErrorRatio - 1) < 0.03) {
-  LIVE_ADJUSTMENT = LIVE_ADJUSTMENT * 0.99 + 1 * 0.01;
-}
 
 // -------------------- EXPORT (FIXED PHYSICS MODEL) --------------------
 
