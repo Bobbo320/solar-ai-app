@@ -1296,11 +1296,9 @@ let forecastNowPV =
     "forecast"
   );
 
-// compare live vs forecast
 let liveErrorRatio =
   forecastNowPV > 0 ? (nowPV / forecastNowPV) : 1;
 
-// clamp sanity
 liveErrorRatio = Math.max(0.7, Math.min(1.3, liveErrorRatio));
 
 let learningRate = nowRad > 200 ? 0.18 : 0.10;
@@ -1310,6 +1308,9 @@ LIVE_ADJUSTMENT =
   liveErrorRatio * learningRate;
 
 localStorage.setItem("liveAdjustment", LIVE_ADJUSTMENT);
+
+// FINAL APPLY (keep this)
+nowPV = forecastNowPV * LIVE_ADJUSTMENT;
 
 
 // -------------------- EXPORT (FIXED PHYSICS MODEL) --------------------
