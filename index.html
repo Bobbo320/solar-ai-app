@@ -1259,26 +1259,14 @@ let effectiveRad = Math.min(nowRad * radScale, 1000);
 
 let tiltFactor = getTiltFactor(s.tilt, hour);
 
-let nowPV =
-  s.pvSize *
-  (effectiveRad / 1000) *
-  (s.efficiency / 100) *
-  temperatureEfficiency(nowTemp) *
-  getOrientationFactor(s.orientation) *
-  tiltFactor *
-  (s.shading / 100) *
-  cloudFactorLiveSoft;
+let nowPV = estimateCurrentHourPV(
+  s, cloud, rad, temp, nowIndex
+);
 
-// calibration + learning layer
-let rawNowPV = nowPV;
-nowPV = applyCalibration(rawNowPV, "live") * GLOBAL_PV_BIAS_LIVE;
+nowPV = applyCalibration(nowPV, "live");
 
-// inverter constraint
 nowPV = Math.min(nowPV, s.inverter * 0.98);
-
-// final sanity clamp (THIS is the important one)
 nowPV = Math.min(nowPV, s.pvSize * 1.05);
-  let loadKW = getHourlyLoad(s, hour);
 
 // -------------------- LIVE vs FORECAST RECONCILIATION --------------------
 
