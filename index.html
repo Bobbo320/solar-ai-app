@@ -1320,12 +1320,21 @@ if (nowRad < 20) {
 }
   
 // Format time nicely
-let nowTimeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+let start = new Date(now);
+start.setMinutes(0, 0, 0);
+
+let end = new Date(start);
+end.setHours(end.getHours() + 1);
+
+let nowTimeStr =
+  start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) +
+  " – " +
+  end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
 // Build UI card
 html += `
   <div class="card">
-    <h3>☀️ Next Hour (${nowTimeStr})</h3>
+    <h3>☀️ Live Window (${nowTimeStr})</h3>
 
     <b>Radiation:</b> ${nowRad.toFixed(0)} W/m²<br>
     <b>Estimated Live PV:</b> ${nowPV.toFixed(2)} kW<br>
@@ -1341,7 +1350,9 @@ html += `
   <div class="cloud-bar-fill" style="width:${(Math.pow(cloudInfo.intensity, 0.7) * 100).toFixed(0)}%"></div>
 </div>
     <b>Temp:</b> ${nowTemp.toFixed(1)}°C<br>
-    <b>Effective Tilt:</b> ${getSeasonalTilt(s.tilt).toFixed(1)}°<br>
+    let tiltPerf = getTiltFactor(s.tilt, hour);
+
+<b>Tilt Efficiency:</b> ${(tiltPerf * 100).toFixed(0)}%
 
     <br><b>Status:</b> ${status}
   </div>
