@@ -53,7 +53,7 @@
 <h2>⚡ Solar SOC AI Pro</h2>
 
 <button onclick="toggleSettings()">⚙️ Settings</button>
-<button onclick="requestAnimationFrame(runAI)">Summary</button>
+<button onclick="runAI()">Summary</button>
 <button onclick="togglePVTab()">📊 PV Data</button>
   
 <div id="settingsPanel" class="card hidden">
@@ -172,7 +172,8 @@
 <div id="output"></div>
 
 <script>
-
+let RUN_AI_LOCK = false;
+let RUN_AI_TOKEN = 0;
 const SOLAR_THRESHOLD = 50;        // used for real PV calculations
 const SOLAR_VISIBLE_THRESHOLD = 30; // used for solar time window display
   const SYSTEM_LOSS = 0.98; // wiring, inverter, mismatch
@@ -1185,16 +1186,24 @@ function estimateCurrentHourPV(s, cloud, rad, temp, hourIndex) {
   
 // -------------------- MAIN --------------------
 async function runAI() {
+  if (RUN_AI_LOCK) return; // prevent stacking runs
+  RUN_AI_LOCK = true;
 
-preloadedWeather = null;
-  const now = new Date();
-  const hour = now.getHours();
+  const token = ++RUN_AI_TOKEN; // identify this run
 
-  let s = getSettings();
-  loading.innerText = "Loading...";
+  try {
+    preloadedWeather = null;
 
-  let tomorrowSOCValue = null;
- let weatherData = await getWeather(s.postcode);
+    const now = new Date();
+    const hour = now.getHours();
+
+    let s = getSettings();
+    loading.innerText = "Loading...";
+
+    let weatherData = await getWeather(s.postcode);
+
+    // If another run started while we were waiting, stop here
+    if (token !== RUN_AI_TOKEN) return;
 
   let cloud = weatherData.hourly.cloudcover;
   let rad = weatherData.hourly.shortwave_radiation;
@@ -1665,6 +1674,10 @@ refreshExpectedPVAfterManualChange();
 
 closeEditor();
 renderPVTable();
+  } finally {
+  RUN_AI_LOCK = false;
+  loading.innerText = "";
+}
 runAI();
 }
 // -------------------- INIT --------------------
