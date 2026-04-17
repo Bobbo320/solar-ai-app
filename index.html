@@ -334,8 +334,8 @@ if (diffDays < -1 || diffDays > 90) return;
     if (ratio < 0.3 || ratio > 1.7) return;
     if (row.expected < 1) return;
 
-    let weight = Math.pow(row.expected, 1.2);
-
+    let weight = row.expected + 1;
+    
     weightedManual += row.manual * weight;
     weightedExpected += row.expected * weight;
 
@@ -689,11 +689,7 @@ function lowLightFactor(rad) {
 }
   
 function getForecastRadScale(r) {
-  // smoother UK-realistic curve
-  if (r < 80) return 1.6;
-  if (r < 200) return 1.6 + (r - 80) * 0.004;
-  if (r < 500) return 2.1 + (r - 200) * 0.0022;
-  return 2.75;
+  return 1 + Math.min(0.6, r / 1200);
 }
 
 function getTiltFactor(tilt, hourIndex) {
@@ -720,21 +716,18 @@ function getEffectiveIrradiance(dni, dhi, tiltFactor) {
 }
   
 function cloudFactorForecast(cloud, rad) {
-
-  // reduce aggressive stacking with radiation
   let cloudNorm = cloud / 100;
 
-  // radiation already contains cloud effects from API → soften impact
-  let radWeight = Math.min(1, rad / 500);
+  let radBoost = Math.min(1, rad / 300);
 
-  let factor = 1 - cloudNorm * (0.6 - 0.3 * radWeight);
+  let base = 1 - cloudNorm * (0.55 - 0.25 * radBoost);
 
-  // light cloud boost realism
-  if (cloud < 30 && rad > 250) {
-    factor *= 1.08;
+  // 🔥 UK broken-cloud uplift (key fix)
+  if (cloud > 20 && cloud < 80 && rad > 250) {
+    base *= 1.15; // critical missing physics
   }
 
-  return Math.max(0.65, Math.min(1.08, factor));
+  return Math.max(0.60, Math.min(1.25, base));
 }
 // -------------------- SEASONAL TILT --------------------
  
@@ -1301,12 +1294,16 @@ let liveErrorRatio =
 
 liveErrorRatio = Math.max(0.7, Math.min(1.3, liveErrorRatio));
 
-let learningRate = nowRad > 200 ? 0.18 : 0.10;
+let learningRate = nowRad > 200 ? 0.25 : 0.15;
 
 LIVE_ADJUSTMENT =
   LIVE_ADJUSTMENT * (1 - learningRate) +
   liveErrorRatio * learningRate;
-
+  
+if (nowCloud < 20 && nowRad > 400) {
+  cloudFactorLiveSoft = Math.min(1.18, cloudFactorLiveSoft);
+}
+  
 localStorage.setItem("liveAdjustment", LIVE_ADJUSTMENT);
 
 nowPV = forecastNowPV * LIVE_ADJUSTMENT;
@@ -1480,8 +1477,8 @@ preloadedWeather = null;
   // calibration
 let rawPV = basePV;
 let pv =
-  applyCalibration(rawPV, "forecast") *
-  LIVE_ADJUSTMENT;
+ let pv = applyCalibration(rawPV, "forecast");
+pv *= LIVE_ADJUSTMENT;
 
 // store expected PV for today + tomorrow
 storeExpectedPV(d, pv);
