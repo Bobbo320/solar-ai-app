@@ -1184,7 +1184,8 @@ let temp = weatherData.hourly.temperature_2m;
 let hum = weatherData.hourly.relativehumidity_2m;
 let precip = weatherData.hourly.precipitation;
 let time = weatherData.hourly.time;
-
+let now = new Date();
+let hour = now.getHours();
   let html = "";
 let forecastHtml = "";
 
@@ -1328,7 +1329,6 @@ let nowTimeStr =
   " – " +
   end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   
-let hour = new Date().getHours();
 let tiltPerf = getTiltFactor(s.tilt, hour);
   
 // Build UI card
