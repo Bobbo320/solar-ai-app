@@ -1594,7 +1594,10 @@ html += `
 html += forecastHtml;
 
 output.innerHTML = html;
-  
+  } finally {
+  RUN_AI_LOCK = false;
+  loading.innerText = "";
+}
 };
 let currentEditDate = null;
 
@@ -1674,10 +1677,6 @@ refreshExpectedPVAfterManualChange();
 
 closeEditor();
 renderPVTable();
-  } finally {
-  RUN_AI_LOCK = false;
-  loading.innerText = "";
-}
 runAI();
 }
 // -------------------- INIT --------------------
