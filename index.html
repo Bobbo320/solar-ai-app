@@ -1462,22 +1462,10 @@ let confidence =
   (0.55 * (1 - cloudPenalty) +
    0.45 * (1 - instability));
 
-// clamp
-confidence = Math.max(35, Math.min(98, confidence));
-let dayData = extractDay(weatherData, d);
-
-let basePV = estimatePV(
-  rad.slice(start, start + 24),
-  cloud.slice(start, start + 24),
-  temp.slice(start, start + 24),
-  s,
-  dayData
-);
-preloadedWeather = null;
-  // calibration
+// calibration
 let rawPV = basePV;
-let pv =
- let pv = applyCalibration(rawPV, "forecast");
+
+let pv = applyCalibration(rawPV, "forecast");
 pv *= LIVE_ADJUSTMENT;
 
 // store expected PV for today + tomorrow
