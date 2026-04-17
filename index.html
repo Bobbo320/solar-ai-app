@@ -1199,7 +1199,7 @@ async function runAI() {
 
     let s = getSettings();
     loading.innerText = "Loading...";
-
+  let tomorrowSOCValue = null;   // ✅ ADD THIS LINE HERE
     let weatherData = await getWeather(s.postcode);
 
     // If another run started while we were waiting, stop here
@@ -1505,10 +1505,8 @@ date.setDate(date.getDate() + d);
 let key = getLocalDateKey(date);
 let entry = pvData[key];
 
-  // ✅ SOC calculation
-  // ----------------------------
+
 // CLEAN ENERGY PIPELINE (FIXED)
-// ----------------------------
 
 let chargePlan = calculateChargePlan(pv, s, confidence);
 let soc = chargePlan.soc;
