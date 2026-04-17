@@ -1543,7 +1543,7 @@ html += `
      ${
   tomorrowSOCValue !== null
     ? `
-      ⚡ ${tomorrowSOCValue.energy.toFixed(1)} kWh charge
+    tomorrowSOCValue?.energy?.toFixed(1) ?? "N/A"
       <br>
   ${
 (() => {
