@@ -209,6 +209,18 @@
 let RUN_AI_LOCK = false;
 let RUN_AI_TOKEN = 0;
 let LAST_BREAKDOWN = null;
+
+  const pretty = {
+  cloud: "Cloud Impact",
+  tilt: "Tilt Impact",
+  temperature: "Temp Impact",
+  orientation: "Orientation",
+  shading: "Shading",
+  calibration: "Calibration",
+  inverter: "Inverter Limit",
+  learning: "AI Learning"
+};
+  
 const SOLAR_THRESHOLD = 50;        // used for real PV calculations
 const SOLAR_VISIBLE_THRESHOLD = 30; // used for solar time window display
   const SYSTEM_LOSS = 0.98; // wiring, inverter, mismatch
@@ -388,7 +400,7 @@ function renderBreakdown() {
     return `
       <div class="bar-row ${neg ? "bar-negative" : ""}">
         <div class="bar-label">
-          ${key} : ${value.toFixed(2)} kW
+          ${pretty[key] || key.toUpperCase()} : ${value.toFixed(2)} kW
         </div>
         <div class="bar">
           <div class="bar-fill" style="width:${percent}%"></div>
@@ -1376,6 +1388,11 @@ let tempFactor = temperatureEfficiency(nowTemp);
 let tiltFactorVal = tiltFactor;
 let inverterFactor = rawNowPV / nowPVBase; // how much clipping occurred approx
 
+let calibrationSystem = getCalibrationSystem();
+let calibrationFactor = 1 + ((calibrationSystem.bias * calibrationSystem.seasonalFactor) - 1) * 0.4;
+
+let learningFactor = LIVE_ADJUSTMENT;
+    
 LAST_BREAKDOWN = buildBreakdown({
   basePV: nowPVBase,
   cloudFactor: cloudFactorLiveSoft,
@@ -1385,7 +1402,7 @@ LAST_BREAKDOWN = buildBreakdown({
   shadingFactor,
   calibrationFactor,
   inverterFactor,
-  learningFactor: LIVE_ADJUSTMENT
+  learningFactor
 });
     
 // inverter constraint
@@ -1595,9 +1612,7 @@ let basePV = estimatePV(
 preloadedWeather = null;
   // calibration
 let rawPV = basePV;
- let pv = applyCalibration(rawPV, "forecast");
-pv *= LIVE_ADJUSTMENT;
-
+let pv = applyCalibration(rawPV, "forecast");
 let forecastCalibration = LIVE_ADJUSTMENT;
 
 LAST_BREAKDOWN = buildBreakdown({
