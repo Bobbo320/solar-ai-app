@@ -197,7 +197,7 @@ const Store = {
   
 let GLOBAL_PV_BIAS_LIVE = 1;
 let GLOBAL_PV_BIAS_FORECAST = 1;
-let LIVE_ADJUSTMENT = 1;
+  let LIVE_ADJUSTMENT = 1;
 let preloadedWeather = null;
   
 function getLocalDateKey(d = new Date()) {
@@ -1213,7 +1213,6 @@ preloadedWeather = null;
   let forecastHtml = "";
 
   // -------------------- LIVE NOW --------------------
-LIVE_ADJUSTMENT = 1;
 // Find closest hour index
 let nowIndex = time.findIndex(t => new Date(t) > now);
 if (nowIndex <= 0) nowIndex = 0;
@@ -1289,16 +1288,14 @@ let forecastNowPV_raw = estimateCurrentHourPV(
 
 let forecastNowPV = applyCalibration(forecastNowPV_raw, "forecast");
 
-let liveErrorRatio =
-  forecastNowPV > 0 ? nowPV / forecastNowPV : 1;
+let forecastNowPV = estimateCurrentHourPV(
+  s, cloud, rad, temp, nowIndex
+);
 
-liveErrorRatio = Math.max(0.6, Math.min(1.4, liveErrorRatio));
+forecastNowPV = applyCalibration(forecastNowPV, "forecast");
 
-// smooth but LOCAL (not global)
-LIVE_ADJUSTMENT =
-  LIVE_ADJUSTMENT * 0.7 + liveErrorRatio * 0.3;
-
-nowPV = forecastNowPV * LIVE_ADJUSTMENT;
+// choose ONE stable interpretation:
+let nowPV = forecastNowPV;
 
 // -------------------- EXPORT (FIXED PHYSICS MODEL) --------------------
 
