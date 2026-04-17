@@ -1330,7 +1330,10 @@ let nowTimeStr =
   start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) +
   " – " +
   end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
+  
+let hour = new Date().getHours();
+let tiltPerf = getTiltFactor(s.tilt, hour);
+  
 // Build UI card
 html += `
   <div class="card">
@@ -1339,20 +1342,19 @@ html += `
     <b>Radiation:</b> ${nowRad.toFixed(0)} W/m²<br>
     <b>Estimated Live PV:</b> ${nowPV.toFixed(2)} kW<br>
 
-   <b>Estimated Load:</b> ${loadKW.toFixed(2)} kW<br>
-<b>Estimated Export:</b> ${exportKW.toFixed(2)} kW<br>
-<b>Estimated Export Income:</b> £${exportValue.toFixed(2)}/hr<br>
+    <b>Estimated Load:</b> ${loadKW.toFixed(2)} kW<br>
+    <b>Estimated Export:</b> ${exportKW.toFixed(2)} kW<br>
+    <b>Estimated Export Income:</b> £${exportValue.toFixed(2)}/hr<br>
 
     <b>Cloud:</b> ${nowCloud.toFixed(0)}%<br>
     <b>Cloud Type:</b> ${cloudInfo.label}<br>
 
-<div class="cloud-bar">
-  <div class="cloud-bar-fill" style="width:${(Math.pow(cloudInfo.intensity, 0.7) * 100).toFixed(0)}%"></div>
-</div>
-    <b>Temp:</b> ${nowTemp.toFixed(1)}°C<br>
-    let tiltPerf = getTiltFactor(s.tilt, hour);
+    <div class="cloud-bar">
+      <div class="cloud-bar-fill" style="width:${(Math.pow(cloudInfo.intensity, 0.7) * 100).toFixed(0)}%"></div>
+    </div>
 
-<b>Tilt Efficiency:</b> ${(tiltPerf * 100).toFixed(0)}%
+    <b>Temp:</b> ${nowTemp.toFixed(1)}°C<br>
+    <b>Tilt Efficiency:</b> ${(tiltPerf * 100).toFixed(0)}%<br>
 
     <br><b>Status:</b> ${status}
   </div>
