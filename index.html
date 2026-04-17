@@ -1285,7 +1285,8 @@ rawNowPV = Math.min(rawNowPV, s.pvSize * 1.05);
  let loadKW = getHourlyLoad(s, hour);
   
 // assign FINAL value ONCE
-let nowPV = rawNowPV;
+const livePV = rawNowPV; // SNAPSHOT (never changes)
+let nowPV = livePV;       // display only
 
 // -------------------- LIVE vs FORECAST RECONCILIATION --------------------
 
