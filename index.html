@@ -1243,6 +1243,8 @@ let effectiveRad = Math.min(nowRad * radScale, 1000);
 
 let tiltFactor = getTiltFactor(s.tilt, hour);
 
+// -------------------- LIVE PV --------------------
+
 let nowPV =
   s.pvSize *
   (effectiveRad / 1000) *
@@ -1254,9 +1256,7 @@ let nowPV =
   cloudFactorLiveSoft;
 
 debugLog("LIVE_PV", nowPV);
-debugLog("FORECAST_PV", forecastNowPV);
-debugLog("SOC", tomorrowSOCValue);
-  
+
 // calibration + learning layer
 let rawNowPV = nowPV;
 nowPV = applyCalibration(rawNowPV, "live") * GLOBAL_PV_BIAS_LIVE;
@@ -1264,11 +1264,12 @@ nowPV = applyCalibration(rawNowPV, "live") * GLOBAL_PV_BIAS_LIVE;
 // inverter constraint
 nowPV = Math.min(nowPV, s.inverter * 0.98);
 
-// final sanity clamp (THIS is the important one)
+// final clamp
 nowPV = Math.min(nowPV, s.pvSize * 1.05);
-  let loadKW = getHourlyLoad(s, hour);
 
-// -------------------- LIVE vs FORECAST RECONCILIATION --------------------
+let loadKW = getHourlyLoad(s, hour);
+
+// -------------------- FORECAST (DEFINE FIRST) --------------------
 
 let forecastNowPV_raw = estimateCurrentHourPV(
   s, cloud, rad, temp, nowIndex
@@ -1276,7 +1277,12 @@ let forecastNowPV_raw = estimateCurrentHourPV(
 
 let forecastNowPV = applyCalibration(forecastNowPV_raw, "forecast");
 
-debugLog("FORECAST_PV", forecastNowPV); // ✅ NOW safe
+// NOW SAFE TO LOG
+debugLog("FORECAST_PV", forecastNowPV);
+
+debugLog("SOC", tomorrowSOCValue);
+
+// -------------------- RECONCILIATION --------------------
 
 let liveErrorRatio =
   forecastNowPV > 0 ? nowPV / forecastNowPV : 1;
@@ -1287,7 +1293,6 @@ LIVE_ADJUSTMENT =
   LIVE_ADJUSTMENT * 0.7 + liveErrorRatio * 0.3;
 
 nowPV = forecastNowPV * LIVE_ADJUSTMENT;
-
 // -------------------- EXPORT (FIXED PHYSICS MODEL) --------------------
 
 // inverter headroom = max possible output minus household load
