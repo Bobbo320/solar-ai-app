@@ -1487,7 +1487,7 @@ let entry = pvData[key];
 let chargePlan = calculateChargePlan(pv, s, confidence);
 let soc = chargePlan.soc;
 
-if (d === 1 && tomorrowSOCValue === null) {
+if (d === 1) {
   tomorrowSOCValue = {
     soc: chargePlan.soc,
     energy: chargePlan.energy,
