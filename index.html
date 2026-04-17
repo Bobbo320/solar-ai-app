@@ -844,9 +844,9 @@ function estimatePV(radSlice, cloudSlice, tempSlice, s, dayData) {
     let t = tempSlice[i] ?? 15;
     let c = cloudSlice[i];
 
-    let dni = dayData?.dni?.[i] ?? scaledRad;
-let dhi = dayData?.dhi?.[i] ?? scaledRad * 0.35;
-
+    let dni = dayData?.dni?.[i] ?? r;
+let dhi = dayData?.dhi?.[i] ?? r * 0.35;
+    
    let effectiveRad = getEffectiveIrradiance(
   dni,
   dhi,
