@@ -44,6 +44,33 @@
   width: 0%;
   transition: width 0.3s ease;
 }
+    .bar-row {
+  margin: 6px 0;
+}
+
+.bar-label {
+  font-size: 13px;
+  margin-bottom: 2px;
+}
+
+.bar {
+  width: 100%;
+  height: 10px;
+  background: #334155;
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  background: #22c55e;
+  width: 0%;
+  transition: width 0.25s ease;
+}
+
+.bar-negative .bar-fill {
+  background: #ef4444;
+}
   </style>
   <link rel="icon" href="data:,">
 </head>
@@ -55,6 +82,7 @@
 <button onclick="toggleSettings()">⚙️ Settings</button>
 <button onclick="runAI()">Summary</button>
 <button onclick="togglePVTab()">📊 PV Data</button>
+ <button onclick="toggleBreakdown()">🧠 Breakdown</button>
   
 <div id="settingsPanel" class="card hidden">
   <h3>Settings</h3>
@@ -154,6 +182,12 @@
     <tbody id="pvTable"></tbody>
   </table>
 </div>
+
+<div id="breakdownPanel" class="card hidden">
+  <h3>🧠 Model Breakdown</h3>
+  <div id="breakdownTitle"></div>
+  <div id="breakdownBars"></div>
+</div>
   
 <p id="loading"></p>
   <div id="pvEditor" class="card hidden">
@@ -174,6 +208,7 @@
 <script>
 let RUN_AI_LOCK = false;
 let RUN_AI_TOKEN = 0;
+let LAST_BREAKDOWN = null;
 const SOLAR_THRESHOLD = 50;        // used for real PV calculations
 const SOLAR_VISIBLE_THRESHOLD = 30; // used for solar time window display
   const SYSTEM_LOSS = 0.98; // wiring, inverter, mismatch
@@ -207,6 +242,12 @@ function getLocalDateKey(d = new Date()) {
     .toISOString()
     .split("T")[0];
 }
+
+  function toggleBreakdown() {
+  document.getElementById("breakdownPanel")
+    .classList.toggle("hidden");
+}
+  
 // -------------------- PV DATA + AUTO TUNING --------------------
 
 function getPVData() {
@@ -305,6 +346,56 @@ function rebuildExpectedPVForWindow(pvToday) {
   }
 
   savePVData(data);
+}
+  function buildBreakdown({
+  basePV,
+  cloudFactor,
+  tiltFactor,
+  tempFactor,
+  orientationFactor,
+  shadingFactor,
+  calibrationFactor,
+  inverterFactor,
+  learningFactor = 1
+}) {
+  return {
+    cloud: (cloudFactor - 1) * basePV,
+    tilt: (tiltFactor - 1) * basePV,
+    temperature: (tempFactor - 1) * basePV,
+    orientation: (orientationFactor - 1) * basePV,
+    shading: (shadingFactor - 1) * basePV,
+    calibration: (calibrationFactor - 1) * basePV,
+    inverter: (inverterFactor - 1) * basePV,
+    learning: (learningFactor - 1) * basePV
+  };
+}
+
+function renderBreakdown() {
+  if (!LAST_BREAKDOWN) return;
+
+  const container = document.getElementById("breakdownBars");
+
+  const entries = Object.entries(LAST_BREAKDOWN)
+    .filter(([_, v]) => Math.abs(v) > 0.001)
+    .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
+
+  const max = Math.max(...entries.map(e => Math.abs(e[1])), 0.001);
+
+  container.innerHTML = entries.map(([key, value]) => {
+    const percent = (Math.abs(value) / max) * 100;
+    const neg = value < 0;
+
+    return `
+      <div class="bar-row ${neg ? "bar-negative" : ""}">
+        <div class="bar-label">
+          ${key} : ${value.toFixed(2)} kW
+        </div>
+        <div class="bar">
+          <div class="bar-fill" style="width:${percent}%"></div>
+        </div>
+      </div>
+    `;
+  }).join("");
 }
   
 function getCalibrationSystem() {
@@ -1278,6 +1369,25 @@ let nowPVBase =
 // calibration
 let rawNowPV = nowPVBase;
 
+let calibrationFactor = LIVE_ADJUSTMENT;
+let orientationFactor = getOrientationFactor(s.orientation);
+let shadingFactor = s.shading / 100;
+let tempFactor = temperatureEfficiency(nowTemp);
+let tiltFactorVal = tiltFactor;
+let inverterFactor = rawNowPV / nowPVBase; // how much clipping occurred approx
+
+LAST_BREAKDOWN = buildBreakdown({
+  basePV: nowPVBase,
+  cloudFactor: cloudFactorLiveSoft,
+  tiltFactor: tiltFactorVal,
+  tempFactor,
+  orientationFactor,
+  shadingFactor,
+  calibrationFactor,
+  inverterFactor,
+  learningFactor: LIVE_ADJUSTMENT
+});
+    
 // inverter constraint
 rawNowPV = Math.min(rawNowPV, s.inverter * 0.98);
 
@@ -1488,6 +1598,20 @@ let rawPV = basePV;
  let pv = applyCalibration(rawPV, "forecast");
 pv *= LIVE_ADJUSTMENT;
 
+let forecastCalibration = LIVE_ADJUSTMENT;
+
+LAST_BREAKDOWN = buildBreakdown({
+  basePV: rawPV,
+  cloudFactor: 1, // already baked into estimatePV
+  tiltFactor: 1,
+  tempFactor: 1,
+  orientationFactor: 1,
+  shadingFactor: 1,
+  calibrationFactor: forecastCalibration,
+  inverterFactor: 1,
+  learningFactor: LIVE_ADJUSTMENT
+});
+   
 // store expected PV for today + tomorrow
 storeExpectedPV(d, pv);
 
@@ -1592,6 +1716,7 @@ html += `
 html += forecastHtml;
 
 output.innerHTML = html;
+    renderBreakdown();
   } finally {
   RUN_AI_LOCK = false;
   loading.innerText = "";
