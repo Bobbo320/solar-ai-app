@@ -220,7 +220,7 @@ function shouldUpdateExpectedPV() {
   return hour >= 10; // 10am+ improves forecast stability
 }
 function togglePVTab() {
-  pvPanel.classList.toggle("hidden");
+  document.getElementById("pvPanel").classList.toggle("hidden");
   renderPVTable();
 }
 
@@ -560,7 +560,7 @@ blockSize.value = s.blockSize;
 }
 
 function toggleSettings() {
-  settingsPanel.classList.toggle("hidden");
+  document.getElementById("settingsPanel").classList.toggle("hidden");
   loadSettingsToUI();
 }
 
@@ -1587,7 +1587,7 @@ function openEditor(date) {
 }
 
 function closeEditor() {
-  pvEditor.classList.add("hidden");
+  document.getElementById("pvEditor").classList.add("hidden");
   currentEditDate = null;
 }
 
