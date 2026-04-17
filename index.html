@@ -82,7 +82,7 @@
 <button onclick="toggleSettings()">⚙️ Settings</button>
 <button onclick="runAI()">Summary</button>
 <button onclick="togglePVTab()">📊 PV Data</button>
- <button onclick="toggleBreakdownMode()">🧠 Breakdown</button>
+ <button onclick="toggleBreakdown()">🧠 Breakdown</button>
   
 <div id="settingsPanel" class="card hidden">
   <h3>Settings</h3>
@@ -184,7 +184,7 @@
 </div>
 
 <div id="breakdownPanel" class="card hidden">
-  <h3>🧠 Model Breakdown <span id="breakModeLabel"></span></h3>
+  <h3>🧠 Model Breakdown</h3>
   <div id="breakdownTitle"></div>
   <div id="breakdownBars"></div>
 </div>
@@ -235,9 +235,6 @@ let GLOBAL_PV_BIAS_LIVE = 1;
 let GLOBAL_PV_BIAS_FORECAST = 1;
 let LIVE_ADJUSTMENT =
   parseFloat(localStorage.getItem("liveAdjustment")) || 1;
-  let BREAKDOWN_MODE = "live"; // "live" | "forecast"
-let LAST_LIVE_BREAKDOWN = null;
-let LAST_FORECAST_BREAKDOWN = null;
 let preloadedWeather = null;
 let LIVE_UPDATED_THIS_SESSION = false;  
 function getLocalDateKey(d = new Date()) {
@@ -246,18 +243,10 @@ function getLocalDateKey(d = new Date()) {
     .split("T")[0];
 }
 
-window.addEventListener("error", (e) => {
-  console.error("Global error caught:", e.message);
-});
-  
-window.toggleBreakdown = function () {
-  const panel = document.getElementById("breakdownPanel");
-  panel.classList.toggle("hidden");
-
-  if (!panel.classList.contains("hidden")) {
-    renderBreakdown();
-  }
-};
+  function toggleBreakdown() {
+  document.getElementById("breakdownPanel")
+    .classList.toggle("hidden");
+}
   
 // -------------------- PV DATA + AUTO TUNING --------------------
 
@@ -360,58 +349,39 @@ function rebuildExpectedPVForWindow(pvToday) {
 }
   function buildBreakdown({
   basePV,
-  cloudFactor = 1,
-  tiltFactor = 1,
-  tempFactor = 1,
-  orientationFactor = 1,
-  shadingFactor = 1,
-  calibrationFactor = 1,
-  inverterFactor = 1,
+  cloudFactor,
+  tiltFactor,
+  tempFactor,
+  orientationFactor,
+  shadingFactor,
+  calibrationFactor,
+  inverterFactor,
   learningFactor = 1
 }) {
-
-  const factors = {
-    cloud: cloudFactor,
-    tilt: tiltFactor,
-    temperature: tempFactor,
-    orientation: orientationFactor,
-    shading: shadingFactor,
-    calibration: calibrationFactor,
-    inverter: inverterFactor,
-    learning: learningFactor
+  return {
+    cloud: (cloudFactor - 1) * basePV,
+    tilt: (tiltFactor - 1) * basePV,
+    temperature: (tempFactor - 1) * basePV,
+    orientation: (orientationFactor - 1) * basePV,
+    shading: (shadingFactor - 1) * basePV,
+    calibration: (calibrationFactor - 1) * basePV,
+    inverter: (inverterFactor - 1) * basePV,
+    learning: (learningFactor - 1) * basePV
   };
-
-  let out = {};
-
-  for (let k in factors) {
-    out[k] = (factors[k] - 1) * basePV;
-  }
-
-  return out;
-}
-  
-  function toggleBreakdownMode() {
-  BREAKDOWN_MODE = BREAKDOWN_MODE === "live" ? "forecast" : "live";
-  renderBreakdown();
 }
 
 function renderBreakdown() {
+  if (!LAST_BREAKDOWN) return;
+
   const container = document.getElementById("breakdownBars");
-  if (!container) return;
 
-  if (!LAST_BREAKDOWN) {
-    container.innerHTML = "<i>No breakdown data yet</i>";
-    return;
-  }
-
-  const entries = Object.entries(data)
+  const entries = Object.entries(LAST_BREAKDOWN)
     .filter(([_, v]) => Math.abs(v) > 0.001)
     .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
 
   const max = Math.max(...entries.map(e => Math.abs(e[1])), 0.001);
 
   container.innerHTML = entries.map(([key, value]) => {
-
     const percent = (Math.abs(value) / max) * 100;
     const neg = value < 0;
 
@@ -1381,7 +1351,8 @@ radScale = Math.min(radScale, 1.8);
 // HARD PHYSICS CAP
 let effectiveRad = Math.min(nowRad * radScale, 1000);
 
-let tiltPerfFactor = getTiltFactor(s.tilt, hour);
+let tiltFactor = getTiltFactor(s.tilt, hour);
+
 // -------------------- LIVE PV ESTIMATE --------------------
 
 // define ONCE
@@ -1405,7 +1376,7 @@ let tempFactor = temperatureEfficiency(nowTemp);
 let tiltFactorVal = tiltFactor;
 let inverterFactor = rawNowPV / nowPVBase; // how much clipping occurred approx
 
-LAST_LIVE_BREAKDOWN = buildBreakdown({
+LAST_BREAKDOWN = buildBreakdown({
   basePV: nowPVBase,
   cloudFactor: cloudFactorLiveSoft,
   tiltFactor: tiltFactorVal,
@@ -1629,9 +1600,9 @@ pv *= LIVE_ADJUSTMENT;
 
 let forecastCalibration = LIVE_ADJUSTMENT;
 
-LAST_FORECAST_BREAKDOWN = buildBreakdown({
+LAST_BREAKDOWN = buildBreakdown({
   basePV: rawPV,
-  cloudFactor: 1,
+  cloudFactor: 1, // already baked into estimatePV
   tiltFactor: 1,
   tempFactor: 1,
   orientationFactor: 1,
