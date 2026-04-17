@@ -246,10 +246,18 @@ function getLocalDateKey(d = new Date()) {
     .split("T")[0];
 }
 
-  function toggleBreakdown() {
-  document.getElementById("breakdownPanel")
-    .classList.toggle("hidden");
-}
+window.addEventListener("error", (e) => {
+  console.error("Global error caught:", e.message);
+});
+  
+window.toggleBreakdown = function () {
+  const panel = document.getElementById("breakdownPanel");
+  panel.classList.toggle("hidden");
+
+  if (!panel.classList.contains("hidden")) {
+    renderBreakdown();
+  }
+};
   
 // -------------------- PV DATA + AUTO TUNING --------------------
 
@@ -389,16 +397,10 @@ function rebuildExpectedPVForWindow(pvToday) {
 
 function renderBreakdown() {
   const container = document.getElementById("breakdownBars");
+  if (!container) return;
 
-  document.getElementById("breakModeLabel").innerText =
-    BREAKDOWN_MODE === "live" ? "(Live)" : "(Forecast)";
-
-  const data =
-    BREAKDOWN_MODE === "live"
-      ? LAST_LIVE_BREAKDOWN
-      : LAST_FORECAST_BREAKDOWN;
-  if (!data) {
-    container.innerHTML = "<i>No breakdown data</i>";
+  if (!LAST_BREAKDOWN) {
+    container.innerHTML = "<i>No breakdown data yet</i>";
     return;
   }
 
@@ -1379,8 +1381,7 @@ radScale = Math.min(radScale, 1.8);
 // HARD PHYSICS CAP
 let effectiveRad = Math.min(nowRad * radScale, 1000);
 
-let tiltFactor = getTiltFactor(s.tilt, hour);
-
+let tiltPerfFactor = getTiltFactor(s.tilt, hour);
 // -------------------- LIVE PV ESTIMATE --------------------
 
 // define ONCE
