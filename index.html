@@ -172,7 +172,7 @@
 <div id="output"></div>
 
 <script>
-
+const DEBUG_MODE = true;
 const SOLAR_THRESHOLD = 50;        // used for real PV calculations
 const SOLAR_VISIBLE_THRESHOLD = 30; // used for solar time window display
   const SYSTEM_LOSS = 0.98; // wiring, inverter, mismatch
@@ -186,6 +186,12 @@ function getLocalDateKey(d = new Date()) {
     .toISOString()
     .split("T")[0];
 }
+
+  function debugLog(label, value) {
+  if (!DEBUG_MODE) return;
+  console.log(`[${label}]`, value);
+}
+  
 // -------------------- PV DATA + AUTO TUNING --------------------
 
 function getPVData() {
@@ -1247,6 +1253,10 @@ let nowPV =
   (s.shading / 100) *
   cloudFactorLiveSoft;
 
+debugLog("LIVE_PV", nowPV);
+debugLog("FORECAST_PV", forecastNowPV);
+debugLog("SOC", tomorrowSOCValue);
+  
 // calibration + learning layer
 let rawNowPV = nowPV;
 nowPV = applyCalibration(rawNowPV, "live") * GLOBAL_PV_BIAS_LIVE;
