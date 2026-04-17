@@ -1282,6 +1282,8 @@ rawNowPV = Math.min(rawNowPV, s.inverter * 0.98);
 // final clamp
 rawNowPV = Math.min(rawNowPV, s.pvSize * 1.05);
 
+ let loadKW = getHourlyLoad(s, hour);
+  
 // assign FINAL value ONCE
 let nowPV = rawNowPV;
 
