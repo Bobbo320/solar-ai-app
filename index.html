@@ -189,9 +189,11 @@ async function runAI() {
 
   try {
     // ... your existing runAI code ...
-  } finally {
+finally {
+  setTimeout(() => {
     isRunningAI = false;
-  }
+  }, 100); // small debounce buffer
+}
 }
   
 function getLocalDateKey(d = new Date()) {
@@ -479,7 +481,7 @@ refreshExpectedPVAfterManualChange();
 rebuildExpectedPVForWindow();
 
 renderPVTable();
-runAI();
+await runAI();
 }
   
 // -------------------- SETTINGS --------------------
@@ -1649,7 +1651,7 @@ refreshExpectedPVAfterManualChange();
 
 closeEditor();
 renderPVTable();
-runAI(); // optional but recommended
+await runAI();; // optional but recommended
 }
 
 function deleteEdit() {
@@ -1664,7 +1666,7 @@ refreshExpectedPVAfterManualChange();
 
 closeEditor();
 renderPVTable();
-runAI();
+await runAI();
 }
 // -------------------- INIT --------------------
 window.toggleSettings = toggleSettings;
