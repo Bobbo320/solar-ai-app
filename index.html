@@ -1287,40 +1287,25 @@ rawNowPV = Math.min(rawNowPV, s.pvSize * 1.05);
 // assign FINAL value ONCE
 let nowPV = rawNowPV;
 
-// -------------------- FORECAST (single source baseline) --------------------
-let forecastNowPV = applyCalibration(
-  estimateCurrentHourPV(s, cloud, rad, temp, nowIndex),
-  "forecast"
-);
+// -------------------- LIVE vs FORECAST RECONCILIATION --------------------
 
-// -------------------- LIVE PHYSICS (no calibration here) --------------------
-let liveNowPVBase =
-  s.pvSize *
-  (effectiveRad / 1000) *
-  (s.efficiency / 100) *
-  temperatureEfficiency(nowTemp) *
-  getOrientationFactor(s.orientation) *
-  tiltFactor *
-  (s.shading / 100) *
-  cloudFactorLiveSoft;
+let forecastNowPV =
+  applyCalibration(
+    estimateCurrentHourPV(s, cloud, rad, temp, nowIndex),
+    "forecast"
+  );
 
-// inverter + physical caps only (NO calibration)
-liveNowPVBase = Math.min(liveNowPVBase, s.inverter * 0.98);
-liveNowPVBase = Math.min(liveNowPVBase, s.pvSize * 1.05);
-
-// -------------------- ERROR RATIO (single-step correction) --------------------
 let liveErrorRatio =
-  forecastNowPV > 0 ? (liveNowPVBase / forecastNowPV) : 1;
+  forecastNowPV > 0 ? (nowPV / forecastNowPV) : 1;
 
-// clamp (prevents spikes)
-liveErrorRatio = Math.max(0.75, Math.min(1.25, liveErrorRatio));
+liveErrorRatio = Math.max(0.6, Math.min(1.4, liveErrorRatio));
 
-// -------------------- SOFT ADAPTIVE BLEND (NO memory loop) --------------------
-const ALPHA = 0.25; // fixed, NOT recursive
+// smooth update
+LIVE_ADJUSTMENT =
+  LIVE_ADJUSTMENT * 0.7 + liveErrorRatio * 0.3;
 
-let nowPV =
-  forecastNowPV * (1 - ALPHA) +
-  (forecastNowPV * liveErrorRatio) * ALPHA;
+// FINAL merge (only once)
+nowPV = forecastNowPV * LIVE_ADJUSTMENT;
 
 // -------------------- EXPORT (FIXED PHYSICS MODEL) --------------------
 
