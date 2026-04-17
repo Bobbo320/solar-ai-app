@@ -673,6 +673,25 @@ function getForecastRadScale(r) {
   return 2.75;
 }
 
+function getTiltFactor(tilt, hourIndex) {
+  // crude solar position approximation (UK-friendly heuristic)
+
+  // convert hour (0–23) into solar curve (-1 to +1)
+  let solarAngle = (hourIndex - 12) / 12; // -1 at 00:00, 0 at 12:00, +1 at 24:00
+
+  // cosine bell curve for sun intensity
+  let timeFactor = Math.cos(solarAngle * Math.PI / 2);
+  timeFactor = Math.max(0, timeFactor);
+
+  // optimal tilt in UK ~ 35–40°
+  const optimalTilt = 38;
+
+  // tilt efficiency penalty
+  let tiltPenalty = 1 - Math.min(0.25, Math.abs(tilt - optimalTilt) / 180);
+
+  return timeFactor * tiltPenalty;
+}
+  
 function getEffectiveIrradiance(dni, dhi, tiltFactor) {
   return (dni * tiltFactor) + dhi;
 }
