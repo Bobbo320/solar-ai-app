@@ -53,7 +53,7 @@
 <h2>⚡ Solar SOC AI Pro</h2>
 
 <button onclick="toggleSettings()">⚙️ Settings</button>
-<button onclick="runAI()">Summary</button>
+<button onclick="requestAnimationFrame(runAI)">Summary</button>
 <button onclick="togglePVTab()">📊 PV Data</button>
   
 <div id="settingsPanel" class="card hidden">
@@ -1170,6 +1170,7 @@ function estimateCurrentHourPV(s, cloud, rad, temp, hourIndex) {
 // -------------------- MAIN --------------------
 async function runAI() {
 
+preloadedWeather = null;
   const now = new Date();
   const hour = now.getHours();
 
@@ -1177,7 +1178,7 @@ async function runAI() {
   loading.innerText = "Loading...";
 
   let tomorrowSOCValue = null;
-  let weatherData = preloadedWeather || await getWeather(s.postcode);
+ let weatherData = await getWeather(s.postcode);
 
   let cloud = weatherData.hourly.cloudcover;
   let rad = weatherData.hourly.shortwave_radiation;
@@ -1190,7 +1191,7 @@ async function runAI() {
   let forecastHtml = "";
 
   // -------------------- LIVE NOW --------------------
-
+LIVE_ADJUSTMENT = 1;
 // Find closest hour index
 let nowIndex = time.findIndex(t => new Date(t) > now);
 if (nowIndex <= 0) nowIndex = 0;
@@ -1441,7 +1442,7 @@ let basePV = estimatePV(
   s,
   dayData
 );
-
+preloadedWeather = null;
   // calibration
 let rawPV = basePV;
 let pv = applyCalibration(rawPV, "forecast");
