@@ -194,7 +194,13 @@ const Store = {
     localStorage.setItem("settings", JSON.stringify(settings));
   }
 };
-  
+
+  console.log({
+  nowPVBase,
+  rawNowPV,
+  forecastNowPV,
+  LIVE_ADJUSTMENT
+});
 let GLOBAL_PV_BIAS_LIVE = 1;
 let GLOBAL_PV_BIAS_FORECAST = 1;
 let LIVE_ADJUSTMENT =
@@ -1275,7 +1281,7 @@ let nowPVBase =
   cloudFactorLiveSoft;
 
 // calibration
-let rawNowPV = applyCalibration(nowPVBase, "live") * GLOBAL_PV_BIAS_LIVE;
+let rawNowPV = nowPVBase;
 
 // inverter constraint
 rawNowPV = Math.min(rawNowPV, s.inverter * 0.98);
