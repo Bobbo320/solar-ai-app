@@ -189,11 +189,12 @@ async function runAI() {
 
   try {
     // ... your existing runAI code ...
-finally {
-  setTimeout(() => {
-    isRunningAI = false;
-  }, 100); // small debounce buffer
-}
+
+  } finally {
+    setTimeout(() => {
+      isRunningAI = false;
+    }, 100);
+  }
 }
   
 function getLocalDateKey(d = new Date()) {
