@@ -508,7 +508,7 @@ blockSize: s.blockSize ?? 0.5,
 
 function saveSettings() {
   let settings = {
-    postcode: postcode.value,
+    postcode: getEl("postcode").value,
     pvSize: +pvSize.value,
     inverter: +inverter.value,
     battery: +battery.value,
@@ -541,7 +541,7 @@ Store.setSettings(settings);
 function loadSettingsToUI() {
   let s = getSettings();
 
-  postcode.value = s.postcode;
+  getEl("postcode").value = s.postcode;
   pvSize.value = s.pvSize;
   inverter.value = s.inverter;
   battery.value = s.battery;
@@ -564,6 +564,10 @@ function toggleSettings() {
   loadSettingsToUI();
 }
 
+function getEl(id) {
+  return document.getElementById(id);
+}
+  
 // -------------------- CACHE --------------------
 function getCache(key) {
   return JSON.parse(localStorage.getItem(key) || "null");
