@@ -195,12 +195,6 @@ const Store = {
   }
 };
 
-  console.log({
-  nowPVBase,
-  rawNowPV,
-  forecastNowPV,
-  LIVE_ADJUSTMENT
-});
 let GLOBAL_PV_BIAS_LIVE = 1;
 let GLOBAL_PV_BIAS_FORECAST = 1;
 let LIVE_ADJUSTMENT =
@@ -1293,6 +1287,14 @@ rawNowPV = Math.min(rawNowPV, s.pvSize * 1.05);
   
 // assign FINAL value ONCE
 let nowPV = rawNowPV;
+
+  console.log({
+  nowPVBase,
+  rawNowPV,
+  forecastNowPV,
+  LIVE_ADJUSTMENT,
+  nowPV
+});
 
 // -------------------- LIVE vs FORECAST RECONCILIATION --------------------
 
