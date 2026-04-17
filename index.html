@@ -714,6 +714,25 @@ function getSeasonalTilt(baseTilt) {
 
   return summerTilt * (1 - seasonalFactor) + winterTilt * seasonalFactor;
 }
+
+function getTiltFactor(baseTilt, hour) {
+  // Approximate sun position curve (UK-friendly heuristic)
+
+  // 1 = noon peak, 0 = night
+  const timeFactor = Math.max(
+    0,
+    Math.cos(((hour - 12) / 12) * Math.PI)
+  );
+
+  // optimal UK panel tilt ~30–40°
+  const optimalTilt = 35;
+
+  // penalty for being too far from optimal tilt
+  const tiltPenalty =
+    1 - Math.min(0.25, Math.abs(baseTilt - optimalTilt) * 0.005);
+
+  return timeFactor * tiltPenalty;
+}
   
 function temperatureEfficiency(t) {
   let f = 1 + ((t - 25) * -0.004);
