@@ -172,7 +172,7 @@
 <div id="output"></div>
 
 <script>
-const DEBUG_MODE = true;
+
 const SOLAR_THRESHOLD = 50;        // used for real PV calculations
 const SOLAR_VISIBLE_THRESHOLD = 30; // used for solar time window display
   const SYSTEM_LOSS = 0.98; // wiring, inverter, mismatch
@@ -180,34 +180,12 @@ let GLOBAL_PV_BIAS_LIVE = 1;
 let GLOBAL_PV_BIAS_FORECAST = 1;
 let LIVE_ADJUSTMENT = 1;
 let preloadedWeather = null;
-
-let isRunningAI = false;
-
-async function runAI() {
-  if (isRunningAI) return;
-  isRunningAI = true;
-
-  try {
-    // ... your existing runAI code ...
-
-  } finally {
-    setTimeout(() => {
-      isRunningAI = false;
-    }, 100);
-  }
-}
   
 function getLocalDateKey(d = new Date()) {
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000)
     .toISOString()
     .split("T")[0];
 }
-
-  function debugLog(label, value) {
-  if (!DEBUG_MODE) return;
-  console.log(`[${label}]`, value);
-}
-  
 // -------------------- PV DATA + AUTO TUNING --------------------
 
 function getPVData() {
@@ -482,7 +460,7 @@ refreshExpectedPVAfterManualChange();
 rebuildExpectedPVForWindow();
 
 renderPVTable();
-await runAI();
+runAI();
 }
   
 // -------------------- SETTINGS --------------------
@@ -735,25 +713,6 @@ function getSeasonalTilt(baseTilt) {
     (Math.cos((2 * Math.PI * (day - 172)) / 365) + 1) / 2;
 
   return summerTilt * (1 - seasonalFactor) + winterTilt * seasonalFactor;
-}
-
-function getTiltFactor(baseTilt, hour) {
-  // Approximate sun position curve (UK-friendly heuristic)
-
-  // 1 = noon peak, 0 = night
-  const timeFactor = Math.max(
-    0,
-    Math.cos(((hour - 12) / 12) * Math.PI)
-  );
-
-  // optimal UK panel tilt ~30–40°
-  const optimalTilt = 35;
-
-  // penalty for being too far from optimal tilt
-  const tiltPenalty =
-    1 - Math.min(0.25, Math.abs(baseTilt - optimalTilt) * 0.005);
-
-  return timeFactor * tiltPenalty;
 }
   
 function temperatureEfficiency(t) {
@@ -1259,8 +1218,6 @@ let effectiveRad = Math.min(nowRad * radScale, 1000);
 
 let tiltFactor = getTiltFactor(s.tilt, hour);
 
-// -------------------- LIVE PV --------------------
-
 let nowPV =
   s.pvSize *
   (effectiveRad / 1000) *
@@ -1271,8 +1228,6 @@ let nowPV =
   (s.shading / 100) *
   cloudFactorLiveSoft;
 
-debugLog("LIVE_PV", nowPV);
-
 // calibration + learning layer
 let rawNowPV = nowPV;
 nowPV = applyCalibration(rawNowPV, "live") * GLOBAL_PV_BIAS_LIVE;
@@ -1280,12 +1235,11 @@ nowPV = applyCalibration(rawNowPV, "live") * GLOBAL_PV_BIAS_LIVE;
 // inverter constraint
 nowPV = Math.min(nowPV, s.inverter * 0.98);
 
-// final clamp
+// final sanity clamp (THIS is the important one)
 nowPV = Math.min(nowPV, s.pvSize * 1.05);
+  let loadKW = getHourlyLoad(s, hour);
 
-let loadKW = getHourlyLoad(s, hour);
-
-// -------------------- FORECAST (DEFINE FIRST) --------------------
+// -------------------- LIVE vs FORECAST RECONCILIATION --------------------
 
 let forecastNowPV_raw = estimateCurrentHourPV(
   s, cloud, rad, temp, nowIndex
@@ -1293,23 +1247,17 @@ let forecastNowPV_raw = estimateCurrentHourPV(
 
 let forecastNowPV = applyCalibration(forecastNowPV_raw, "forecast");
 
-// NOW SAFE TO LOG
-debugLog("FORECAST_PV", forecastNowPV);
-
-
-// -------------------- RECONCILIATION --------------------
-
 let liveErrorRatio =
   forecastNowPV > 0 ? nowPV / forecastNowPV : 1;
 
 liveErrorRatio = Math.max(0.6, Math.min(1.4, liveErrorRatio));
 
+// smooth but LOCAL (not global)
 LIVE_ADJUSTMENT =
-  Math.max(0.7, Math.min(1.3,
-    LIVE_ADJUSTMENT * 0.7 + liveErrorRatio * 0.3
-  ));
+  LIVE_ADJUSTMENT * 0.7 + liveErrorRatio * 0.3;
 
 nowPV = forecastNowPV * LIVE_ADJUSTMENT;
+
 // -------------------- EXPORT (FIXED PHYSICS MODEL) --------------------
 
 // inverter headroom = max possible output minus household load
@@ -1369,7 +1317,7 @@ html += `
     <h3>☀️ Live Window (${nowTimeStr})</h3>
 
     <b>Radiation:</b> ${nowRad.toFixed(0)} W/m²<br>
-    <b>Average Live PV:</b> ${nowPV.toFixed(2)} kW<br>
+    <b>Estimated Live PV:</b> ${nowPV.toFixed(2)} kW<br>
 
     <b>Estimated Load:</b> ${loadKW.toFixed(2)} kW<br>
     <b>Estimated Export:</b> ${exportKW.toFixed(2)} kW<br>
@@ -1504,7 +1452,7 @@ let entry = pvData[key];
 let chargePlan = calculateChargePlan(pv, s, confidence);
 let soc = chargePlan.soc;
 
-if (d === 1) {
+if (d === 1 && tomorrowSOCValue === null) {
   tomorrowSOCValue = {
     soc: chargePlan.soc,
     energy: chargePlan.energy,
@@ -1512,8 +1460,6 @@ if (d === 1) {
   };
 }
 
-debugLog("SOC", tomorrowSOCValue);
-   
   // Label
   let label = d === 0
   ? "Today"
@@ -1652,7 +1598,7 @@ refreshExpectedPVAfterManualChange();
 
 closeEditor();
 renderPVTable();
-await runAI();; // optional but recommended
+runAI(); // optional but recommended
 }
 
 function deleteEdit() {
@@ -1667,7 +1613,7 @@ refreshExpectedPVAfterManualChange();
 
 closeEditor();
 renderPVTable();
-await runAI();
+runAI();
 }
 // -------------------- INIT --------------------
 window.toggleSettings = toggleSettings;
