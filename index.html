@@ -1260,7 +1260,10 @@ let effectiveRad = Math.min(nowRad * radScale, 1000);
 
 let tiltFactor = getTiltFactor(s.tilt, hour);
 
-let nowPV =
+// -------------------- LIVE PV ESTIMATE --------------------
+
+// define ONCE
+let nowPVBase =
   s.pvSize *
   (effectiveRad / 1000) *
   (s.efficiency / 100) *
@@ -1270,34 +1273,36 @@ let nowPV =
   (s.shading / 100) *
   cloudFactorLiveSoft;
 
-// calibration + learning layer
-let rawNowPV = nowPV;
-nowPV = applyCalibration(rawNowPV, "live") * GLOBAL_PV_BIAS_LIVE;
+// calibration
+let rawNowPV = applyCalibration(nowPVBase, "live") * GLOBAL_PV_BIAS_LIVE;
 
 // inverter constraint
-nowPV = Math.min(nowPV, s.inverter * 0.98);
+rawNowPV = Math.min(rawNowPV, s.inverter * 0.98);
 
-// final sanity clamp (THIS is the important one)
-nowPV = Math.min(nowPV, s.pvSize * 1.05);
-  let loadKW = getHourlyLoad(s, hour);
+// final clamp
+rawNowPV = Math.min(rawNowPV, s.pvSize * 1.05);
+
+// assign FINAL value ONCE
+let nowPV = rawNowPV;
 
 // -------------------- LIVE vs FORECAST RECONCILIATION --------------------
 
-let forecastNowPV_raw = estimateCurrentHourPV(
-  s, cloud, rad, temp, nowIndex
-);
-
-let forecastNowPV = applyCalibration(forecastNowPV_raw, "forecast");
+let forecastNowPV =
+  applyCalibration(
+    estimateCurrentHourPV(s, cloud, rad, temp, nowIndex),
+    "forecast"
+  );
 
 let liveErrorRatio =
-  forecastNowPV > 0 ? nowPV / forecastNowPV : 1;
+  forecastNowPV > 0 ? (nowPV / forecastNowPV) : 1;
 
 liveErrorRatio = Math.max(0.6, Math.min(1.4, liveErrorRatio));
 
-// smooth but LOCAL (not global)
+// smooth update
 LIVE_ADJUSTMENT =
   LIVE_ADJUSTMENT * 0.7 + liveErrorRatio * 0.3;
 
+// FINAL merge (only once)
 nowPV = forecastNowPV * LIVE_ADJUSTMENT;
 
 // -------------------- EXPORT (FIXED PHYSICS MODEL) --------------------
