@@ -1282,12 +1282,6 @@ nowPV = Math.min(nowPV, s.pvSize * 1.05);
 
 // -------------------- LIVE vs FORECAST RECONCILIATION --------------------
 
-let forecastNowPV_raw = estimateCurrentHourPV(
-  s, cloud, rad, temp, nowIndex
-);
-
-let forecastNowPV = applyCalibration(forecastNowPV_raw, "forecast");
-
 let forecastNowPV = estimateCurrentHourPV(
   s, cloud, rad, temp, nowIndex
 );
@@ -1296,7 +1290,7 @@ forecastNowPV = applyCalibration(forecastNowPV, "forecast");
 
 // choose ONE stable interpretation:
 let nowPV = forecastNowPV;
-
+  
 // -------------------- EXPORT (FIXED PHYSICS MODEL) --------------------
 
 // inverter headroom = max possible output minus household load
