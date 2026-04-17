@@ -197,7 +197,8 @@ const Store = {
   
 let GLOBAL_PV_BIAS_LIVE = 1;
 let GLOBAL_PV_BIAS_FORECAST = 1;
-let LIVE_ADJUSTMENT = 1;
+let LIVE_ADJUSTMENT =
+  parseFloat(localStorage.getItem("liveAdjustment")) || 1;
 let preloadedWeather = null;
   
 function getLocalDateKey(d = new Date()) {
@@ -1307,7 +1308,7 @@ let learningRate = nowRad > 200 ? 0.18 : 0.10;
 LIVE_ADJUSTMENT =
   LIVE_ADJUSTMENT * (1 - learningRate) +
   liveErrorRatio * learningRate;
-  
+localStorage.setItem("liveAdjustment", LIVE_ADJUSTMENT);
 // smooth learning (slow drift, no snapping)
 LIVE_ADJUSTMENT =
   LIVE_ADJUSTMENT * 0.85 + liveErrorRatio * 0.15;
