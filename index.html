@@ -698,9 +698,6 @@ function cloudFactorForecast(cloud, rad) {
 function getSeasonalTilt(baseTilt) {
   let s = getSettings();
   if (s.seasonalTilt === "off") return baseTilt;
-
-  let now = new Date();
-
   let start = new Date(now.getFullYear(), 0, 0);
   let diff = now - start;
   let day = Math.floor(diff / (1000 * 60 * 60 * 24));
@@ -1171,23 +1168,26 @@ function estimateCurrentHourPV(s, cloud, rad, temp, hourIndex) {
 }
   
 // -------------------- MAIN --------------------
-async function runAI(){
+async function runAI() {
 
-  let s=getSettings();
-  loading.innerText="Loading...";
+  const now = new Date();
+  const hour = now.getHours();
+
+  let s = getSettings();
+  loading.innerText = "Loading...";
+
   let tomorrowSOCValue = null;
-let weatherData = preloadedWeather || await getWeather(s.postcode);
+  let weatherData = preloadedWeather || await getWeather(s.postcode);
 
- let cloud = weatherData.hourly.cloudcover;
-let rad = weatherData.hourly.shortwave_radiation;
-let temp = weatherData.hourly.temperature_2m;
-let hum = weatherData.hourly.relativehumidity_2m;
-let precip = weatherData.hourly.precipitation;
-let time = weatherData.hourly.time;
-let now = new Date();
-let hour = now.getHours();
+  let cloud = weatherData.hourly.cloudcover;
+  let rad = weatherData.hourly.shortwave_radiation;
+  let temp = weatherData.hourly.temperature_2m;
+  let hum = weatherData.hourly.relativehumidity_2m;
+  let precip = weatherData.hourly.precipitation;
+  let time = weatherData.hourly.time;
+
   let html = "";
-let forecastHtml = "";
+  let forecastHtml = "";
 
   // -------------------- LIVE NOW --------------------
 
