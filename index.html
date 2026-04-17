@@ -695,21 +695,7 @@ function cloudFactorForecast(cloud, rad) {
   return Math.max(0.65, Math.min(1.08, factor));
 }
 // -------------------- SEASONAL TILT --------------------
-function getSeasonalTilt(baseTilt) {
-  let s = getSettings();
-  if (s.seasonalTilt === "off") return baseTilt;
-  let start = new Date(now.getFullYear(), 0, 0);
-  let diff = now - start;
-  let day = Math.floor(diff / (1000 * 60 * 60 * 24));
-
-  let winterTilt = Math.min(60, baseTilt + 20);
-  let summerTilt = Math.max(15, baseTilt - 15);
-
-  let seasonalFactor =
-    (Math.cos((2 * Math.PI * (day - 172)) / 365) + 1) / 2;
-
-  return summerTilt * (1 - seasonalFactor) + winterTilt * seasonalFactor;
-}
+function getSeasonalTi
   
 function getTiltFactor(tilt, hour) {
 
