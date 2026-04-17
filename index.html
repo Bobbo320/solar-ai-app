@@ -1276,14 +1276,13 @@ let forecastNowPV_raw = estimateCurrentHourPV(
 
 let forecastNowPV = applyCalibration(forecastNowPV_raw, "forecast");
 
-debugLog("FORECAST_PV", forecastNowPV); // ✅ ONLY HERE
+debugLog("FORECAST_PV", forecastNowPV); // ✅ NOW safe
 
 let liveErrorRatio =
   forecastNowPV > 0 ? nowPV / forecastNowPV : 1;
 
 liveErrorRatio = Math.max(0.6, Math.min(1.4, liveErrorRatio));
 
-// smooth but LOCAL (not global)
 LIVE_ADJUSTMENT =
   LIVE_ADJUSTMENT * 0.7 + liveErrorRatio * 0.3;
 
