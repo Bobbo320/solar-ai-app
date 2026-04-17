@@ -200,7 +200,7 @@ let GLOBAL_PV_BIAS_FORECAST = 1;
 let LIVE_ADJUSTMENT =
   parseFloat(localStorage.getItem("liveAdjustment")) || 1;
 let preloadedWeather = null;
-  
+let LIVE_UPDATED_THIS_SESSION = false;  
 function getLocalDateKey(d = new Date()) {
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000)
     .toISOString()
@@ -1308,10 +1308,8 @@ let learningRate = nowRad > 200 ? 0.18 : 0.10;
 LIVE_ADJUSTMENT =
   LIVE_ADJUSTMENT * (1 - learningRate) +
   liveErrorRatio * learningRate;
+
 localStorage.setItem("liveAdjustment", LIVE_ADJUSTMENT);
-// smooth learning (slow drift, no snapping)
-LIVE_ADJUSTMENT =
-  LIVE_ADJUSTMENT * 0.85 + liveErrorRatio * 0.15;
 
 
 // -------------------- EXPORT (FIXED PHYSICS MODEL) --------------------
