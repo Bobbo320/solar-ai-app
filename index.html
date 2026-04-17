@@ -1275,7 +1275,9 @@ let forecastNowPV_raw = estimateCurrentHourPV(
 );
 
 let forecastNowPV = applyCalibration(forecastNowPV_raw, "forecast");
-debugLog("FORECAST_NOW_PV", forecastNowPV);
+
+debugLog("FORECAST_PV", forecastNowPV); // ✅ ONLY HERE
+
 let liveErrorRatio =
   forecastNowPV > 0 ? nowPV / forecastNowPV : 1;
 
