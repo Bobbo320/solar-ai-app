@@ -695,8 +695,7 @@ function cloudFactorForecast(cloud, rad) {
   return Math.max(0.65, Math.min(1.08, factor));
 }
 // -------------------- SEASONAL TILT --------------------
-function getSeasonalTi
-  
+ 
 function getTiltFactor(tilt, hour) {
 
   tilt = Math.max(0, Math.min(90, getSeasonalTilt(tilt)));
