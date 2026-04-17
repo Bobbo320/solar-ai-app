@@ -1263,8 +1263,10 @@ let nowPV = estimateCurrentHourPV(
   s, cloud, rad, temp, nowIndex
 );
 
+// apply calibration ONCE
 nowPV = applyCalibration(nowPV, "live");
 
+// safety caps only
 nowPV = Math.min(nowPV, s.inverter * 0.98);
 nowPV = Math.min(nowPV, s.pvSize * 1.05);
 
