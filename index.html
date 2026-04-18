@@ -446,7 +446,7 @@ if (diffDays < -1 || diffDays > 90) return;
     ? weightedManual / weightedExpected
     : 1;
 
-  bias = Math.max(0.75, Math.min(1.25, bias));
+  bias = Math.max(0.6, Math.min(1.6, bias));
 
   let month = new Date().getMonth() + 1;
 
