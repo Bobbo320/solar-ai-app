@@ -1472,8 +1472,7 @@ let nowTimeStr =
   start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) +
   " – " +
   end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  
-let tiltPerf = getTiltFactor(s.tilt, hour);
+
   
 // Build UI card
 html += `
@@ -1495,8 +1494,7 @@ html += `
     </div>
 
     <b>Temp:</b> ${nowTemp.toFixed(1)}°C<br>
-    <b>Tilt Efficiency:</b> ${(tiltPerf * 100).toFixed(0)}%<br>
-
+  
     <br><b>Status:</b> ${status}
   </div>
 `;
