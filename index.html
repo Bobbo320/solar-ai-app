@@ -209,9 +209,9 @@
 let RUN_AI_LOCK = false;
 let RUN_AI_TOKEN = 0;
 let LAST_BREAKDOWN = null;
-const SOLAR_THRESHOLD = 50;        // used for real PV calculations
-const SOLAR_VISIBLE_THRESHOLD = 30; // used for solar time window display
-  const SYSTEM_LOSS = 0.98; // wiring, inverter, mismatch
+const SOLAR_THRESHOLD = 25;        // used for real PV calculations
+const SOLAR_VISIBLE_THRESHOLD = 25; // used for solar time window display
+  const SYSTEM_LOSS = 1; // wiring, inverter, mismatch
 
 const Store = {
   getPV() {
@@ -446,7 +446,7 @@ if (diffDays < -1 || diffDays > 90) return;
     ? weightedManual / weightedExpected
     : 1;
 
-  bias = Math.max(0.6, Math.min(1.6, bias));
+  bias = Math.max(0.7, Math.min(1.6, bias));
 
   let month = new Date().getMonth() + 1;
 
@@ -458,7 +458,7 @@ if (diffDays < -1 || diffDays > 90) return;
   let s = seasonal[currentSeason];
   let seasonalFactor = s.e > 0 ? (s.m / s.e) : 1;
 
-  seasonalFactor = Math.max(0.85, Math.min(1.15, seasonalFactor));
+  seasonalFactor = Math.max(0.8, Math.min(1.2, seasonalFactor));
 
   let sampleSize = Object.values(pvData)
     .filter(d => d.manual && d.expected)
@@ -923,9 +923,10 @@ function getCloudThicknessLabel(cloud, rad) {
 function inverterLimit(pv, inverter) {
   const overload = pv / inverter;
 
-  if (overload <= 1) return pv;
+  if (overload <= 1.1) return pv;
 
-  return inverter * (1 + Math.tanh(overload - 1) * 0.2);
+  // softer clipping curve (realistic DC/AC oversizing)
+  return inverter * (1 + Math.tanh((overload - 1.1) * 2) * 0.35);
 }
   
 function estimatePV(radSlice, cloudSlice, tempSlice, s, dayData) {
@@ -942,22 +943,28 @@ function estimatePV(radSlice, cloudSlice, tempSlice, s, dayData) {
     let dni = dayData?.dni?.[i] ?? r;
 let dhi = dayData?.dhi?.[i] ?? r * 0.35;
     
-   let effectiveRad = getEffectiveIrradiance(
+   let tiltFactor = getTiltFactor(s.tilt, i);
+
+let effectiveRad = getEffectiveIrradiance(
   dni,
   dhi,
-  getTiltFactor(s.tilt, i)
+  tiltFactor
 );
-    effectiveRad = Math.min(1100, effectiveRad);
+
+// 🔥 Apply same scaling as live model
+let scaledRad = effectiveRad * getForecastRadScale(effectiveRad);
+scaledRad = Math.min(1100, scaledRad);
 
 let hourPV =
   s.pvSize *
-  (effectiveRad / 1000) *
+  (scaledRad / 1000) *
   (s.efficiency / 100) *
   SYSTEM_LOSS *
   temperatureEfficiency(t) *
   getOrientationFactor(s.orientation) *
-  getTiltFactor(s.tilt, i) *
-  (s.shading / 100);
+  tiltFactor *
+  (s.shading / 100) *
+  cloudFactorForecast(c, r);
 
 hourPV = inverterLimit(hourPV, s.inverter);
 
