@@ -767,32 +767,6 @@ function lowLightFactor(rad) {
   return 1;
 }
   
-function getForecastRadScale(r) {
-  return 1 + Math.min(0.6, r / 1200);
-}
-
-function getTiltFactor(tilt, hourIndex) {
-  // crude solar position approximation (UK-friendly heuristic)
-
-  // convert hour (0–23) into solar curve (-1 to +1)
-  let solarAngle = (hourIndex - 12) / 12; // -1 at 00:00, 0 at 12:00, +1 at 24:00
-
-  // cosine bell curve for sun intensity
-  let timeFactor = Math.cos(solarAngle * Math.PI / 2);
-  timeFactor = Math.max(0, timeFactor);
-
-  // optimal tilt in UK ~ 35–40°
-  const optimalTilt = 38;
-
-  // tilt efficiency penalty
-  let tiltPenalty = 1 - Math.min(0.25, Math.abs(tilt - optimalTilt) / 180);
-
-  return timeFactor * tiltPenalty;
-}
-  
-function getEffectiveIrradiance(dni, dhi, tiltFactor) {
-  return (dni * tiltFactor) + dhi;
-}
   
 function cloudFactorForecast(cloud, rad) {
   let cloudNorm = cloud / 100;
@@ -928,6 +902,64 @@ function inverterLimit(pv, inverter) {
   // softer clipping curve (realistic DC/AC oversizing)
   return inverter * (1 + Math.tanh((overload - 1.1) * 2) * 0.35);
 }
+
+// -------------------- SOLAR GEOMETRY (POA MODEL) --------------------
+
+function deg2rad(d) { return d * Math.PI / 180; }
+function rad2deg(r) { return r * 180 / Math.PI; }
+
+// solar declination (Cooper equation)
+function solarDeclination(dayOfYear) {
+  return 23.45 * Math.sin(deg2rad((360 / 365) * (dayOfYear - 81)));
+}
+
+// hour angle
+function hourAngle(hour) {
+  return 15 * (hour - 12);
+}
+
+// solar elevation
+function solarElevation(lat, decl, hourAng) {
+  return rad2deg(Math.asin(
+    Math.sin(deg2rad(lat)) * Math.sin(deg2rad(decl)) +
+    Math.cos(deg2rad(lat)) * Math.cos(deg2rad(decl)) * Math.cos(deg2rad(hourAng))
+  ));
+}
+
+// incidence angle on tilted panel
+function incidenceAngle(lat, decl, hourAng, tilt) {
+  return rad2deg(Math.acos(
+    Math.sin(deg2rad(decl)) * Math.sin(deg2rad(lat - tilt)) +
+    Math.cos(deg2rad(decl)) * Math.cos(deg2rad(lat - tilt)) * Math.cos(deg2rad(hourAng))
+  ));
+}
+
+// MAIN: Plane-of-array irradiance
+function getPOA(dni, dhi, ghi, lat, tilt, hour, dayOfYear) {
+
+  let decl = solarDeclination(dayOfYear);
+  let hAng = hourAngle(hour);
+
+  let elev = solarElevation(lat, decl, hAng);
+  if (elev <= 0) return 0;
+
+  let theta = incidenceAngle(lat, decl, hAng, tilt);
+
+  let cosTheta = Math.max(0, Math.cos(deg2rad(theta)));
+  let cosZ = Math.max(0.01, Math.sin(deg2rad(elev)));
+
+  // beam component
+  let beam = dni * (cosTheta / cosZ);
+
+  // diffuse (isotropic sky model)
+  let diffuse = dhi * (1 + Math.cos(deg2rad(tilt))) / 2;
+
+  // ground reflected (UK ~0.2 albedo)
+  let albedo = 0.2;
+  let ground = ghi * albedo * (1 - Math.cos(deg2rad(tilt))) / 2;
+
+  return beam + diffuse + ground;
+}
   
 function estimatePV(radSlice, cloudSlice, tempSlice, s, dayData) {
 
@@ -945,24 +977,37 @@ let dhi = dayData?.dhi?.[i] ?? r * 0.35;
     
    let tiltFactor = getTiltFactor(s.tilt, i);
 
-let effectiveRad = getEffectiveIrradiance(
-  dni,
-  dhi,
-  tiltFactor
+let date = new Date();
+date.setHours(i);
+let dayOfYear = Math.floor(
+  (date - new Date(date.getFullYear(), 0, 0)) / 86400000
 );
 
-// 🔥 Apply same scaling as live model
-let scaledRad = effectiveRad * getForecastRadScale(effectiveRad);
-scaledRad = Math.min(1100, scaledRad);
+// dynamic tilt (keeps your seasonal system)
+let tilt = getSeasonalTilt(s.tilt);
+
+let ghi = r;
+
+let poa = getPOA(
+  dni,
+  dhi,
+  ghi,
+  52.2, // UK latitude default (or use coords later)
+  tilt,
+  i,
+  dayOfYear
+);
+
+// realistic cap
+poa = Math.min(1200, poa);
 
 let hourPV =
   s.pvSize *
-  (scaledRad / 1000) *
+  (poa / 1000) *
   (s.efficiency / 100) *
   SYSTEM_LOSS *
   temperatureEfficiency(t) *
   getOrientationFactor(s.orientation) *
-  tiltFactor *
   (s.shading / 100) *
   cloudFactorForecast(c, r);
 
@@ -1329,34 +1374,38 @@ if (nowRad > 250) {
   cloudFactorLiveSoft = Math.min(cloudFactorLiveSoft, 1.0);
 }
 
-// 🔥 Convert horizontal radiation → effective panel radiation
-let radScale;
+let nowDate = new Date();
+let dayOfYear = Math.floor(
+  (nowDate - new Date(nowDate.getFullYear(), 0, 0)) / 86400000
+);
 
-if (nowRad < 100) {
-  radScale = 1.2;
-} else if (nowRad < 300) {
-  radScale = 1.2 + (nowRad - 100) * 0.0012;
-} else {
-  radScale = 1.5 + (nowRad - 300) * 0.0003;
-}
+let tilt = getSeasonalTilt(s.tilt);
 
-radScale = Math.min(radScale, 1.8);
+let dni = weatherData.hourly.direct_radiation[nowIndex];
+let dhi = weatherData.hourly.diffuse_radiation[nowIndex];
+let ghi = nowRad;
 
-// HARD PHYSICS CAP
-let effectiveRad = Math.min(nowRad * radScale, 1000);
+let poaNow = getPOA(
+  dni,
+  dhi,
+  ghi,
+  52.2,
+  tilt,
+  hour,
+  dayOfYear
+);
 
-let tiltFactor = getTiltFactor(s.tilt, hour);
+poaNow = Math.min(1200, poaNow);
 
 // -------------------- LIVE PV ESTIMATE --------------------
 
 // define ONCE
 let nowPVBase =
   s.pvSize *
-  (effectiveRad / 1000) *
+  (poaNow / 1000) *
   (s.efficiency / 100) *
   temperatureEfficiency(nowTemp) *
   getOrientationFactor(s.orientation) *
-  tiltFactor *
   (s.shading / 100) *
   cloudFactorLiveSoft;
 
