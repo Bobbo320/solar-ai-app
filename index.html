@@ -212,6 +212,7 @@ let LAST_BREAKDOWN = null;
 const SOLAR_THRESHOLD = 25;        // used for real PV calculations
 const SOLAR_VISIBLE_THRESHOLD = 25; // used for solar time window display
   const SYSTEM_LOSS = 1; // wiring, inverter, mismatch
+  const DEFAULT_PR = 0.85; // realistic UK system performance ratio
 
 const Store = {
   getPV() {
@@ -766,6 +767,11 @@ function extractDay(weather, dayIndex) {
   };
 }
 
+function boundedEMA(prev, value, alpha, min = 0.7, max = 1.3) {
+  let updated = prev * (1 - alpha) + value * alpha;
+  return Math.max(min, Math.min(max, updated));
+}
+  
 function lowLightFactor(rad) {
   if (rad < 150) return 0.85 + (rad / 150) * 0.15;
   return 1;
@@ -898,12 +904,9 @@ function getCloudThicknessLabel(cloud, rad) {
 }
 
 function inverterLimit(pv, inverter) {
-  const overload = pv / inverter;
-
-  if (overload <= 1.1) return pv;
-
-  // softer clipping curve (realistic DC/AC oversizing)
-  return inverter * (1 + Math.tanh((overload - 1.1) * 2) * 0.35);
+  const ratio = pv / inverter;
+  if (ratio <= 1) return pv;
+  return inverter * (1 + Math.tanh((ratio - 1) * 2) * 0.05);
 }
 
 // -------------------- SOLAR GEOMETRY (POA MODEL) --------------------
@@ -993,7 +996,6 @@ let poa = getPOA(
   dni,
   dhi,
   ghi,
-  52.2, // UK latitude default (or use coords later)
   tilt,
   i,
   dayOfYear
@@ -1004,17 +1006,18 @@ poa = Math.min(1200, poa);
 
 let hourPV =
   s.pvSize *
-  (poa / 1000) *
-  (s.efficiency / 100) *
+(poA_Wm2 / 1000)
+DEFAULT_PR *
+getOrientationFactor(s.orientation) *
+(s.shading / 100) *
+inverterLimitFactor
   SYSTEM_LOSS *
-  temperatureEfficiency(t) *
   getOrientationFactor(s.orientation) *
   (s.shading / 100) *
-  cloudFactorForecast(c, r);
 
 hourPV = inverterLimit(hourPV, s.inverter);
 
-    total += hourPV;
+total += hourPV * 1; // explicitly 1-hour timestep
   }
 
   return total;
@@ -1128,9 +1131,8 @@ let shortfall = baseShortfall + touPenalty;
 // prevents double/triple penalisation
 // ----------------------------
 
-let uncertaintyFactor =
-  0.9 + (1 - confidence / 100) * 0.25;
-
+let uncertaintyFactor = 0.9 + (1 - confidence / 100) * 0.1;
+  
 // clamp safety
 uncertaintyFactor = Math.max(0.85, Math.min(1.15, uncertaintyFactor));
 
@@ -1292,13 +1294,15 @@ function weatherSummary(c,r,t,h,p){
   `;
 }
 
-function estimateCurrentHourPV(s, weather, hourIndex, lat = 52.2) {
+function estimatePV(radSlice, cloudSlice, tempSlice, s, dayData, lat)
 
   let r = weather.hourly.shortwave_radiation[hourIndex];
   let dni = weather.hourly.direct_radiation[hourIndex];
   let dhi = weather.hourly.diffuse_radiation[hourIndex];
   let c = weather.hourly.cloudcover[hourIndex];
   let t = weather.hourly.temperature_2m[hourIndex];
+  let coords = await getCoordinates(s.postcode);
+let lat = coords.lat;
 
   if (r < SOLAR_THRESHOLD) return 0;
 
@@ -1325,7 +1329,7 @@ function estimateCurrentHourPV(s, weather, hourIndex, lat = 52.2) {
 
   return (
     s.pvSize *
-    (poa / 1000) *
+(poA_Wm2 / 1000)
     (s.efficiency / 100) *
     temperatureEfficiency(t) *
     getOrientationFactor(s.orientation) *
@@ -1409,7 +1413,6 @@ let poaNow = getPOA(
   dni,
   dhi,
   ghi,
-  52.2,
   tilt,
   hour,
   dayOfYear
@@ -1422,11 +1425,12 @@ poaNow = Math.min(1200, poaNow);
 let nowPVBase =
   s.pvSize *
   (poaNow / 1000) *
-  (s.efficiency / 100) *
-  temperatureEfficiency(nowTemp) *
+DEFAULT_PR *
+getOrientationFactor(s.orientation) *
+(s.shading / 100) *
+inverterLimitFactor
   getOrientationFactor(s.orientation) *
   (s.shading / 100) *
-  cloudFactorLiveSoft;
 
 let rawNowPV = nowPVBase;
 
@@ -1464,8 +1468,6 @@ LAST_BREAKDOWN = buildBreakdown({
   learningFactor
 });
     
-// inverter constraint
-rawNowPV = Math.min(rawNowPV, s.inverter * 0.98);
 
 // final clamp
 rawNowPV = Math.min(rawNowPV, s.pvSize * 1.05);
@@ -1491,9 +1493,11 @@ liveErrorRatio = Math.max(0.7, Math.min(1.3, liveErrorRatio));
 
 let learningRate = nowRad > 200 ? 0.25 : 0.15;
 
-LIVE_ADJUSTMENT =
-  LIVE_ADJUSTMENT * (1 - learningRate) +
-  liveErrorRatio * learningRate;
+LIVE_ADJUSTMENT = boundedEMA(
+  LIVE_ADJUSTMENT,
+  liveErrorRatio,
+  learningRate
+);
   
 if (nowCloud < 20 && nowRad > 400) {
   cloudFactorLiveSoft = Math.min(1.18, cloudFactorLiveSoft);
@@ -1507,7 +1511,7 @@ nowPV = forecastNowPV * LIVE_ADJUSTMENT;
 // -------------------- EXPORT (FIXED PHYSICS MODEL) --------------------
 
 // inverter headroom = max possible output minus household load
-let inverterHeadroom = Math.max(0, s.inverter - loadKW);
+let exportKW = Math.max(0, nowPV - loadKW);
 
 // actual PV surplus
 let pvSurplus = Math.max(0, nowPV - loadKW);
