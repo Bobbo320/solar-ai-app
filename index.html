@@ -1288,24 +1288,43 @@ function weatherSummary(c,r,t,h,p){
   `;
 }
 
-function estimateCurrentHourPV(s, cloud, rad, temp, hourIndex) {
+function estimateCurrentHourPV(s, weather, hourIndex, lat = 52.2) {
 
-  let r = rad[hourIndex];
-  let c = cloud[hourIndex];
-  let t = temp[hourIndex];
+  let r = weather.hourly.shortwave_radiation[hourIndex];
+  let dni = weather.hourly.direct_radiation[hourIndex];
+  let dhi = weather.hourly.diffuse_radiation[hourIndex];
+  let c = weather.hourly.cloudcover[hourIndex];
+  let t = weather.hourly.temperature_2m[hourIndex];
 
   if (r < SOLAR_THRESHOLD) return 0;
 
-  let scaledRad = r * getForecastRadScale(r);
-  scaledRad = Math.min(1100, scaledRad);
+  let now = new Date(weather.hourly.time[hourIndex]);
+  let hour = now.getHours();
+
+  let dayOfYear = Math.floor(
+    (now - new Date(now.getFullYear(), 0, 0)) / 86400000
+  );
+
+  let tilt = getSeasonalTilt(s.tilt);
+
+  let poa = getPOA(
+    dni,
+    dhi,
+    r,
+    lat,
+    tilt,
+    hour,
+    dayOfYear
+  );
+
+  poa = Math.min(1200, poa);
 
   return (
     s.pvSize *
-    (scaledRad / 1000) *
+    (poa / 1000) *
     (s.efficiency / 100) *
     temperatureEfficiency(t) *
     getOrientationFactor(s.orientation) *
-    getTiltFactor(s.tilt, hourIndex) *
     (s.shading / 100) *
     cloudFactorForecast(c, r)
   );
@@ -1443,7 +1462,7 @@ let nowPV = livePV;       // display only
 
 let forecastNowPV =
   applyCalibration(
-    estimateCurrentHourPV(s, cloud, rad, temp, nowIndex),
+  estimateCurrentHourPV(s, weatherData, nowIndex)
     "forecast"
   );
 
