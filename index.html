@@ -1035,12 +1035,15 @@ function pvEngine(daySlice, s) {
     let dni = daySlice.dni?.[i] ?? r;
     let dhi = daySlice.dhi?.[i] ?? r * 0.3;
 
-    let poa = computePOA(
-      r, dni, dhi, c, t,
-      s.tilt,
-      s.orientation,
-      i
-    );
+   let poa = getPOA(
+  dni,
+  dhi,
+  r,
+  52.2, // latitude (or make dynamic later)
+  getSeasonalTilt(s.tilt),
+  i,
+  new Date().getDay()
+);
 
     let hourPV =
       s.pvSize *
