@@ -1616,10 +1616,6 @@ ${confidence < 0.1 ? `
 
   let dayRad = daylightHours(rad.slice(start, start + 24));
 
-  let avgRad = dayRad.length
-    ? dayRad.reduce((a, b) => a + b) / dayRad.length
-    : 0;
-
   let validHours = 0;
   let scoreSum = 0;
 
@@ -1930,6 +1926,7 @@ runAI();
 window.toggleSettings = toggleSettings;
 window.runAI = runAI;
 window.togglePVTab = togglePVTab;
+window.toggleBreakdown = toggleBreakdown;
 
 window.openEditor = openEditor;
 window.saveEdit = saveEdit;
