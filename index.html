@@ -1412,7 +1412,7 @@ let calibrationFactor = LIVE_ADJUSTMENT;
 let orientationFactor = getOrientationFactor(s.orientation);
 let shadingFactor = s.shading / 100;
 let tempFactor = temperatureEfficiency(nowTemp);
-let tiltFactorVal = tiltFactor;
+let tiltFactorVal = 1; // handled inside POA now
 let inverterFactor = rawNowPV / nowPVBase; // how much clipping occurred approx
 
 LAST_BREAKDOWN = buildBreakdown({
