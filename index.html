@@ -1035,22 +1035,32 @@ function pvEngine(daySlice, s) {
     let dni = daySlice.dni?.[i] ?? r;
     let dhi = daySlice.dhi?.[i] ?? r * 0.3;
 
-   let poa = getPOA(
+  let date = new Date();
+date.setDate(date.getDate() + 0); // current daySlice already aligned
+date.setHours(i);
+
+let dayOfYear = Math.floor(
+  (date - new Date(date.getFullYear(), 0, 0)) / 86400000
+);
+
+let poa = getPOA(
   dni,
   dhi,
   r,
-  52.2, // latitude (or make dynamic later)
+  52.2,
   getSeasonalTilt(s.tilt),
   i,
-  new Date().getDay()
+  dayOfYear   // ✅ CORRECT
 );
 
-    let hourPV =
-      s.pvSize *
-      (poa / 1000) *
-      (s.efficiency / 100) *
-      temperatureEfficiency(t) *
-      (s.shading / 100);
+  let hourPV =
+  s.pvSize *
+  (poa / 1000) *
+  (s.efficiency / 100) *
+  temperatureEfficiency(t) *
+  getOrientationFactor(s.orientation) *
+  (s.shading / 100) *
+  cloudFactorForecast(c, r);   // ✅ ADD THIS
 
     hourPV = inverterLimit(hourPV, s.inverter);
 
