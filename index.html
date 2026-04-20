@@ -1424,15 +1424,34 @@ let nowPVBase =
   (s.shading / 100) *
   cloudFactorLiveSoft;
 
-// calibration
 let rawNowPV = nowPVBase;
 
-let calibrationFactor = LIVE_ADJUSTMENT;
+// 🔧 get proper calibration system
+let { bias, seasonalFactor, confidence } = getCalibrationSystem();
+
+// 🚫 No data → NO calibration at all
+if (confidence < 0.1) {
+  return raw;
+}
+
+// calibration = long-term ONLY
+let calibrationFactor =
+  confidence < 0.1
+    ? 1
+    : bias * seasonalFactor;
+
+// learning = short-term ONLY
+let learningFactor = LIVE_ADJUSTMENT;
+
+// other factors (unchanged)
 let orientationFactor = getOrientationFactor(s.orientation);
 let shadingFactor = s.shading / 100;
 let tempFactor = temperatureEfficiency(nowTemp);
-let tiltFactorVal = 1; // handled inside POA now
-let inverterFactor = rawNowPV / nowPVBase; // how much clipping occurred approx
+let tiltFactorVal = 1; // POA handles this
+let inverterFactor =
+  nowPVBase > s.inverter
+    ? s.inverter / nowPVBase
+    : 1;
 
 LAST_BREAKDOWN = buildBreakdown({
   basePV: nowPVBase,
@@ -1443,7 +1462,7 @@ LAST_BREAKDOWN = buildBreakdown({
   shadingFactor,
   calibrationFactor,
   inverterFactor,
-  learningFactor: LIVE_ADJUSTMENT
+  learningFactor
 });
     
 // inverter constraint
@@ -1542,7 +1561,11 @@ let nowTimeStr =
 html += `
   <div class="card">
     <h3>☀️ Live Window (${nowTimeStr})</h3>
-
+${confidence < 0.1 ? `
+  <div style="color:#facc15; font-size:13px; margin-bottom:6px;">
+    ⚠️ Calibration: Learning phase (no history yet)
+  </div>
+` : ``}
     <b>Predicted Radiation:</b> ${nowRad.toFixed(0)} W/m²<br>
     <b>Estimated PV Average:</b> ${nowPV.toFixed(2)} kW<br>
 
@@ -1654,7 +1677,10 @@ let rawPV = basePV;
 
 // 🔥 APPLY FULL CALIBRATION HERE (not soft blended)
 let { bias, seasonalFactor } = getCalibrationSystem();
-let calibratedPV = rawPV * bias * seasonalFactor;
+let calibratedPV =
+  confidence < 0.1
+    ? rawPV
+    : rawPV * bias * seasonalFactor;
 
 // still allow live learning
 calibratedPV *= LIVE_ADJUSTMENT;
