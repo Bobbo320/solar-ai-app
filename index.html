@@ -1019,6 +1019,44 @@ hourPV = inverterLimit(hourPV, s.inverter);
 
   return total;
 }
+
+function pvEngine(daySlice, s) {
+
+  let total = 0;
+
+  for (let i = 0; i < 24; i++) {
+
+    let r = daySlice.rad[i];
+    if (r < SOLAR_THRESHOLD) continue;
+
+    let c = daySlice.cloud[i];
+    let t = daySlice.temp[i];
+
+    let dni = daySlice.dni?.[i] ?? r;
+    let dhi = daySlice.dhi?.[i] ?? r * 0.3;
+
+    let poa = computePOA(
+      r, dni, dhi, c, t,
+      s.tilt,
+      s.orientation,
+      i
+    );
+
+    let hourPV =
+      s.pvSize *
+      (poa / 1000) *
+      (s.efficiency / 100) *
+      temperatureEfficiency(t) *
+      (s.shading / 100);
+
+    hourPV = inverterLimit(hourPV, s.inverter);
+
+    total += hourPV;
+  }
+
+  return total;
+}
+  
 function getNightLoadProfile(s) {
   const total = s.dailyLoad;
 
@@ -1425,22 +1463,22 @@ let nowPVBase =
   (s.efficiency / 100) *
   temperatureEfficiency(nowTemp) *
   getOrientationFactor(s.orientation) *
-  (s.shading / 100) *
-  cloudFactorLiveSoft;
+  (s.shading / 100);
 
 let rawNowPV = nowPVBase;
 
 // calibration system
 let { bias, seasonalFactor, confidence } = getCalibrationSystem();
 
-// calibration = long-term ONLY (disabled if no data)
+// calibration (disabled if no history)
 let calibrationFactor =
-  confidence < 0.1
-    ? 1
-    : bias * seasonalFactor;
+  confidence < 0.1 ? 1 : bias * seasonalFactor;
 
-// learning = short-term
+// learning (real-time correction)
 let learningFactor = LIVE_ADJUSTMENT;
+
+// ✅ APPLY BOTH (THIS WAS MISSING)
+rawNowPV = rawNowPV * calibrationFactor * learningFactor;
 
 // other factors (unchanged)
 let orientationFactor = getOrientationFactor(s.orientation);
@@ -1663,13 +1701,9 @@ let confidence =
 confidence = Math.max(35, Math.min(98, confidence));
 let dayData = extractDay(weatherData, d);
 
-let basePV = estimatePV(
-  rad.slice(start, start + 24),
-  cloud.slice(start, start + 24),
-  temp.slice(start, start + 24),
-  s,
-  dayData
-);
+let daySlice = extractDay(weatherData, d);
+
+let basePV = pvEngine(daySlice, s);
 preloadedWeather = null;
   // calibration
 let rawPV = basePV;
