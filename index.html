@@ -1744,9 +1744,9 @@ let { bias, seasonalFactor } = getCalibrationSystem();
 let calibrationFactor =
   confidence < 0.1 ? 1 : (bias * seasonalFactor);
 
-   console.log({
+  console.log({
   rawPV,
-  calibrationFactor,
+  calibrationFactor: bias * seasonalFactor,
   LIVE_ADJUSTMENT
 });
 
