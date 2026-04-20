@@ -898,12 +898,7 @@ function getCloudThicknessLabel(cloud, rad) {
 }
 
 function inverterLimit(pv, inverter) {
-  const overload = pv / inverter;
-
-  if (overload <= 1.1) return pv;
-
-  // softer clipping curve (realistic DC/AC oversizing)
-  return inverter * (1 + Math.tanh((overload - 1.1) * 2) * 0.35);
+  return Math.min(pv, inverter);
 }
 
 // -------------------- SOLAR GEOMETRY (POA MODEL) --------------------
@@ -1000,7 +995,7 @@ let poa = getPOA(
 );
 
 // realistic cap
-poa = Math.min(1200, poa);
+poa = Math.min(1000, poa);
 
 let hourPV =
   s.pvSize *
