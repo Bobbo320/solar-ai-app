@@ -778,25 +778,13 @@ function cloudFactorForecast(cloud, rad) {
 
   let base = 1 - cloudNorm * (0.55 - 0.25 * radBoost);
 
-// smooth UK cloud response (no thresholds)
-base = base * (1 - (cloud / 100) * 0.45);
+  // 🔥 UK broken-cloud uplift (key fix)
+  if (cloud > 20 && cloud < 80 && rad > 250) {
+    base *= 1.15; // critical missing physics
+  }
 
   return Math.max(0.60, Math.min(1.25, base));
 }
-
-function getUnifiedCalibration(mode = "live") {
-  let { bias, seasonalFactor, confidence } = getCalibrationSystem();
-
-  if (confidence < 0.1) return 1;
-
-  let longTerm = bias * seasonalFactor;
-  let shortTerm = LIVE_ADJUSTMENT;
-
-  let blend = mode === "forecast" ? 0.25 : 0.6;
-
-  return (longTerm * blend) + (shortTerm * (1 - blend));
-}
-  
 // -------------------- SEASONAL TILT --------------------
  
 function getSeasonalTilt(baseTilt) {
@@ -1001,11 +989,17 @@ let tilt = getSeasonalTilt(s.tilt);
 
 let ghi = r;
 
-let poa = r; // use API radiation as base truth
+let poa = getPOA(
+  dni,
+  dhi,
+  ghi,
+  52.2, // UK latitude default (or use coords later)
+  tilt,
+  i,
+  dayOfYear
+);
 
-// orientation + tilt only as modifiers (not full physics rebuild)
-poa *= getOrientationFactor(s.orientation);
-
+// realistic cap
 poa = Math.min(1200, poa);
 
 let hourPV =
@@ -1298,25 +1292,6 @@ function weatherSummary(c,r,t,h,p){
   `;
 }
 
-function getDayAverages(start, cloud, rad, temp) {
-  let c = 0, r = 0, t = 0, n = 0;
-
-  for (let i = 0; i < 24; i++) {
-    if (rad[start + i] > SOLAR_THRESHOLD) {
-      c += cloud[start + i];
-      r += rad[start + i];
-      t += temp[start + i];
-      n++;
-    }
-  }
-
-  return {
-    cloud: n ? c / n : 0,
-    rad: n ? r / n : 0,
-    temp: n ? t / n : 0
-  };
-}
-  
 function estimateCurrentHourPV(s, weather, hourIndex, lat = 52.2) {
 
   let r = weather.hourly.shortwave_radiation[hourIndex];
@@ -1616,6 +1591,10 @@ ${confidence < 0.1 ? `
 
   let dayRad = daylightHours(rad.slice(start, start + 24));
 
+  let avgRad = dayRad.length
+    ? dayRad.reduce((a, b) => a + b) / dayRad.length
+    : 0;
+
   let validHours = 0;
   let scoreSum = 0;
 
@@ -1639,11 +1618,9 @@ ${confidence < 0.1 ? `
 
   let sun = split.morning + split.afternoon;
 
-let avg = getDayAverages(start, cloud, rad, temp);
+  let midTemp = temp[start + 12] ?? temp[start]; // safety fallback
 
-let cloudAvg = avg.cloud;
-let midTemp = avg.temp;
-let avgRad = avg.rad;
+let cloudAvg = weightedCloudAverage(cloud, rad, start);
 
 // smooth radiation stability (important!)
 let radStd = 0;
@@ -1699,12 +1676,10 @@ let rawPV = basePV;
 
 // 🔥 APPLY FULL CALIBRATION HERE (not soft blended)
 let { bias, seasonalFactor } = getCalibrationSystem();
-let calibrationFactor = getUnifiedCalibration("forecast");
-
 let calibratedPV =
   confidence < 0.1
     ? rawPV
-    : rawPV * calibrationFactor;
+    : rawPV * bias * seasonalFactor;
 
 // still allow live learning
 calibratedPV *= LIVE_ADJUSTMENT;
@@ -1773,15 +1748,13 @@ if (d === 1 && tomorrowSOCValue === null) {
     <div class="card">
       <h3>${label}</h3>
 
-  let avg = getDayAverages(start, cloud, rad, temp);
-
-weatherSummary(
-  avg.cloud,
-  avg.rad,
-  avg.temp,
-  hum[start + 12],
-  precip[start + 12]
-)
+      ${weatherSummary(
+        weightedCloudAverage(cloud, rad, start),
+        avgRad,
+        temp[start + 12] ?? temp[start],
+        hum[start + 12] ?? hum[start],
+        precip[start + 12] ?? precip[start]
+      )}
 
       <br><b>🔆 Usable Solar Window:</b> ${sun} hours
       <br><b>⏱️ Time Range:</b> ${timeRange}
@@ -1926,7 +1899,6 @@ runAI();
 window.toggleSettings = toggleSettings;
 window.runAI = runAI;
 window.togglePVTab = togglePVTab;
-window.toggleBreakdown = toggleBreakdown;
 
 window.openEditor = openEditor;
 window.saveEdit = saveEdit;
