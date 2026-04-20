@@ -1462,10 +1462,10 @@ let nowPV = livePV;       // display only
 
 let forecastNowPV =
   applyCalibration(
-  estimateCurrentHourPV(s, weatherData, nowIndex)
+    estimateCurrentHourPV(s, weatherData, nowIndex),
     "forecast"
   );
-
+    
 let liveErrorRatio =
   forecastNowPV > 0 ? (nowPV / forecastNowPV) : 1;
 
