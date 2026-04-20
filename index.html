@@ -1724,7 +1724,11 @@ let calibratedPV =
     : rawPV * bias * seasonalFactor;
 
 // still allow live learning
-calibratedPV *= LIVE_ADJUSTMENT;
+let combinedAdjustment =
+  1 + ((bias * seasonalFactor - 1) * 0.6) +
+      ((LIVE_ADJUSTMENT - 1) * 0.4);
+
+calibratedPV = rawPV * combinedAdjustment;
 
 // optional safety clamp
 calibratedPV = Math.max(0, calibratedPV);
