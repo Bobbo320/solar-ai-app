@@ -1739,27 +1739,18 @@ storeExpectedPV(d, calibratedPV);
 // use same value for UI
 let pv = calibratedPV;
 
-let { bias, seasonalFactor } = getCalibrationSystem();
-
-let calibrationFactor =
-  confidence < 0.1 ? 1 : (bias * seasonalFactor);
-
-   console.log({
-  rawPV,
-  calibrationFactor,
-  LIVE_ADJUSTMENT
-});
+let forecastCalibration = LIVE_ADJUSTMENT;
 
 LAST_BREAKDOWN = buildBreakdown({
   basePV: rawPV,
-  cloudFactor: 1,
+  cloudFactor: 1, // already baked into estimatePV
   tiltFactor: 1,
   tempFactor: 1,
   orientationFactor: 1,
   shadingFactor: 1,
-  calibrationFactor: calibrationFactor,   // ✅ real calibration
+  calibrationFactor: forecastCalibration,
   inverterFactor: 1,
-  learningFactor: LIVE_ADJUSTMENT         // ✅ separate learning
+  learningFactor: LIVE_ADJUSTMENT
 });
    
 
