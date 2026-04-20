@@ -477,9 +477,13 @@ function applyCalibration(raw, mode = "live") {
 
   let { bias, seasonalFactor, confidence } = getCalibrationSystem();
 
+  // 🚫 No history → skip calibration
+  if (confidence < 0.1) {
+    return raw;
+  }
+
   let combined = bias * seasonalFactor;
 
-  // 🔥 STRONGER RESPONSE
   let strength =
     mode === "forecast" ? 1.0 : 0.4;
 
@@ -1426,21 +1430,16 @@ let nowPVBase =
 
 let rawNowPV = nowPVBase;
 
-// 🔧 get proper calibration system
+// calibration system
 let { bias, seasonalFactor, confidence } = getCalibrationSystem();
 
-// 🚫 No data → NO calibration at all
-if (confidence < 0.1) {
-  return raw;
-}
-
-// calibration = long-term ONLY
+// calibration = long-term ONLY (disabled if no data)
 let calibrationFactor =
   confidence < 0.1
     ? 1
     : bias * seasonalFactor;
 
-// learning = short-term ONLY
+// learning = short-term
 let learningFactor = LIVE_ADJUSTMENT;
 
 // other factors (unchanged)
