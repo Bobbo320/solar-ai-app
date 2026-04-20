@@ -547,7 +547,6 @@ function renderPVTable() {
       tbody.appendChild(tr);
     });
 
-  let { bias, seasonalFactor } = getCalibrationSystem();
   document.getElementById("calFactor").innerText =
     (bias * seasonalFactor).toFixed(2);
 }
@@ -1475,8 +1474,6 @@ let nowPVBase =
 
 let rawNowPV = nowPVBase;
 
-// calibration system
-let { bias, seasonalFactor, confidence } = getCalibrationSystem();
 
 // calibration (disabled if no history)
 let calibrationFactor =
@@ -1716,8 +1713,6 @@ preloadedWeather = null;
   // calibration
 let rawPV = basePV;
 
-// 🔥 APPLY FULL CALIBRATION HERE (not soft blended)
-let { bias, seasonalFactor } = getCalibrationSystem();
 let calibratedPV =
   confidence < 0.1
     ? rawPV
@@ -1738,8 +1733,6 @@ storeExpectedPV(d, calibratedPV);
 
 // use same value for UI
 let pv = calibratedPV;
-
-let { bias, seasonalFactor } = getCalibrationSystem();
 
 let calibrationFactor =
   confidence < 0.1 ? 1 : (bias * seasonalFactor);
