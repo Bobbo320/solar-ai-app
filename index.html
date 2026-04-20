@@ -1005,7 +1005,7 @@ let hourPV =
   temperatureEfficiency(t) *
   getOrientationFactor(s.orientation) *
   (s.shading / 100) *
-  cloudFactorForecast(c, r);
+cloudFactorForecast(c, r) ** 0.3
 
 hourPV = inverterLimit(hourPV, s.inverter);
 
@@ -1521,6 +1521,9 @@ rawNowPV = Math.min(rawNowPV, s.pvSize * 1.05);
 // assign FINAL value ONCE
 const livePV = rawNowPV; // SNAPSHOT (never changes)
 let nowPV = livePV;       // display only
+
+    pv = Math.min(pv, s.inverter);
+pv = Math.min(pv, s.pvSize * 1.05);
 
 // -------------------- LIVE vs FORECAST RECONCILIATION --------------------
 
