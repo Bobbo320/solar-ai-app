@@ -1761,10 +1761,10 @@ let rawPV = basePV;
     let legacy = pvEngine(daySlice, s);
 let shadow = shadowForecast(weatherData, s);
 
-console.log("PV MODEL CHECK");
-console.log("legacy:", legacy);
-console.log("shadow:", shadow);
-console.log("diff %:", ((shadow - legacy) / legacy) * 100);
+   console.log(`DAY ${d} PV MODEL CHECK`);
+  console.log("legacy:", legacy);
+  console.log("shadow:", shadow);
+  console.log("diff %:", ((shadow - legacy) / legacy) * 100);
 
 // 🔥 APPLY FULL CALIBRATION HERE (not soft blended)
 let { bias, seasonalFactor } = getCalibrationSystem();
