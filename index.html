@@ -212,6 +212,7 @@ let LAST_BREAKDOWN = null;
 const SOLAR_THRESHOLD = 25;        // used for real PV calculations
 const SOLAR_VISIBLE_THRESHOLD = 25; // used for solar time window display
   const SYSTEM_LOSS = 1; // wiring, inverter, mismatch
+  const MODEL_VERSION = "legacy-v1";
 
 const Store = {
   getPV() {
@@ -250,6 +251,44 @@ function getLocalDateKey(d = new Date()) {
   
 // -------------------- PV DATA + AUTO TUNING --------------------
 
+function pvHourlyModel(i, weather, s) {
+
+  let r = weather.hourly.shortwave_radiation[i];
+  let t = weather.hourly.temperature_2m[i];
+  let c = weather.hourly.cloudcover[i];
+
+  let dni = weather.hourly.direct_radiation[i];
+  let dhi = weather.hourly.diffuse_radiation[i];
+
+  let poa = getPOA(
+    dni,
+    dhi,
+    r,
+    52.2,
+    getSeasonalTilt(s.tilt),
+    new Date(weather.hourly.time[i]).getHours(),
+    Math.floor((new Date(weather.hourly.time[i]) - new Date(new Date().getFullYear(),0,0)) / 86400000)
+  );
+
+  return s.pvSize *
+    (poa / 1000) *
+    (s.efficiency / 100) *
+    temperatureEfficiency(t) *
+    getOrientationFactor(s.orientation) *
+    (s.shading / 100) *
+    cloudFactorForecast(c, r);
+}
+
+function shadowForecast(weather, s) {
+  let total = 0;
+
+  for (let i = 0; i < 24; i++) {
+    total += pvHourlyModel(i, weather, s);
+  }
+
+  return total;
+}  
+  
 function getPVData() {
   return Store.getPV();
 }
@@ -564,6 +603,7 @@ rebuildExpectedPVForWindow();
 renderPVTable();
 runAI();
 }
+
   
 // -------------------- SETTINGS --------------------
 function getSettings() {
@@ -1392,6 +1432,8 @@ async function runAI() {
 
     const now = new Date();
     const hour = now.getHours();
+    console.log("legacy forecast:", pvEngine(daySlice, s));
+console.log("shadow forecast:", shadowForecast(weatherData, s));
 
     let s = getSettings();
     loading.innerText = "Loading...";
@@ -1715,6 +1757,14 @@ let basePV = pvEngine(daySlice, s);
 preloadedWeather = null;
   // calibration
 let rawPV = basePV;
+
+    let legacy = pvEngine(daySlice, s);
+let shadow = shadowForecast(weatherData, s);
+
+console.log("PV MODEL CHECK");
+console.log("legacy:", legacy);
+console.log("shadow:", shadow);
+console.log("diff %:", ((shadow - legacy) / legacy) * 100);
 
 // 🔥 APPLY FULL CALIBRATION HERE (not soft blended)
 let { bias, seasonalFactor } = getCalibrationSystem();
