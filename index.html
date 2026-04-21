@@ -1432,6 +1432,9 @@ async function runAI() {
 
     const now = new Date();
     const hour = now.getHours();
+    const token = ++RUN_AI_TOKEN;
+
+let tomorrowSOCValue = null;
 
    let s = getSettings();
 let weatherData = await getWeather(s.postcode);
@@ -1879,9 +1882,9 @@ html += `
 
     <span style="color:red;font-weight:bold; font-size:18px;">
      ${
-  tomorrowSOCValue !== null
+tomorrowSOCValue?.soc ?? "N/A"
     ? `
-      ⚡ ${tomorrowSOCValue.energy.toFixed(1)} kWh charge
+      ⚡ ${tomorrowSOCValue?.energy?.toFixed(1) ?? "N/A"
       <br>
   ${
 (() => {
