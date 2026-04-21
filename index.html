@@ -1038,7 +1038,6 @@ let hourPV =
   temperatureEfficiency(t) *
   getOrientationFactor(s.orientation) *
   (s.shading / 100) *
-  cloudFactorForecast(c, r);
 
 hourPV = inverterLimit(hourPV, s.inverter);
 
@@ -1117,7 +1116,6 @@ let poa = getPOA(
   temperatureEfficiency(t) *
   getOrientationFactor(s.orientation) *
   (s.shading / 100) *
-cloudFactorForecast(c, r) ** 0.3
 
     hourPV = inverterLimit(hourPV, s.inverter);
 
