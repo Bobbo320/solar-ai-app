@@ -1432,13 +1432,14 @@ async function runAI() {
 
     const now = new Date();
     const hour = now.getHours();
-    console.log("legacy forecast:", pvEngine(daySlice, s));
-console.log("shadow forecast:", shadowForecast(weatherData, s));
 
-    let s = getSettings();
-    loading.innerText = "Loading...";
-  let tomorrowSOCValue = null;   // ✅ ADD THIS LINE HERE
-    let weatherData = await getWeather(s.postcode);
+   let s = getSettings();
+let weatherData = await getWeather(s.postcode);
+
+let daySlice = extractDay(weatherData, 0); // pick a valid day first
+
+console.log("legacy forecast:", pvEngine(daySlice, s));
+console.log("shadow forecast:", shadowForecast(weatherData, s));
 
     // If another run started while we were waiting, stop here
     if (token !== RUN_AI_TOKEN) return;
