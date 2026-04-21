@@ -977,13 +977,13 @@ if (getSettings().orientation === "east_west") {
 
   cosTheta = Math.max(cosEast, cosWest);
 }
-  let cosZ = Math.max(0.01, Math.sin(deg2rad(elev)));
+  let cosZ = Math.max(0.2, Math.sin(deg2rad(elev)));
 
   // beam component
   let beam = dni * (cosTheta / cosZ);
 
   // diffuse (isotropic sky model)
-  let diffuse = dhi * (1 + Math.cos(deg2rad(tilt))) / 2;
+  let diffuse = dhi * 0.8 * (1 + Math.cos(deg2rad(tilt))) / 2;
 
   // ground reflected (UK ~0.2 albedo)
   let albedo = 0.2;
