@@ -924,23 +924,12 @@ function solarElevation(lat, decl, hourAng) {
   ));
 }
 
-function incidenceAngleFull(lat, decl, hourAng, tilt, panelAz, solarAz, elev) {
-
-  let latRad = deg2rad(lat);
-  let declRad = deg2rad(decl);
-  let hRad = deg2rad(hourAng);
-  let tiltRad = deg2rad(tilt);
-  let panelAzRad = deg2rad(panelAz);
-  let solarAzRad = deg2rad(solarAz);
-
-  let cosTheta =
-    Math.sin(declRad) * Math.sin(latRad) * Math.cos(tiltRad)
-    - Math.sin(declRad) * Math.cos(latRad) * Math.sin(tiltRad) * Math.cos(panelAzRad)
-    + Math.cos(declRad) * Math.cos(latRad) * Math.cos(tiltRad) * Math.cos(hRad)
-    + Math.cos(declRad) * Math.sin(latRad) * Math.sin(tiltRad) * Math.cos(panelAzRad) * Math.cos(hRad)
-    + Math.cos(declRad) * Math.sin(tiltRad) * Math.sin(panelAzRad) * Math.sin(hRad);
-
-  return Math.max(0, cosTheta);
+// incidence angle on tilted panel
+function incidenceAngle(lat, decl, hourAng, tilt) {
+  return rad2deg(Math.acos(
+    Math.sin(deg2rad(decl)) * Math.sin(deg2rad(lat - tilt)) +
+    Math.cos(deg2rad(decl)) * Math.cos(deg2rad(lat - tilt)) * Math.cos(deg2rad(hourAng))
+  ));
 }
 
 // MAIN: Plane-of-array irradiance
@@ -952,38 +941,16 @@ function getPOA(dni, dhi, ghi, lat, tilt, hour, dayOfYear) {
   let elev = solarElevation(lat, decl, hAng);
   if (elev <= 0) return 0;
 
-  let solarAz = solarAzimuth(lat, decl, hAng, elev);
+  let theta = incidenceAngle(lat, decl, hAng, tilt);
 
-let panelAz = getPanelAzimuth(getSettings().orientation);
-
-// fallback if east/west split
-if (panelAz === null) panelAz = 180;
-
-let cosTheta = incidenceAngleFull(
-  lat,
-  decl,
-  hAng,
-  tilt,
-  panelAz,
-  solarAz,
-  elev
-);
-
-  // special handling for east/west systems
-if (getSettings().orientation === "east_west") {
-
-  let cosEast = incidenceAngleFull(lat, decl, hAng, tilt, 90, solarAz, elev);
-  let cosWest = incidenceAngleFull(lat, decl, hAng, tilt, 270, solarAz, elev);
-
-  cosTheta = Math.max(cosEast, cosWest);
-}
-  let cosZ = Math.max(0.2, Math.sin(deg2rad(elev)));
+  let cosTheta = Math.max(0, Math.cos(deg2rad(theta)));
+  let cosZ = Math.max(0.01, Math.sin(deg2rad(elev)));
 
   // beam component
   let beam = dni * (cosTheta / cosZ);
 
   // diffuse (isotropic sky model)
-  let diffuse = dhi * 0.8 * (1 + Math.cos(deg2rad(tilt))) / 2;
+  let diffuse = dhi * (1 + Math.cos(deg2rad(tilt))) / 2;
 
   // ground reflected (UK ~0.2 albedo)
   let albedo = 0.2;
@@ -1030,14 +997,15 @@ let poa = getPOA(
 // realistic cap
 poa = Math.min(1000, poa);
 
-hourPV =
+let hourPV =
   s.pvSize *
   (poa / 1000) *
   (s.efficiency / 100) *
   SYSTEM_LOSS *
   temperatureEfficiency(t) *
   getOrientationFactor(s.orientation) *
-  (s.shading / 100);
+  (s.shading / 100) *
+  cloudFactorForecast(c, r);
 
 hourPV = inverterLimit(hourPV, s.inverter);
 
@@ -1047,35 +1015,6 @@ hourPV = inverterLimit(hourPV, s.inverter);
   return total;
 }
 
-function solarAzimuth(lat, decl, hourAng, elev) {
-
-  let latRad = deg2rad(lat);
-  let declRad = deg2rad(decl);
-  let hRad = deg2rad(hourAng);
-
-  let az = Math.acos(
-    (
-      Math.sin(declRad) * Math.cos(latRad) -
-      Math.cos(declRad) * Math.sin(latRad) * Math.cos(hRad)
-    ) / Math.cos(deg2rad(elev))
-  );
-
-  az = rad2deg(az);
-
-  // morning / afternoon correction
-  if (hourAng > 0) az = 360 - az;
-
-  return az; // degrees (0 = north, 180 = south)
-}
-
-function getPanelAzimuth(orientation) {
-  if (orientation === "south") return 180;
-  if (orientation === "se_sw") return 180; // still mostly south
-  if (orientation === "east_west") return null; // handled separately
-  if (orientation === "north") return 0;
-  return 180;
-}
-  
 function pvEngine(daySlice, s) {
 
   let total = 0;
@@ -1109,13 +1048,14 @@ let poa = getPOA(
   dayOfYear   // ✅ CORRECT
 );
 
-  hourPV =
+  let hourPV =
   s.pvSize *
   (poa / 1000) *
   (s.efficiency / 100) *
   temperatureEfficiency(t) *
   getOrientationFactor(s.orientation) *
-  (s.shading / 100);
+  (s.shading / 100) *
+cloudFactorForecast(c, r) ** 0.3
 
     hourPV = inverterLimit(hourPV, s.inverter);
 
