@@ -1030,14 +1030,14 @@ let poa = getPOA(
 // realistic cap
 poa = Math.min(1000, poa);
 
-let hourPV =
+hourPV =
   s.pvSize *
   (poa / 1000) *
   (s.efficiency / 100) *
   SYSTEM_LOSS *
   temperatureEfficiency(t) *
   getOrientationFactor(s.orientation) *
-  (s.shading / 100) *
+  (s.shading / 100);
 
 hourPV = inverterLimit(hourPV, s.inverter);
 
@@ -1109,13 +1109,13 @@ let poa = getPOA(
   dayOfYear   // ✅ CORRECT
 );
 
-  let hourPV =
+  hourPV =
   s.pvSize *
   (poa / 1000) *
   (s.efficiency / 100) *
   temperatureEfficiency(t) *
   getOrientationFactor(s.orientation) *
-  (s.shading / 100) *
+  (s.shading / 100);
 
     hourPV = inverterLimit(hourPV, s.inverter);
 
