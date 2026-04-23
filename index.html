@@ -991,7 +991,7 @@ function estimatePV(radSlice, cloudSlice, tempSlice, s, dayData) {
   for (let i = 0; i < 24; i++) {
 
     let r = radSlice[i];
-let usable = r > 5 ? 1 : 0.2;
+    if (r < SOLAR_THRESHOLD) continue;
     let t = tempSlice[i] ?? 15;
     let c = cloudSlice[i];
 
@@ -1355,58 +1355,23 @@ function getChargePlanFromWindow(targetEnergy, s) {
   };
 }
   
-function getSolarTimeRange(radSlice, timeSlice, lat = getSettings().lat) {
-
+function getSolarTimeRange(radSlice, timeSlice) {
   let startTime = null;
   let endTime = null;
 
-  let streak = 0;
-
   for (let i = 0; i < 24; i++) {
-
-    let time = new Date(timeSlice[i]);
-
-    let dayOfYear = Math.floor(
-      (time - new Date(time.getFullYear(), 0, 0)) / 86400000
-    );
-
-    let decl = solarDeclination(dayOfYear);
-    let elev = solarElevation(lat, decl, hourAngle(i));
-
-    let r = radSlice[i];
-
-    // 🔥 PHYSICS-FIRST GATE (fixes 07:00 noise)
-    let isRealSun =
-      elev > 3 &&          // sun above horizon (critical fix)
-      r > 30;              // ignore feed noise
-
-    if (isRealSun) {
-
-      streak++;
-
-      // require persistence to avoid single-hour spikes
-      if (streak >= 2 && startTime === null) {
-        startTime = timeSlice[i - 1] || timeSlice[i];
+  if (radSlice[i] > SOLAR_VISIBLE_THRESHOLD) {
+      if (startTime === null) {
+        startTime = timeSlice[i];
       }
-
       endTime = timeSlice[i];
-
-    } else {
-      streak = 0;
     }
   }
 
   if (!startTime || !endTime) return "No data";
 
-  let start = new Date(startTime).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit"
-  });
-
-  let end = new Date(endTime).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit"
-  });
+  let start = new Date(startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  let end = new Date(endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   return `${start} – ${end}`;
 }
@@ -1613,11 +1578,8 @@ let forecastNowPV =
     "forecast"
   );
     
-let baseForecast =
-  estimateCurrentHourPV(s, weatherData, nowIndex);
-
 let liveErrorRatio =
-  baseForecast > 0 ? (nowPV / baseForecast) : 1;
+  forecastNowPV > 0 ? (nowPV / forecastNowPV) : 1;
 
 liveErrorRatio = Math.max(0.7, Math.min(1.3, liveErrorRatio));
 
@@ -1802,46 +1764,57 @@ preloadedWeather = null;
   // calibration
 let rawPV = basePV;
 
-// 🔥 CALIBRATION PIPELINE (FIXED SINGLE DECLARATION)
-
+// 🔥 APPLY FULL CALIBRATION HERE (not soft blended)
 let { bias, seasonalFactor } = getCalibrationSystem();
+let calibratedPV =
+  confidence < 0.1
+    ? rawPV
+    : rawPV * bias * seasonalFactor;
 
-let calibrationFactor =
-  confidence < 0.1 ? 1 : bias * seasonalFactor;
+// still allow live learning
+let combinedAdjustment =
+  1 + ((bias * seasonalFactor - 1) * 0.6) +
+      ((LIVE_ADJUSTMENT - 1) * 0.4);
 
-// learning factor (live correction)
-let learningFactor = LIVE_ADJUSTMENT;
+calibratedPV = rawPV * combinedAdjustment;
 
-// combine ONCE
-let finalFactor = calibrationFactor * learningFactor;
-
-// clamp to prevent drift explosion
-finalFactor = Math.max(0.85, Math.min(1.15, finalFactor));
-
-// apply ONCE
-let calibratedPV = rawPV * finalFactor;
-
-// safety clamp
+// optional safety clamp
 calibratedPV = Math.max(0, calibratedPV);
 
-// store result
+// store calibrated value
 storeExpectedPV(d, calibratedPV);
 
-// UI value
+// use same value for UI
 let pv = calibratedPV;
 
-// breakdown (use actual applied factors)
+let forecastCalibration = LIVE_ADJUSTMENT;
+
 LAST_BREAKDOWN = buildBreakdown({
   basePV: rawPV,
-  cloudFactor: 1,
+  cloudFactor: 1, // already baked into estimatePV
   tiltFactor: 1,
   tempFactor: 1,
   orientationFactor: 1,
   shadingFactor: 1,
-  calibrationFactor,
+  calibrationFactor: forecastCalibration,
   inverterFactor: 1,
-  learningFactor
+  learningFactor: LIVE_ADJUSTMENT
 });
+   
+
+// ensure tomorrow updates if today changes
+if (d === 0) {
+  rebuildExpectedPVForWindow(pv);
+}
+
+// ✅ Store expected PV for today + tomorrow
+let pvData = getPVData();
+
+let date = new Date();
+date.setDate(date.getDate() + d);
+
+let key = getLocalDateKey(date);
+let entry = pvData[key];
 
 
 // CLEAN ENERGY PIPELINE (FIXED)
