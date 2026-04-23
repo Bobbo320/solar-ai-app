@@ -1354,14 +1354,18 @@ function getChargePlanFromWindow(targetEnergy, s) {
   };
 }
   
-function getSolarTimeRange(radSlice, timeSlice, lat = 52.2) {
+function getSolarTimeRange(weather, dayIndex, lat = 52.2) {
 
-  let startTime = null;
-  let endTime = null;
+  let start = null;
+  let end = null;
+
+  let startIdx = dayIndex * 24;
 
   for (let i = 0; i < 24; i++) {
 
-    let t = new Date(timeSlice[i]);
+    let idx = startIdx + i;
+
+    let t = new Date(weather.hourly.time[idx]);
     let hour = t.getHours();
 
     let dayOfYear = Math.floor(
@@ -1372,20 +1376,21 @@ function getSolarTimeRange(radSlice, timeSlice, lat = 52.2) {
     let hAng = hourAngle(hour);
     let elev = solarElevation(lat, decl, hAng);
 
-    let threshold = getSolarVisibilityThreshold(elev);
+    // STEP 4 CORE RULE (geometry-first, not radiation-first)
+    if (elev > 3) {   // 🔥 key fix: includes early sunrise (≈05:30–06:00 UK)
 
-    if (radSlice[i] > threshold) {
-      if (startTime === null) startTime = timeSlice[i];
-      endTime = timeSlice[i];
+      if (start === null) start = t;
+      end = t;
     }
   }
 
-  if (!startTime || !endTime) return "No data";
+  if (!start || !end) return "No data";
 
-  let start = new Date(startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  let end = new Date(endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-  return `${start} – ${end}`;
+  return {
+    start: start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    end: end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    hours: (end - start) / 3600000
+  };
 }
 
 function weatherSummary(c,r,t,h,p){
