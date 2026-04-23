@@ -1857,8 +1857,8 @@ const calibrationFactor =
     ? 1
     : bias * seasonalFactor;
 
-calibratedPV = rawPV * combinedAdjustment;
-
+calibratedPV = rawPV * calibrationFactor;
+   
 // optional safety clamp
 calibratedPV = Math.max(0, calibratedPV);
 
