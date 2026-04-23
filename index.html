@@ -960,9 +960,10 @@ function hourAngle(hour) {
 // solar elevation
 function solarElevation(lat, decl, hAng) {
   lat = lat ?? getLatSync();
+
   return rad2deg(Math.asin(
     Math.sin(deg2rad(lat)) * Math.sin(deg2rad(decl)) +
-    Math.cos(deg2rad(lat)) * Math.cos(deg2rad(decl)) * Math.cos(deg2rad(hourAng))
+    Math.cos(deg2rad(lat)) * Math.cos(deg2rad(decl)) * Math.cos(deg2rad(hAng))
   ));
 }
 
@@ -1038,7 +1039,8 @@ let poa = getPOA(
 
 // realistic cap
 poa = Math.min(1000, poa);
-
+let decl = solarDeclination(dayOfYear);
+let hAng = hourAngle(i);
 let elev = solarElevation(getLatSync(), decl, hAng);
 let rampFactor = 1;
 
@@ -1102,7 +1104,8 @@ let poa = getPOA(
 // 🔧 ADD THESE (fix)
 let decl = solarDeclination(dayOfYear);
 let hAng = hourAngle(i);
-
+let decl = solarDeclination(dayOfYear);
+let hAng = hourAngle(i);
 // elevation-based ramp
 let elev = solarElevation(getLatSync(), decl, hAng);
 
