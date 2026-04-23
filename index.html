@@ -969,7 +969,7 @@ function getPOA(dni, dhi, ghi, lat, tilt, hour, dayOfYear) {
   let theta = incidenceAngle(lat, decl, hAng, tilt);
 
   let cosTheta = Math.max(0, Math.cos(deg2rad(theta)));
-let cosZ = Math.max(0.08, Math.sin(deg2rad(elev)));
+  let cosZ = Math.max(0.01, Math.sin(deg2rad(elev)));
 
   // beam component
   let beam = dni * (cosTheta / cosZ);
@@ -992,90 +992,65 @@ function estimatePV(radSlice, cloudSlice, tempSlice, s, dayData) {
 
     let r = radSlice[i];
     if (r < SOLAR_THRESHOLD) continue;
-
     let t = tempSlice[i] ?? 15;
     let c = cloudSlice[i];
 
     let dni = dayData?.dni?.[i] ?? r;
+let dhiBase = dayData?.dhi?.[i] ?? r * 0.35;
 
-    // =========================
-    // DIFFUSE MODEL (CLEANED)
-    // =========================
-    let dhiBase = dayData?.dhi?.[i] ?? r * 0.35;
+// boost diffuse in low-light conditions
+let diffuseBoost =
+  r < 400
+    ? 1 + 0.6 * (1 - r / 400)
+    : 1;
 
-    let diffuseBoost =
-      r < 600
-        ? 1 + 0.9 * Math.pow(1 - r / 600, 1.4)
-        : 1;
+let dhi = dhiBase * diffuseBoost;
+    
+  let date = new Date();
+date.setHours(i);
+let dayOfYear = Math.floor(
+  (date - new Date(date.getFullYear(), 0, 0)) / 86400000
+);
 
-    let dhi = dhiBase * diffuseBoost;
+// dynamic tilt (keeps your seasonal system)
+let tilt = getSeasonalTilt(s.tilt);
 
-    // =========================
-    // TIME / SEASON CONTEXT
-    // =========================
-    let date = new Date();
-    date.setHours(i);
-    let dayOfYear = Math.floor(
-      (date - new Date(date.getFullYear(), 0, 0)) / 86400000
-    );
+let ghi = r;
 
-    let tilt = getSeasonalTilt(s.tilt);
-    let ghi = r;
+let poa = getPOA(
+  dni,
+  dhi,
+  ghi,
+  52.2, // UK latitude default (or use coords later)
+  tilt,
+  i,
+  dayOfYear
+);
 
-    // =========================
-    // POA CALCULATION
-    // =========================
-    let poa = getPOA(
-      dni,
-      dhi,
-      ghi,
-      52.2,
-      tilt,
-      i,
-      dayOfYear
-    );
+// realistic cap
+poa = Math.min(1000, poa);
 
-    poa = Math.min(1000, poa);
+let boost = lowLightBoost(poa);
 
-    // =========================
-    // LOW LIGHT RESPONSE (SINGLE LAYER ONLY)
-    // =========================
-    let lowLightBoostFactor = lowLightBoost(poa);
+let hourPV =
+  s.pvSize *
+  (poa / 1000) *
+  boost *
+  (s.efficiency / 100) *
+  SYSTEM_LOSS *
+  temperatureEfficiency(t) *
+  getOrientationFactor(s.orientation) *
+  (s.shading / 100) *
+  cloudFactorForecast(c, r);
 
-    // unified morning response (replaces all previous hacks)
-    let morningFactor = 1;
-
-    if (r > 0 && r < 600 && i < 10) {
-      let shape = 1 - (r / 600);
-      morningFactor = 1.15 + shape * 0.20;
-    }
-
-    let boost = lowLightBoostFactor * morningFactor;
-
-    // =========================
-    // BASE PV CALCULATION
-    // =========================
-    let hourPV =
-      s.pvSize *
-      (poa / 1000) *
-      boost *
-      (s.efficiency / 100) *
-      SYSTEM_LOSS *
-      temperatureEfficiency(t) *
-      getOrientationFactor(s.orientation) *
-      (s.shading / 100) *
-      cloudFactorForecast(c, r);
-
-    // =========================
-    // INVERTER LIMIT
-    // =========================
-    hourPV = inverterLimit(hourPV, s.inverter);
+hourPV = inverterLimit(hourPV, s.inverter);
 
     total += hourPV;
   }
 
   return total;
 }
+
 function pvEngine(daySlice, s) {
 
   let total = 0;
@@ -1088,93 +1063,48 @@ function pvEngine(daySlice, s) {
     let c = daySlice.cloud[i];
     let t = daySlice.temp[i];
 
-    let dni = daySlice.dni?.[i] ?? r;
-    let dhiBase = daySlice?.dhi?.[i] ?? r * 0.3;
+ let dni = daySlice.dni?.[i] ?? r;
 
-    // -----------------------------
-    // IMPROVED DIFFUSE MODEL
-    // (fixes undercooked morning ramp)
-    // -----------------------------
-    let diffuseBoost =
-      r < 650
-        ? 1 + 1.05 * Math.pow(1 - r / 650, 1.6)
-        : 1;
+let dhiBase = daySlice?.dhi?.[i] ?? r * 0.3;
 
-    let dhi = dhiBase * diffuseBoost;
+// boost diffuse in low-light conditions
+let diffuseBoost =
+  r < 400
+    ? 1 + 0.6 * (1 - r / 400)
+    : 1;
 
-    // -----------------------------
-    // TIME / SEASON CORRECTNESS
-    // IMPORTANT FIX: avoids fake seasonal drift bugs
-    // -----------------------------
-    let date = new Date();
-    date.setDate(date.getDate() + 0);
-    date.setHours(i);
+let dhi = dhiBase * diffuseBoost;
 
-    let dayOfYear = Math.floor(
-      (date - new Date(date.getFullYear(), 0, 0)) / 86400000
-    );
+  let date = new Date();
+date.setDate(date.getDate() + 0); // current daySlice already aligned
+date.setHours(i);
 
-    let tilt = getSeasonalTilt(s.tilt);
+let dayOfYear = Math.floor(
+  (date - new Date(date.getFullYear(), 0, 0)) / 86400000
+);
 
-    let poa = getPOA(
-      dni,
-      dhi,
-      r,
-      52.2,
-      tilt,
-      i,
-      dayOfYear
-    );
+let poa = getPOA(
+  dni,
+  dhi,
+  r,
+  52.2,
+  getSeasonalTilt(s.tilt),
+  i,
+  dayOfYear   // ✅ CORRECT
+);
 
-    poa = Math.min(1000, poa);
+let boost = lowLightBoost(poa);
 
-    // -----------------------------
-    // MORNING RAMP FIX (CORE ISSUE)
-    // -----------------------------
-    let isMorning = i >= 5 && i <= 11 && r > 0;
+let hourPV =
+  s.pvSize *
+  (poa / 1000) *
+  boost *
+  (s.efficiency / 100) *
+  temperatureEfficiency(t) *
+  getOrientationFactor(s.orientation) *
+  (s.shading / 100) *
+cloudFactorForecast(c, r) ** 0.3
 
-    let morningCurveBoost = 1;
-
-    if (isMorning) {
-      // stronger uplift at very low radiation
-      let shape = 1 - Math.min(1, r / 600);
-
-      morningCurveBoost =
-        1.12 + (shape * 0.55);   // ← this is the missing ramp physics
-    }
-
-    // -----------------------------
-    // LOW LIGHT PHYSICS
-    // -----------------------------
-    let boost =
-      lowLightBoost(poa) *
-      morningCurveBoost;
-
-    // -----------------------------
-    // CORE PV EQUATION
-    // -----------------------------
-    let hourPV =
-      s.pvSize *
-      (poa / 1000) *
-      boost *
-      (s.efficiency / 100) *
-      temperatureEfficiency(t) *
-      getOrientationFactor(s.orientation) *
-      (s.shading / 100) *
-      cloudFactorForecast(c, r);
-
-    // -----------------------------
-    // UK MORNING ATMOSPHERIC EFFECT
-    // (kept but stabilised)
-    // -----------------------------
-    if (isMorning) {
-      let atmGain = 1.08 + (r / 900) * 0.18;
-      hourPV *= atmGain;
-    }
-
-    // -----------------------------
-    // INVERTER LIMIT
-    // -----------------------------
     hourPV = inverterLimit(hourPV, s.inverter);
 
     total += hourPV;
@@ -1425,56 +1355,27 @@ function getChargePlanFromWindow(targetEnergy, s) {
   };
 }
   
-function getSolarTimeRange(daySlice, timeSlice, s) {
-
+function getSolarTimeRange(radSlice, timeSlice) {
   let startTime = null;
   let endTime = null;
 
-  const lat = 52.2;
-  const tilt = getSeasonalTilt(s.tilt);
-
   for (let i = 0; i < 24; i++) {
-
-    let r = daySlice.rad[i];
-    let dni = daySlice.dni?.[i] ?? r;
-    let dhi = daySlice.dhi?.[i] ?? r * 0.3;
-
-    let date = new Date();
-    date.setHours(i);
-
-    let dayOfYear = Math.floor(
-      (date - new Date(date.getFullYear(), 0, 0)) / 86400000
-    );
-
-    let poa = getPOA(
-      dni,
-      dhi,
-      r,
-      lat,
-      tilt,
-      i,
-      dayOfYear
-    );
-
-    // 🌅 REAL SUNLIGHT THRESHOLD (physics-based)
-    let isSolar = poa > 120;
-
-    if (isSolar) {
-      if (!startTime) startTime = timeSlice[i];
+  if (radSlice[i] > SOLAR_VISIBLE_THRESHOLD) {
+      if (startTime === null) {
+        startTime = timeSlice[i];
+      }
       endTime = timeSlice[i];
     }
   }
 
   if (!startTime || !endTime) return "No data";
 
-  let start = new Date(startTime)
-    .toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-  let end = new Date(endTime)
-    .toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  let start = new Date(startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  let end = new Date(endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   return `${start} – ${end}`;
 }
+
 function weatherSummary(c,r,t,h,p){
   return `
     🌤️ Cloud (daylight): ${c.toFixed(0)}%<br>
@@ -1534,11 +1435,6 @@ async function runAI() {
 
   const token = ++RUN_AI_TOKEN; // identify this run
 
-let combinedAdjustment =
-  (confidence < 10)
-    ? 1
-    : bias * seasonalFactor * LIVE_ADJUSTMENT;
-  
   try {
     preloadedWeather = null;
 
@@ -1689,21 +1585,17 @@ liveErrorRatio = Math.max(0.7, Math.min(1.3, liveErrorRatio));
 
 let learningRate = nowRad > 200 ? 0.25 : 0.15;
 
-const learningUpdate =
+LIVE_ADJUSTMENT =
   LIVE_ADJUSTMENT * (1 - learningRate) +
   liveErrorRatio * learningRate;
-
-// DO NOT mutate live state during render
-const LIVE_ADJUSTMENT_NEXT = learningUpdate;
   
 if (nowCloud < 20 && nowRad > 400) {
   cloudFactorLiveSoft = Math.min(1.18, cloudFactorLiveSoft);
 }
   
-LIVE_ADJUSTMENT = LIVE_ADJUSTMENT_NEXT;
 localStorage.setItem("liveAdjustment", LIVE_ADJUSTMENT);
 
-nowPV = forecastNowPV * LIVE_ADJUSTMENT_NEXT;
+nowPV = forecastNowPV * LIVE_ADJUSTMENT;
   
 
 // -------------------- EXPORT (FIXED PHYSICS MODEL) --------------------
@@ -1813,11 +1705,11 @@ ${confidence < 0.1 ? `
 
   let split = sunshineSplit(rad, start);
 
-let timeRange = getSolarTimeRange(
-  daySlice,
-  time.slice(start, start + 24),
-  s
-);
+  let timeRange = getSolarTimeRange(
+    rad.slice(start, start + 24),
+    time.slice(start, start + 24)
+  );
+
   let sun = split.morning + split.afternoon;
 
   let midTemp = temp[start + 12] ?? temp[start]; // safety fallback
@@ -1880,21 +1772,17 @@ let calibratedPV =
     : rawPV * bias * seasonalFactor;
 
 // still allow live learning
-const calibrationFactor =
-  confidence < 0.1
-    ? 1
-    : bias * seasonalFactor;
+let combinedAdjustment =
+  1 + ((bias * seasonalFactor - 1) * 0.6) +
+      ((LIVE_ADJUSTMENT - 1) * 0.4);
 
-calibratedPV = rawPV * calibrationFactor;
-   
+calibratedPV = rawPV * combinedAdjustment;
+
 // optional safety clamp
 calibratedPV = Math.max(0, calibratedPV);
 
 // store calibrated value
-// ONLY store for today (not full loop)
-if (d === 0) {
-  storeExpectedPV(d, calibratedPV);
-}
+storeExpectedPV(d, calibratedPV);
 
 // use same value for UI
 let pv = calibratedPV;
