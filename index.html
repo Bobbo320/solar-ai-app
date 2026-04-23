@@ -999,12 +999,13 @@ function estimatePV(radSlice, cloudSlice, tempSlice, s, dayData) {
     let dni = dayData?.dni?.[i] ?? r;
 let dhi = dayData?.dhi?.[i] ?? r * 0.35;
     
-  let date = new Date();
-date.setHours(i);
+let solarDate = new Date();
+solarDate.setHours(i);
+    
 let dayOfYear = Math.floor(
-  (date - new Date(date.getFullYear(), 0, 0)) / 86400000
+  (solarDate - new Date(solarDate.getFullYear(), 0, 0)) / 86400000
 );
-
+    
 // dynamic tilt (keeps your seasonal system)
 let tilt = getSeasonalTilt(s.tilt);
 
@@ -1033,9 +1034,9 @@ let hourPV =
   (s.shading / 100) *
   cloudFactorForecast(c, r);
 
-let date = new Date();
-date.setHours(i);
-let dayOfYear = Math.floor((date - new Date(date.getFullYear(), 0, 0)) / 86400000);
+let dayOfYear = Math.floor(
+  (solarDate - new Date(solarDate.getFullYear(), 0, 0)) / 86400000
+);
 
 hourPV *= solarRampFactor(i, 52.2, dayOfYear);
 
@@ -1060,9 +1061,8 @@ function pvEngine(daySlice, s) {
     let dni = daySlice.dni?.[i] ?? r;
     let dhi = daySlice.dhi?.[i] ?? r * 0.3;
 
-  let date = new Date();
-date.setDate(date.getDate() + 0); // current daySlice already aligned
-date.setHours(i);
+let solarDate = new Date();
+solarDate.setHours(i);
 
 let dayOfYear = Math.floor(
   (date - new Date(date.getFullYear(), 0, 0)) / 86400000
