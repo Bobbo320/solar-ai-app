@@ -209,10 +209,10 @@
 let RUN_AI_LOCK = false;
 let RUN_AI_TOKEN = 0;
 let LAST_BREAKDOWN = null;
-let LOCATION_CACHE = null;
 const SOLAR_THRESHOLD = 25;        // used for real PV calculations
 const SOLAR_VISIBLE_THRESHOLD = 25; // used for solar time window display
-const SYSTEM_LOSS = 1; // wiring, inverter, mismatch
+  const SYSTEM_LOSS = 1; // wiring, inverter, mismatch
+
 const Store = {
   getPV() {
     return JSON.parse(localStorage.getItem("pvData") || "{}");
@@ -612,11 +612,7 @@ blockSize: +blockSize.value,
   };
 
 Store.setSettings(settings);
-
-LOCATION_CACHE = null;
-getLocation();
-
-preloadWeather();
+  preloadWeather();
 
   alert("Saved");
   toggleSettings();
@@ -700,26 +696,6 @@ let coords = {
   } catch {
     return { lat: 52.6309, lon: 1.2974 };
   }
-}
-
-  async function getLocation() {
-  if (LOCATION_CACHE) return LOCATION_CACHE;
-
-  const s = getSettings();
-  const coords = await getCoordinates(s.postcode);
-
-  LOCATION_CACHE = coords;
-  return coords;
-}
-
-  async function getLocation() {
-  if (LOCATION_CACHE) return LOCATION_CACHE;
-
-  const s = getSettings();
-  const coords = await getCoordinates(s.postcode);
-
-  LOCATION_CACHE = coords;
-  return coords;
 }
 
 // -------------------- WEATHER --------------------
@@ -984,8 +960,7 @@ function getPOA(dni, dhi, ghi, lat, tilt, hour, dayOfYear) {
 
   let decl = solarDeclination(dayOfYear);
   let hAng = hourAngle(hour);
-let decl = solarDeclination(dayOfYear);
-let hAng = hourAngle(i);
+
   let elev = solarElevation(lat, decl, hAng);
   if (elev <= 0) return 0;
 
@@ -1036,7 +1011,7 @@ let poa = getPOA(
   dni,
   dhi,
   ghi,
-getLatSync(), // UK latitude default (or use coords later)
+  52.2, // UK latitude default (or use coords later)
   tilt,
   i,
   dayOfYear
@@ -1045,7 +1020,7 @@ getLatSync(), // UK latitude default (or use coords later)
 // realistic cap
 poa = Math.min(1000, poa);
 
-let elev = solarElevation(getLatSync(), decl, hAng);
+let elev = solarElevation(52.2, decl, hAng);
 let rampFactor = 1;
 
 // Apply ONLY in morning ramp zone
@@ -1099,7 +1074,7 @@ let poa = getPOA(
   dni,
   dhi,
   r,
-  getLatSync(),
+  52.2,
   getSeasonalTilt(s.tilt),
   i,
   dayOfYear
@@ -1110,7 +1085,7 @@ let decl = solarDeclination(dayOfYear);
 let hAng = hourAngle(i);
 
 // elevation-based ramp
-let elev = solarElevation(getLatSync(), decl, hAng);
+let elev = solarElevation(52.2, decl, hAng);
 
 let rampFactor = 1;
 
@@ -1378,11 +1353,11 @@ function getChargePlanFromWindow(targetEnergy, s) {
   };
 }
   
-function getSolarTimeRange(radSlice, timeSlice, lat = getLatSync()) {
+function getSolarTimeRange(radSlice, timeSlice, lat = 52.2) {
 
   let startTime = null;
   let endTime = null;
-let lat = getLatSync();
+
   for (let i = 0; i < 24; i++) {
 
     let t = new Date(timeSlice[i]);
@@ -1391,8 +1366,7 @@ let lat = getLatSync();
     let dayOfYear = Math.floor(
       (t - new Date(t.getFullYear(), 0, 0)) / 86400000
     );
-let decl = solarDeclination(dayOfYear);
-let hAng = hourAngle(i);
+
     let decl = solarDeclination(dayOfYear);
     let hAng = hourAngle(hour);
     let elev = solarElevation(lat, decl, hAng);
@@ -1423,14 +1397,14 @@ function weatherSummary(c,r,t,h,p){
   `;
 }
 
-function estimateCurrentHourPV(s, weather, hourIndex, lat = getLatSync()) {
+function estimateCurrentHourPV(s, weather, hourIndex, lat = 52.2) {
 
   let r = weather.hourly.shortwave_radiation[hourIndex];
   let dni = weather.hourly.direct_radiation[hourIndex];
   let dhi = weather.hourly.diffuse_radiation[hourIndex];
   let c = weather.hourly.cloudcover[hourIndex];
   let t = weather.hourly.temperature_2m[hourIndex];
-let lat = getLatSync();
+
   if (r < SOLAR_THRESHOLD) return 0;
 
   let now = new Date(weather.hourly.time[hourIndex]);
@@ -1518,8 +1492,6 @@ let cloudWeight = Math.max(0.15, 1 - (nowRad / 600));
 let cloudFactorLiveSoft =
   1 - (nowCloud / 100) * 0.75 * cloudWeight;
 
-let lat = getLatSync();
-    
 cloudFactorLiveSoft = Math.max(0.65, Math.min(1.05, cloudFactorLiveSoft));
 
   // ☀️ If radiation is strong, override cloud pessimism
@@ -1542,7 +1514,7 @@ let poaNow = getPOA(
   dni,
   dhi,
   ghi,
-  getLatSync(),
+  52.2,
   tilt,
   hour,
   dayOfYear
@@ -2039,8 +2011,7 @@ window.deleteEdit = deleteEdit;
 
 window.saveSettings = saveSettings;
 
-window.onload = async () => {
-  await getLocation();   // ensures lat is ready
+window.onload = () => {
   preloadWeather();
   renderPVTable();
 };
