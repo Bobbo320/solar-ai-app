@@ -978,10 +978,10 @@ function incidenceAngle(lat, decl, hourAng, tilt) {
 // MAIN: Plane-of-array irradiance
 function getPOA(dni, dhi, ghi, lat, tilt, hour, dayOfYear) {
 
-  let decl = solarDeclination(dayOfYear);
-  let hAng = hourAngle(hour);
+let decl = solarDeclination(dayOfYear);
+let hAng = hourAngle(i);
 
-  let elev = solarElevation(lat, decl, hAng);
+let elev = solarElevation(getLatSync(), decl, hAng);
   if (elev <= 0) return 0;
 
   let theta = incidenceAngle(lat, decl, hAng, tilt);
@@ -1041,6 +1041,7 @@ let poa = getPOA(
 poa = Math.min(1000, poa);
 let decl = solarDeclination(dayOfYear);
 let hAng = hourAngle(i);
+
 let elev = solarElevation(getLatSync(), decl, hAng);
 let rampFactor = 1;
 
