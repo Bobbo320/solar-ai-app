@@ -1534,6 +1534,11 @@ async function runAI() {
 
   const token = ++RUN_AI_TOKEN; // identify this run
 
+let combinedAdjustment =
+  (confidence < 10)
+    ? 1
+    : bias * seasonalFactor * LIVE_ADJUSTMENT;
+  
   try {
     preloadedWeather = null;
 
