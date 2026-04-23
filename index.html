@@ -1425,17 +1425,41 @@ function getChargePlanFromWindow(targetEnergy, s) {
   };
 }
   
-function getSolarTimeRange(radSlice, timeSlice) {
+function getSolarTimeRange(daySlice, timeSlice, s) {
 
   let startTime = null;
   let endTime = null;
 
+  const lat = 52.2;
+  const tilt = getSeasonalTilt(s.tilt);
+
   for (let i = 0; i < 24; i++) {
 
-    let r = radSlice[i];
-    let valid = r > 80; // hard physical cutoff (NOT diffuse noise)
+    let r = daySlice.rad[i];
+    let dni = daySlice.dni?.[i] ?? r;
+    let dhi = daySlice.dhi?.[i] ?? r * 0.3;
 
-    if (valid) {
+    let date = new Date();
+    date.setHours(i);
+
+    let dayOfYear = Math.floor(
+      (date - new Date(date.getFullYear(), 0, 0)) / 86400000
+    );
+
+    let poa = getPOA(
+      dni,
+      dhi,
+      r,
+      lat,
+      tilt,
+      i,
+      dayOfYear
+    );
+
+    // 🌅 REAL SUNLIGHT THRESHOLD (physics-based)
+    let isSolar = poa > 120;
+
+    if (isSolar) {
       if (!startTime) startTime = timeSlice[i];
       endTime = timeSlice[i];
     }
@@ -1451,7 +1475,6 @@ function getSolarTimeRange(radSlice, timeSlice) {
 
   return `${start} – ${end}`;
 }
-
 function weatherSummary(c,r,t,h,p){
   return `
     🌤️ Cloud (daylight): ${c.toFixed(0)}%<br>
