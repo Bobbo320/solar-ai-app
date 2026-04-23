@@ -988,50 +988,51 @@ function estimatePV(radSlice, cloudSlice, tempSlice, s, dayData) {
   for (let i = 0; i < 24; i++) {
 
     let r = radSlice[i];
-  let lowLightMultiplier = dawnGain(r, i);
     let t = tempSlice[i] ?? 15;
     let c = cloudSlice[i];
 
+    // safe low-light ramp (season-independent, physics-friendly)
+    let lowLightMultiplier = dawnGain(r, i);
+
     let dni = dayData?.dni?.[i] ?? r;
-let dhi = dayData?.dhi?.[i] ?? r * 0.35;
-    
-  let date = new Date();
-date.setHours(i);
-let dayOfYear = Math.floor(
-  (date - new Date(date.getFullYear(), 0, 0)) / 86400000
-);
+    let dhi = dayData?.dhi?.[i] ?? r * 0.35;
 
-// dynamic tilt (keeps your seasonal system)
-let tilt = getSeasonalTilt(s.tilt);
+    let date = new Date();
+    date.setHours(i);
 
-let ghi = r;
+    let dayOfYear = Math.floor(
+      (date - new Date(date.getFullYear(), 0, 0)) / 86400000
+    );
 
-let poa = getPOA(
-  dni,
-  dhi,
-  ghi,
-  52.2, // UK latitude default (or use coords later)
-  tilt,
-  i,
-  dayOfYear
-);
+    // seasonal tilt system (unchanged)
+    let tilt = getSeasonalTilt(s.tilt);
 
-// realistic cap
-poa = Math.min(1000, poa);
+    let ghi = r;
 
-let lowLightMultiplier = dawnGain(r, i);
+    let poa = getPOA(
+      dni,
+      dhi,
+      ghi,
+      52.2,
+      tilt,
+      i,
+      dayOfYear
+    );
 
-let hourPV =
-  s.pvSize *
-  lowLightMultiplier **
-  (s.efficiency / 100) *
-  SYSTEM_LOSS *
-  temperatureEfficiency(t) *
-  getOrientationFactor(s.orientation) *
-  (s.shading / 100) *
-  cloudFactorForecast(c, r);
+    poa = Math.min(1000, poa);
 
-hourPV = inverterLimit(hourPV, s.inverter);
+    let hourPV =
+      s.pvSize *
+      (poa / 1000) *
+      (s.efficiency / 100) *
+      SYSTEM_LOSS *
+      temperatureEfficiency(t) *
+      getOrientationFactor(s.orientation) *
+      (s.shading / 100) *
+      cloudFactorForecast(c, r) *
+      lowLightMultiplier;
+
+    hourPV = inverterLimit(hourPV, s.inverter);
 
     total += hourPV;
   }
@@ -1046,50 +1047,43 @@ function pvEngine(daySlice, s) {
   for (let i = 0; i < 24; i++) {
 
     let r = daySlice.rad[i];
-   let lowLightMultiplier = dawnGain(r, i);
-
     let c = daySlice.cloud[i];
     let t = daySlice.temp[i];
+
+    let lowLightMultiplier = dawnGain(r, i);
 
     let dni = daySlice.dni?.[i] ?? r;
     let dhi = daySlice.dhi?.[i] ?? r * 0.3;
 
-  let date = new Date();
-date.setDate(date.getDate() + 0); // current daySlice already aligned
-date.setHours(i);
+    let date = new Date();
+    date.setDate(date.getDate());
+    date.setHours(i);
 
-let dayOfYear = Math.floor(
-  (date - new Date(date.getFullYear(), 0, 0)) / 86400000
-);
+    let dayOfYear = Math.floor(
+      (date - new Date(date.getFullYear(), 0, 0)) / 86400000
+    );
 
-let poa = getPOA(
-  dni,
-  dhi,
-  r,
-  52.2,
-  getSeasonalTilt(s.tilt),
-  i,
-  dayOfYear   // ✅ CORRECT
-);
+    let poa = getPOA(
+      dni,
+      dhi,
+      r,
+      52.2,
+      getSeasonalTilt(s.tilt),
+      i,
+      dayOfYear
+    );
 
-let lowLightMultiplier = dawnGain(r, i);
+    poa = Math.min(1000, poa);
 
-let hourPV =
-  s.pvSize *
-  (poa / 1000) *
-  (s.efficiency / 100) *
-  temperatureEfficiency(t) *
-  getOrientationFactor(s.orientation) *
-  (s.shading / 100) *
-  cloudFactorForecast(c, r) *
-  lowLightMultiplier;
-  s.pvSize *
-  (poa / 1000) *
-  (s.efficiency / 100) *
-  temperatureEfficiency(t) *
-  getOrientationFactor(s.orientation) *
-  (s.shading / 100) *
-cloudFactorForecast(c, r) ** 0.3
+    let hourPV =
+      s.pvSize *
+      (poa / 1000) *
+      (s.efficiency / 100) *
+      temperatureEfficiency(t) *
+      getOrientationFactor(s.orientation) *
+      (s.shading / 100) *
+      cloudFactorForecast(c, r) *
+      lowLightMultiplier;
 
     hourPV = inverterLimit(hourPV, s.inverter);
 
