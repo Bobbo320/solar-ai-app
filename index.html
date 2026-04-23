@@ -1047,7 +1047,7 @@ hourPV = inverterLimit(hourPV, s.inverter);
   return total;
 }
 
-function pvEngine(daySlice, s) {
+function pvEngine(daySlice, s, lat)
 
   let total = 0;
 
@@ -1353,7 +1353,7 @@ function getChargePlanFromWindow(targetEnergy, s) {
   };
 }
   
-function getSolarTimeRange(radSlice, timeSlice, lat = 52.2) {
+function getSolarTimeRange(radSlice, timeSlice, lat)
 
   let startTime = null;
   let endTime = null;
@@ -1397,7 +1397,7 @@ function weatherSummary(c,r,t,h,p){
   `;
 }
 
-function estimateCurrentHourPV(s, weather, hourIndex, lat = 52.2) {
+function estimateCurrentHourPV(s, weather, hourIndex, lat)
 
   let r = weather.hourly.shortwave_radiation[hourIndex];
   let dni = weather.hourly.direct_radiation[hourIndex];
@@ -1772,7 +1772,7 @@ let dayData = extractDay(weatherData, d);
 
 let daySlice = extractDay(weatherData, d);
 
-let basePV = pvEngine(daySlice, s);
+let basePV = pvEngine(daySlice, s, LAT);
 preloadedWeather = null;
   // calibration
 let rawPV = basePV;
