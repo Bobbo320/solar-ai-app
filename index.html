@@ -906,6 +906,32 @@ function inverterLimit(pv, inverter) {
 function deg2rad(d) { return d * Math.PI / 180; }
 function rad2deg(r) { return r * 180 / Math.PI; }
 
+function solarRampFactor(hour, lat = 52.2, dayOfYear) {
+
+  // solar position
+  let decl = solarDeclination(dayOfYear);
+  let hAng = hourAngle(hour);
+
+  let elev = solarElevation(lat, decl, hAng);
+
+  // no sun
+  if (elev <= 0) return 0;
+
+  // air mass approximation (atmospheric thickness)
+  let airMass = 1 / Math.max(0.1, Math.sin(deg2rad(elev)));
+
+  // seasonal clarity (UK: spring/summer clearer mornings)
+  let seasonal = 1 - Math.pow(Math.abs(172 - dayOfYear) / 172, 1.5) * 0.25;
+
+  // ramp derived from physics, not time
+  let ramp =
+    Math.pow(Math.min(1, elev / 25), 1.2) *   // low sun suppression
+    Math.pow(Math.max(0.6, 1 / airMass), 0.8) * // haze loss
+    seasonal;
+
+  return Math.max(0, Math.min(1.15, ramp));
+}
+  
 // solar declination (Cooper equation)
 function solarDeclination(dayOfYear) {
   return 23.45 * Math.sin(deg2rad((360 / 365) * (dayOfYear - 81)));
@@ -1007,7 +1033,11 @@ let hourPV =
   (s.shading / 100) *
   cloudFactorForecast(c, r);
 
-hourPV = inverterLimit(hourPV, s.inverter);
+let date = new Date();
+date.setHours(i);
+let dayOfYear = Math.floor((date - new Date(date.getFullYear(), 0, 0)) / 86400000);
+
+hourPV *= solarRampFactor(i, 52.2, dayOfYear);
 
     total += hourPV;
   }
@@ -1057,7 +1087,11 @@ let poa = getPOA(
   (s.shading / 100) *
 cloudFactorForecast(c, r) ** 0.3
 
-    hourPV = inverterLimit(hourPV, s.inverter);
+   let date = new Date();
+date.setHours(i);
+let dayOfYear = Math.floor((date - new Date(date.getFullYear(), 0, 0)) / 86400000);
+
+hourPV *= solarRampFactor(i, 52.2, dayOfYear);
 
     total += hourPV;
   }
