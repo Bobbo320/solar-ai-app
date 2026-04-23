@@ -1011,7 +1011,7 @@ let poa = getPOA(
   dni,
   dhi,
   ghi,
-  LAT, // UK latitude default (or use coords later)
+  52.2, // UK latitude default (or use coords later)
   tilt,
   i,
   dayOfYear
@@ -1020,7 +1020,7 @@ let poa = getPOA(
 // realistic cap
 poa = Math.min(1000, poa);
 
-let elev = solarElevation(LAT, decl, hAng);
+let elev = solarElevation(52.2, decl, hAng);
 let rampFactor = 1;
 
 // Apply ONLY in morning ramp zone
@@ -1047,7 +1047,7 @@ hourPV = inverterLimit(hourPV, s.inverter);
   return total;
 }
 
-function pvEngine(daySlice, s, lat) {
+function pvEngine(daySlice, s) {
 
   let total = 0;
 
@@ -1074,7 +1074,7 @@ let poa = getPOA(
   dni,
   dhi,
   r,
-  LAT,
+  52.2,
   getSeasonalTilt(s.tilt),
   i,
   dayOfYear
@@ -1085,7 +1085,7 @@ let decl = solarDeclination(dayOfYear);
 let hAng = hourAngle(i);
 
 // elevation-based ramp
-let elev = solarElevation(LAT, decl, hAng);
+let elev = solarElevation(52.2, decl, hAng);
 
 let rampFactor = 1;
 
@@ -1353,7 +1353,7 @@ function getChargePlanFromWindow(targetEnergy, s) {
   };
 }
   
-function getSolarTimeRange(radSlice, timeSlice, lat)
+function getSolarTimeRange(radSlice, timeSlice, lat = 52.2) {
 
   let startTime = null;
   let endTime = null;
@@ -1397,7 +1397,7 @@ function weatherSummary(c,r,t,h,p){
   `;
 }
 
-function estimateCurrentHourPV(s, weather, hourIndex, lat)
+function estimateCurrentHourPV(s, weather, hourIndex, lat = 52.2) {
 
   let r = weather.hourly.shortwave_radiation[hourIndex];
   let dni = weather.hourly.direct_radiation[hourIndex];
@@ -1452,9 +1452,7 @@ async function runAI() {
     const now = new Date();
     const hour = now.getHours();
 
-  let s = getSettings();
-let coords = await getCoordinates(s.postcode);
-let LAT = coords.lat;
+    let s = getSettings();
     loading.innerText = "Loading...";
   let tomorrowSOCValue = null;   // ✅ ADD THIS LINE HERE
     let weatherData = await getWeather(s.postcode);
@@ -1516,7 +1514,7 @@ let poaNow = getPOA(
   dni,
   dhi,
   ghi,
- LAT,
+  52.2,
   tilt,
   hour,
   dayOfYear
@@ -1772,7 +1770,7 @@ let dayData = extractDay(weatherData, d);
 
 let daySlice = extractDay(weatherData, d);
 
-let basePV = pvEngine(daySlice, s, LAT);
+let basePV = pvEngine(daySlice, s);
 preloadedWeather = null;
   // calibration
 let rawPV = basePV;
