@@ -1808,11 +1808,11 @@ ${confidence < 0.1 ? `
 
   let split = sunshineSplit(rad, start);
 
-  let timeRange = getSolarTimeRange(
-    rad.slice(start, start + 24),
-    time.slice(start, start + 24)
-  );
-
+let timeRange = getSolarTimeRange(
+  daySlice,
+  time.slice(start, start + 24),
+  s
+);
   let sun = split.morning + split.afternoon;
 
   let midTemp = temp[start + 12] ?? temp[start]; // safety fallback
