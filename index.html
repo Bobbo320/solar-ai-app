@@ -1011,7 +1011,7 @@ let poa = getPOA(
   dni,
   dhi,
   ghi,
-  52.2, // UK latitude default (or use coords later)
+  LAT, // UK latitude default (or use coords later)
   tilt,
   i,
   dayOfYear
@@ -1020,7 +1020,7 @@ let poa = getPOA(
 // realistic cap
 poa = Math.min(1000, poa);
 
-let elev = solarElevation(52.2, decl, hAng);
+let elev = solarElevation(LAT, decl, hAng);
 let rampFactor = 1;
 
 // Apply ONLY in morning ramp zone
@@ -1074,7 +1074,7 @@ let poa = getPOA(
   dni,
   dhi,
   r,
-  52.2,
+  LAT,
   getSeasonalTilt(s.tilt),
   i,
   dayOfYear
@@ -1085,7 +1085,7 @@ let decl = solarDeclination(dayOfYear);
 let hAng = hourAngle(i);
 
 // elevation-based ramp
-let elev = solarElevation(52.2, decl, hAng);
+let elev = solarElevation(LAT, decl, hAng);
 
 let rampFactor = 1;
 
@@ -1452,7 +1452,9 @@ async function runAI() {
     const now = new Date();
     const hour = now.getHours();
 
-    let s = getSettings();
+  let s = getSettings();
+let coords = await getCoordinates(s.postcode);
+let LAT = coords.lat;
     loading.innerText = "Loading...";
   let tomorrowSOCValue = null;   // ✅ ADD THIS LINE HERE
     let weatherData = await getWeather(s.postcode);
@@ -1514,7 +1516,7 @@ let poaNow = getPOA(
   dni,
   dhi,
   ghi,
-  52.2,
+ LAT,
   tilt,
   hour,
   dayOfYear
