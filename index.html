@@ -991,7 +991,7 @@ function estimatePV(radSlice, cloudSlice, tempSlice, s, dayData) {
   for (let i = 0; i < 24; i++) {
 
     let r = radSlice[i];
-    if (r < SOLAR_THRESHOLD) continue;
+let usable = r > 5 ? 1 : 0.2;
     let t = tempSlice[i] ?? 15;
     let c = cloudSlice[i];
 
@@ -1356,24 +1356,35 @@ function getChargePlanFromWindow(targetEnergy, s) {
 }
   
 function getSolarTimeRange(radSlice, timeSlice) {
-  let startTime = null;
-  let endTime = null;
+
+  let activeHours = [];
 
   for (let i = 0; i < 24; i++) {
-  if (radSlice[i] > SOLAR_VISIBLE_THRESHOLD) {
-      if (startTime === null) {
-        startTime = timeSlice[i];
-      }
-      endTime = timeSlice[i];
+
+    let r = radSlice[i];
+    let t = timeSlice[i];
+
+    if (!t || typeof r !== "number") continue;
+
+    // stricter solar condition (prevents morning/evening noise)
+    if (r > SOLAR_VISIBLE_THRESHOLD && r > 25) {
+      activeHours.push(new Date(t));
     }
   }
 
-  if (!startTime || !endTime) return "No data";
+  if (activeHours.length === 0) return "No data";
 
-  let start = new Date(startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  let end = new Date(endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  // smooth edges (prevents 1-hour spikes extending window)
+  let start = activeHours[0];
+  let end = activeHours[activeHours.length - 1];
 
-  return `${start} – ${end}`;
+  start.setMinutes(0, 0, 0);
+  end.setMinutes(0, 0, 0);
+
+  let fmt = d =>
+    d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+  return `${fmt(start)} – ${fmt(end)}`;
 }
 
 function weatherSummary(c,r,t,h,p){
@@ -1578,8 +1589,11 @@ let forecastNowPV =
     "forecast"
   );
     
+let baseForecast =
+  estimateCurrentHourPV(s, weatherData, nowIndex);
+
 let liveErrorRatio =
-  forecastNowPV > 0 ? (nowPV / forecastNowPV) : 1;
+  baseForecast > 0 ? (nowPV / baseForecast) : 1;
 
 liveErrorRatio = Math.max(0.7, Math.min(1.3, liveErrorRatio));
 
@@ -1776,7 +1790,18 @@ let combinedAdjustment =
   1 + ((bias * seasonalFactor - 1) * 0.6) +
       ((LIVE_ADJUSTMENT - 1) * 0.4);
 
-calibratedPV = rawPV * combinedAdjustment;
+let calibrationFactor =
+  confidence < 0.1 ? 1 : bias * seasonalFactor;
+
+// ONLY apply once
+let learningFactor = LIVE_ADJUSTMENT;
+
+let finalFactor = calibrationFactor * learningFactor;
+
+// clamp to prevent drift explosion
+finalFactor = Math.max(0.85, Math.min(1.15, finalFactor));
+
+let calibratedPV = rawPV * finalFactor;
 
 // optional safety clamp
 calibratedPV = Math.max(0, calibratedPV);
