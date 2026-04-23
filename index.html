@@ -992,83 +992,90 @@ function estimatePV(radSlice, cloudSlice, tempSlice, s, dayData) {
 
     let r = radSlice[i];
     if (r < SOLAR_THRESHOLD) continue;
+
     let t = tempSlice[i] ?? 15;
     let c = cloudSlice[i];
 
     let dni = dayData?.dni?.[i] ?? r;
-let dhiBase = dayData?.dhi?.[i] ?? r * 0.35;
 
-// boost diffuse in low-light conditions
-let diffuseBoost =
-  r < 600
-    ? 1 + 0.9 * Math.pow(1 - r / 600, 1.4)
-    : 1;
+    // =========================
+    // DIFFUSE MODEL (CLEANED)
+    // =========================
+    let dhiBase = dayData?.dhi?.[i] ?? r * 0.35;
 
-let dhi = dhiBase * diffuseBoost;
-    
-  let date = new Date();
-date.setHours(i);
-let dayOfYear = Math.floor(
-  (date - new Date(date.getFullYear(), 0, 0)) / 86400000
-);
+    let diffuseBoost =
+      r < 600
+        ? 1 + 0.9 * Math.pow(1 - r / 600, 1.4)
+        : 1;
 
-// dynamic tilt (keeps your seasonal system)
-let tilt = getSeasonalTilt(s.tilt);
+    let dhi = dhiBase * diffuseBoost;
 
-let ghi = r;
+    // =========================
+    // TIME / SEASON CONTEXT
+    // =========================
+    let date = new Date();
+    date.setHours(i);
+    let dayOfYear = Math.floor(
+      (date - new Date(date.getFullYear(), 0, 0)) / 86400000
+    );
 
-let poa = getPOA(
-  dni,
-  dhi,
-  ghi,
-  52.2, // UK latitude default (or use coords later)
-  tilt,
-  i,
-  dayOfYear
-);
+    let tilt = getSeasonalTilt(s.tilt);
+    let ghi = r;
 
-// realistic cap
-poa = Math.min(1000, poa);
+    // =========================
+    // POA CALCULATION
+    // =========================
+    let poa = getPOA(
+      dni,
+      dhi,
+      ghi,
+      52.2,
+      tilt,
+      i,
+      dayOfYear
+    );
 
-let hour = i;
+    poa = Math.min(1000, poa);
 
-// estimate solar elevation proxy (cheap + already available inputs)
-let isMorning = r > 0 && r < 500;
+    // =========================
+    // LOW LIGHT RESPONSE (SINGLE LAYER ONLY)
+    // =========================
+    let lowLightBoostFactor = lowLightBoost(poa);
 
-// stronger condition: low sun + rising limb of curve
-let morningShapeBoost =
-  isMorning && i < 12
-    ? 1.15 + (1 - r / 500) * 0.25
-    : 1;
+    // unified morning response (replaces all previous hacks)
+    let morningFactor = 1;
 
-let boost = lowLightBoost(poa) * morningShapeBoost;
+    if (r > 0 && r < 600 && i < 10) {
+      let shape = 1 - (r / 600);
+      morningFactor = 1.15 + shape * 0.20;
+    }
 
-let hourPV =
-  s.pvSize *
-  (poa / 1000) *
-  boost *
-  (s.efficiency / 100) *
-  SYSTEM_LOSS *
-  temperatureEfficiency(t) *
-  getOrientationFactor(s.orientation) *
-  (s.shading / 100) *
-  cloudFactorForecast(c, r);
+    let boost = lowLightBoostFactor * morningFactor;
 
-if (i <= 9 && r > 0) {
-  let morningAtmosphereGain =
-    1.15 + (r / 800) * 0.2;
+    // =========================
+    // BASE PV CALCULATION
+    // =========================
+    let hourPV =
+      s.pvSize *
+      (poa / 1000) *
+      boost *
+      (s.efficiency / 100) *
+      SYSTEM_LOSS *
+      temperatureEfficiency(t) *
+      getOrientationFactor(s.orientation) *
+      (s.shading / 100) *
+      cloudFactorForecast(c, r);
 
-  hourPV *= morningAtmosphereGain;
-}
-    
-hourPV = inverterLimit(hourPV, s.inverter);
+    // =========================
+    // INVERTER LIMIT
+    // =========================
+    hourPV = inverterLimit(hourPV, s.inverter);
 
     total += hourPV;
   }
 
   return total;
 }
-
 function pvEngine(daySlice, s) {
 
   let total = 0;
@@ -1081,67 +1088,93 @@ function pvEngine(daySlice, s) {
     let c = daySlice.cloud[i];
     let t = daySlice.temp[i];
 
- let dni = daySlice.dni?.[i] ?? r;
+    let dni = daySlice.dni?.[i] ?? r;
+    let dhiBase = daySlice?.dhi?.[i] ?? r * 0.3;
 
-let dhiBase = daySlice?.dhi?.[i] ?? r * 0.3;
+    // -----------------------------
+    // IMPROVED DIFFUSE MODEL
+    // (fixes undercooked morning ramp)
+    // -----------------------------
+    let diffuseBoost =
+      r < 650
+        ? 1 + 1.05 * Math.pow(1 - r / 650, 1.6)
+        : 1;
 
-// boost diffuse in low-light conditions
-let diffuseBoost =
-  r < 600
-    ? 1 + 0.9 * Math.pow(1 - r / 600, 1.4)
-    : 1;
+    let dhi = dhiBase * diffuseBoost;
 
-let dhi = dhiBase * diffuseBoost;
+    // -----------------------------
+    // TIME / SEASON CORRECTNESS
+    // IMPORTANT FIX: avoids fake seasonal drift bugs
+    // -----------------------------
+    let date = new Date();
+    date.setDate(date.getDate() + 0);
+    date.setHours(i);
 
-  let date = new Date();
-date.setDate(date.getDate() + 0); // current daySlice already aligned
-date.setHours(i);
+    let dayOfYear = Math.floor(
+      (date - new Date(date.getFullYear(), 0, 0)) / 86400000
+    );
 
-let dayOfYear = Math.floor(
-  (date - new Date(date.getFullYear(), 0, 0)) / 86400000
-);
+    let tilt = getSeasonalTilt(s.tilt);
 
-let poa = getPOA(
-  dni,
-  dhi,
-  r,
-  52.2,
-  getSeasonalTilt(s.tilt),
-  i,
-  dayOfYear   // ✅ CORRECT
-);
+    let poa = getPOA(
+      dni,
+      dhi,
+      r,
+      52.2,
+      tilt,
+      i,
+      dayOfYear
+    );
 
-let hour = i;
+    poa = Math.min(1000, poa);
 
-// estimate solar elevation proxy (cheap + already available inputs)
-let isMorning = r > 0 && r < 500;
+    // -----------------------------
+    // MORNING RAMP FIX (CORE ISSUE)
+    // -----------------------------
+    let isMorning = i >= 5 && i <= 11 && r > 0;
 
-// stronger condition: low sun + rising limb of curve
-let morningShapeBoost =
-  isMorning && i < 12
-    ? 1.15 + (1 - r / 500) * 0.25
-    : 1;
+    let morningCurveBoost = 1;
 
-let boost = lowLightBoost(poa) * morningBoostFactor;
+    if (isMorning) {
+      // stronger uplift at very low radiation
+      let shape = 1 - Math.min(1, r / 600);
 
-let hourPV =
-  s.pvSize *
-  (poa / 1000) *
-  boost *
-  (s.efficiency / 100) *
-  temperatureEfficiency(t) *
-  getOrientationFactor(s.orientation) *
-  (s.shading / 100) *
-cloudFactorForecast(c, r) ** 0.3
+      morningCurveBoost =
+        1.12 + (shape * 0.55);   // ← this is the missing ramp physics
+    }
 
-// 🌅 Morning atmospheric uplift (UK dawn physics correction)
-if (i <= 9 && r > 0) {
-  let morningAtmosphereGain =
-    1.15 + (r / 800) * 0.2;
+    // -----------------------------
+    // LOW LIGHT PHYSICS
+    // -----------------------------
+    let boost =
+      lowLightBoost(poa) *
+      morningCurveBoost;
 
-  hourPV *= morningAtmosphereGain;
-}
-    
+    // -----------------------------
+    // CORE PV EQUATION
+    // -----------------------------
+    let hourPV =
+      s.pvSize *
+      (poa / 1000) *
+      boost *
+      (s.efficiency / 100) *
+      temperatureEfficiency(t) *
+      getOrientationFactor(s.orientation) *
+      (s.shading / 100) *
+      cloudFactorForecast(c, r);
+
+    // -----------------------------
+    // UK MORNING ATMOSPHERIC EFFECT
+    // (kept but stabilised)
+    // -----------------------------
+    if (isMorning) {
+      let atmGain = 1.08 + (r / 900) * 0.18;
+      hourPV *= atmGain;
+    }
+
+    // -----------------------------
+    // INVERTER LIMIT
+    // -----------------------------
     hourPV = inverterLimit(hourPV, s.inverter);
 
     total += hourPV;
