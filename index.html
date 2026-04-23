@@ -1360,28 +1360,36 @@ function getSolarTimeRange(radSlice, timeSlice) {
   let endTime = null;
 
   for (let i = 0; i < 24; i++) {
- // estimate minimal PV instead of relying purely on radiation
-let r = radSlice[i];
 
-// simple low-light estimate (no full model, keep lightweight)
-let estimatedPV = (r / 1000) * 0.8; 
+    let r = radSlice[i];
 
-if (estimatedPV > 0.05)
+    // lightweight PV estimate instead of raw radiation
+    let estimatedPV = (r / 1000) * 0.8;
+
+    if (estimatedPV > 0.05) {
+
       if (startTime === null) {
         startTime = timeSlice[i];
       }
+
       endTime = timeSlice[i];
     }
   }
 
   if (!startTime || !endTime) return "No data";
 
-  let start = new Date(startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  let end = new Date(endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  let start = new Date(startTime).toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+
+  let end = new Date(endTime).toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit'
+  });
 
   return `${start} – ${end}`;
 }
-
 function weatherSummary(c,r,t,h,p){
   return `
     🌤️ Cloud (daylight): ${c.toFixed(0)}%<br>
