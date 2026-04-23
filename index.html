@@ -1778,68 +1778,46 @@ preloadedWeather = null;
   // calibration
 let rawPV = basePV;
 
-// 🔥 APPLY FULL CALIBRATION HERE (not soft blended)
-let { bias, seasonalFactor } = getCalibrationSystem();
-let calibratedPV =
-  confidence < 0.1
-    ? rawPV
-    : rawPV * bias * seasonalFactor;
+// 🔥 CALIBRATION PIPELINE (FIXED SINGLE DECLARATION)
 
-// still allow live learning
-let combinedAdjustment =
-  1 + ((bias * seasonalFactor - 1) * 0.6) +
-      ((LIVE_ADJUSTMENT - 1) * 0.4);
+let { bias, seasonalFactor } = getCalibrationSystem();
 
 let calibrationFactor =
   confidence < 0.1 ? 1 : bias * seasonalFactor;
 
-// ONLY apply once
+// learning factor (live correction)
 let learningFactor = LIVE_ADJUSTMENT;
 
+// combine ONCE
 let finalFactor = calibrationFactor * learningFactor;
 
 // clamp to prevent drift explosion
 finalFactor = Math.max(0.85, Math.min(1.15, finalFactor));
 
+// apply ONCE
 let calibratedPV = rawPV * finalFactor;
 
-// optional safety clamp
+// safety clamp
 calibratedPV = Math.max(0, calibratedPV);
 
-// store calibrated value
+// store result
 storeExpectedPV(d, calibratedPV);
 
-// use same value for UI
+// UI value
 let pv = calibratedPV;
 
-let forecastCalibration = LIVE_ADJUSTMENT;
-
+// breakdown (use actual applied factors)
 LAST_BREAKDOWN = buildBreakdown({
   basePV: rawPV,
-  cloudFactor: 1, // already baked into estimatePV
+  cloudFactor: 1,
   tiltFactor: 1,
   tempFactor: 1,
   orientationFactor: 1,
   shadingFactor: 1,
-  calibrationFactor: forecastCalibration,
+  calibrationFactor,
   inverterFactor: 1,
-  learningFactor: LIVE_ADJUSTMENT
+  learningFactor
 });
-   
-
-// ensure tomorrow updates if today changes
-if (d === 0) {
-  rebuildExpectedPVForWindow(pv);
-}
-
-// ✅ Store expected PV for today + tomorrow
-let pvData = getPVData();
-
-let date = new Date();
-date.setDate(date.getDate() + d);
-
-let key = getLocalDateKey(date);
-let entry = pvData[key];
 
 
 // CLEAN ENERGY PIPELINE (FIXED)
