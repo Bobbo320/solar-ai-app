@@ -969,7 +969,7 @@ function getPOA(dni, dhi, ghi, lat, tilt, hour, dayOfYear) {
   let theta = incidenceAngle(lat, decl, hAng, tilt);
 
   let cosTheta = Math.max(0, Math.cos(deg2rad(theta)));
-  let cosZ = Math.max(0.01, Math.sin(deg2rad(elev)));
+let cosZ = Math.max(0.08, Math.sin(deg2rad(elev)));
 
   // beam component
   let beam = dni * (cosTheta / cosZ);
@@ -1000,8 +1000,8 @@ let dhiBase = dayData?.dhi?.[i] ?? r * 0.35;
 
 // boost diffuse in low-light conditions
 let diffuseBoost =
-  r < 400
-    ? 1 + 0.6 * (1 - r / 400)
+  r < 600
+    ? 1 + 0.9 * Math.pow(1 - r / 600, 1.4)
     : 1;
 
 let dhi = dhiBase * diffuseBoost;
@@ -1030,7 +1030,18 @@ let poa = getPOA(
 // realistic cap
 poa = Math.min(1000, poa);
 
-let boost = lowLightBoost(poa);
+let hour = i;
+
+// estimate solar elevation proxy (cheap + already available inputs)
+let isMorning = r > 0 && r < 500;
+
+// stronger condition: low sun + rising limb of curve
+let morningShapeBoost =
+  isMorning && i < 12
+    ? 1.15 + (1 - r / 500) * 0.25
+    : 1;
+
+let boost = lowLightBoost(poa) * morningShapeBoost;
 
 let hourPV =
   s.pvSize *
@@ -1043,6 +1054,13 @@ let hourPV =
   (s.shading / 100) *
   cloudFactorForecast(c, r);
 
+if (i <= 9 && r > 0) {
+  let morningAtmosphereGain =
+    1.15 + (r / 800) * 0.2;
+
+  hourPV *= morningAtmosphereGain;
+}
+    
 hourPV = inverterLimit(hourPV, s.inverter);
 
     total += hourPV;
@@ -1069,8 +1087,8 @@ let dhiBase = daySlice?.dhi?.[i] ?? r * 0.3;
 
 // boost diffuse in low-light conditions
 let diffuseBoost =
-  r < 400
-    ? 1 + 0.6 * (1 - r / 400)
+  r < 600
+    ? 1 + 0.9 * Math.pow(1 - r / 600, 1.4)
     : 1;
 
 let dhi = dhiBase * diffuseBoost;
@@ -1093,7 +1111,18 @@ let poa = getPOA(
   dayOfYear   // ✅ CORRECT
 );
 
-let boost = lowLightBoost(poa);
+let hour = i;
+
+// estimate solar elevation proxy (cheap + already available inputs)
+let isMorning = r > 0 && r < 500;
+
+// stronger condition: low sun + rising limb of curve
+let morningShapeBoost =
+  isMorning && i < 12
+    ? 1.15 + (1 - r / 500) * 0.25
+    : 1;
+
+let boost = lowLightBoost(poa) * morningBoostFactor;
 
 let hourPV =
   s.pvSize *
@@ -1105,6 +1134,14 @@ let hourPV =
   (s.shading / 100) *
 cloudFactorForecast(c, r) ** 0.3
 
+// 🌅 Morning atmospheric uplift (UK dawn physics correction)
+if (i <= 9 && r > 0) {
+  let morningAtmosphereGain =
+    1.15 + (r / 800) * 0.2;
+
+  hourPV *= morningAtmosphereGain;
+}
+    
     hourPV = inverterLimit(hourPV, s.inverter);
 
     total += hourPV;
