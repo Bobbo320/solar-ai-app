@@ -839,17 +839,17 @@ function daylightHours(radSlice) {
  return radSlice.filter(r => r > SOLAR_VISIBLE_THRESHOLD);
 }
 
-function sunshineSplit(r,start){
-  let morning=0, afternoon=0;
+function sunshineSplit(r){
+  let morning = 0, afternoon = 0;
 
-  for(let i=0;i<24;i++){
-    if(r[start+i] > SOLAR_THRESHOLD){
+  for(let i = 0; i < 24; i++){
+    if(r[i] > SOLAR_VISIBLE_THRESHOLD){
       if(i < 12) morning++;
       else afternoon++;
     }
   }
 
-  return {morning, afternoon};
+  return { morning, afternoon };
 }
 
 function hourlySolarScore(c, r) {
@@ -1725,13 +1725,12 @@ for (let i = 0; i < 24; i++) {
 
   let avgScore = validHours ? (scoreSum / validHours) : 0;
 
-  let split = sunshineSplit(rad, start);
-
  let timeRange = getSolarTimeRange(
   daySlice.rad,
   time.slice(start, start + 24)
 );
-  let split = sunshineSplit(daySlice.rad, 0);
+ // ✅ use ONLY this
+let split = sunshineSplit(daySlice.rad);
 
   let midTemp = temp[start + 12] ?? temp[start]; // safety fallback
 
