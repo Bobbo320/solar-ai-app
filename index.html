@@ -1063,8 +1063,9 @@ function pvEngine(daySlice, s) {
     let c = daySlice.cloud[i];
     let t = daySlice.temp[i];
 
-    let dni = daySlice.dni?.[i] ?? r;
-   let dhiBase = dayData?.dhi?.[i] ?? r * 0.35;
+ let dni = daySlice.dni?.[i] ?? r;
+
+let dhiBase = daySlice?.dhi?.[i] ?? r * 0.3;
 
 // boost diffuse in low-light conditions
 let diffuseBoost =
