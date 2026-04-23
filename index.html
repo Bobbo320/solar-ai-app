@@ -1426,22 +1426,28 @@ function getChargePlanFromWindow(targetEnergy, s) {
 }
   
 function getSolarTimeRange(radSlice, timeSlice) {
+
   let startTime = null;
   let endTime = null;
 
   for (let i = 0; i < 24; i++) {
-  if (radSlice[i] > SOLAR_VISIBLE_THRESHOLD) {
-      if (startTime === null) {
-        startTime = timeSlice[i];
-      }
+
+    let r = radSlice[i];
+    let valid = r > 80; // hard physical cutoff (NOT diffuse noise)
+
+    if (valid) {
+      if (!startTime) startTime = timeSlice[i];
       endTime = timeSlice[i];
     }
   }
 
   if (!startTime || !endTime) return "No data";
 
-  let start = new Date(startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  let end = new Date(endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  let start = new Date(startTime)
+    .toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  let end = new Date(endTime)
+    .toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   return `${start} – ${end}`;
 }
@@ -1655,17 +1661,21 @@ liveErrorRatio = Math.max(0.7, Math.min(1.3, liveErrorRatio));
 
 let learningRate = nowRad > 200 ? 0.25 : 0.15;
 
-LIVE_ADJUSTMENT =
+const learningUpdate =
   LIVE_ADJUSTMENT * (1 - learningRate) +
   liveErrorRatio * learningRate;
+
+// DO NOT mutate live state during render
+const LIVE_ADJUSTMENT_NEXT = learningUpdate;
   
 if (nowCloud < 20 && nowRad > 400) {
   cloudFactorLiveSoft = Math.min(1.18, cloudFactorLiveSoft);
 }
   
+LIVE_ADJUSTMENT = LIVE_ADJUSTMENT_NEXT;
 localStorage.setItem("liveAdjustment", LIVE_ADJUSTMENT);
 
-nowPV = forecastNowPV * LIVE_ADJUSTMENT;
+nowPV = forecastNowPV * LIVE_ADJUSTMENT_NEXT;
   
 
 // -------------------- EXPORT (FIXED PHYSICS MODEL) --------------------
@@ -1842,9 +1852,10 @@ let calibratedPV =
     : rawPV * bias * seasonalFactor;
 
 // still allow live learning
-let combinedAdjustment =
-  1 + ((bias * seasonalFactor - 1) * 0.6) +
-      ((LIVE_ADJUSTMENT - 1) * 0.4);
+const calibrationFactor =
+  confidence < 0.1
+    ? 1
+    : bias * seasonalFactor;
 
 calibratedPV = rawPV * combinedAdjustment;
 
@@ -1852,7 +1863,10 @@ calibratedPV = rawPV * combinedAdjustment;
 calibratedPV = Math.max(0, calibratedPV);
 
 // store calibrated value
-storeExpectedPV(d, calibratedPV);
+// ONLY store for today (not full loop)
+if (d === 0) {
+  storeExpectedPV(d, calibratedPV);
+}
 
 // use same value for UI
 let pv = calibratedPV;
