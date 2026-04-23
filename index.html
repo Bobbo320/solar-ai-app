@@ -1698,12 +1698,10 @@ ${confidence < 0.1 ? `
 
 for (let d = 0; d < 3; d++) {
 
-  let start = d * 24;
+  let forecastSlice = extractDay(weatherData, d);
 
-  let daySlice = extractDay(weatherData, d);
-
-  let pv = pvEngine(daySlice, s);
-
+  let pv = pvEngine(forecastSlice, s);
+}
   let timeRange = getSolarTimeRange(weatherData, d);
 }
 
@@ -1768,13 +1766,13 @@ let instability = Math.min(1, radStd / 400);
 let cloudPenalty = Math.pow(cloudAvg / 100, 1.4);
 
 // final confidence blend
-let confidence =
+let dayConfidence =
   100 *
   (0.55 * (1 - cloudPenalty) +
    0.45 * (1 - instability));
 
 // clamp
-confidence = Math.max(35, Math.min(98, confidence));
+confidence = Math.max(35, Math.min(98, dayConfidence));
 let dayData = extractDay(weatherData, d);
 
 
