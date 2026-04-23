@@ -1700,11 +1700,12 @@ for (let d = 0; d < 3; d++) {
 
   let start = d * 24;
 
-  // 1. FIRST: build slice
   let daySlice = extractDay(weatherData, d);
 
-  // 2. THEN use it everywhere
-  let dayRad = daylightHours(daySlice.rad);
+  let pv = pvEngine(daySlice, s);
+
+  let timeRange = getSolarTimeRange(weatherData, d);
+}
 
   let avgRad = dayRad.length
     ? dayRad.reduce((a, b) => a + b) / dayRad.length
@@ -1776,7 +1777,7 @@ let confidence =
 confidence = Math.max(35, Math.min(98, confidence));
 let dayData = extractDay(weatherData, d);
 
-let daySlice = extractDay(weatherData, d);
+
 
 let basePV = pvEngine(daySlice, s);
 preloadedWeather = null;
