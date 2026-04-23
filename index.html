@@ -754,6 +754,28 @@ function getOrientationFactor(o) {
   return 1;
 }
 
+function dawnGain(rad, hour, dayOfYear) {
+
+  // seasonal factor (higher in summer, lower in winter)
+  const seasonal = 0.6 + 0.4 * Math.cos((2 * Math.PI * (dayOfYear - 172)) / 365);
+
+  // radiation base (already physical signal)
+  const base = rad / 1000;
+
+  // soft floor prevents zero-output mornings
+  const floor = 0.05 + (1 - seasonal) * 0.05;
+
+  // gentle nonlinear boost for low sun angles
+  const shape = Math.pow(base, 0.7);
+
+  return Math.max(floor, shape);
+}
+
+function cloudDawnAdjust(rad) {
+  if (rad < 200) return 0.85; // reduce cloud sensitivity at low light
+  return 1;
+}
+  
 function extractDay(weather, dayIndex) {
   const start = dayIndex * 24;
 
@@ -783,7 +805,7 @@ function cloudFactorForecast(cloud, rad) {
     base *= 1.15; // critical missing physics
   }
 
-  return Math.max(0.60, Math.min(1.25, base));
+ return Math.max(0.60, Math.min(1.25, base)) * cloudDawnAdjust(rad);
 }
 // -------------------- SEASONAL TILT --------------------
  
@@ -966,7 +988,7 @@ function estimatePV(radSlice, cloudSlice, tempSlice, s, dayData) {
   for (let i = 0; i < 24; i++) {
 
     let r = radSlice[i];
-    if (r < SOLAR_THRESHOLD) continue;
+  let lowLightMultiplier = dawnGain(r, i);
     let t = tempSlice[i] ?? 15;
     let c = cloudSlice[i];
 
@@ -997,9 +1019,11 @@ let poa = getPOA(
 // realistic cap
 poa = Math.min(1000, poa);
 
+let lowLightMultiplier = dawnGain(r, i);
+
 let hourPV =
   s.pvSize *
-  (poa / 1000) *
+  lowLightMultiplier **
   (s.efficiency / 100) *
   SYSTEM_LOSS *
   temperatureEfficiency(t) *
@@ -1022,7 +1046,7 @@ function pvEngine(daySlice, s) {
   for (let i = 0; i < 24; i++) {
 
     let r = daySlice.rad[i];
-    if (r < SOLAR_THRESHOLD) continue;
+   let lowLightMultiplier = dawnGain(r, i);
 
     let c = daySlice.cloud[i];
     let t = daySlice.temp[i];
@@ -1048,7 +1072,17 @@ let poa = getPOA(
   dayOfYear   // ✅ CORRECT
 );
 
-  let hourPV =
+let lowLightMultiplier = dawnGain(r, i);
+
+let hourPV =
+  s.pvSize *
+  (poa / 1000) *
+  (s.efficiency / 100) *
+  temperatureEfficiency(t) *
+  getOrientationFactor(s.orientation) *
+  (s.shading / 100) *
+  cloudFactorForecast(c, r) *
+  lowLightMultiplier;
   s.pvSize *
   (poa / 1000) *
   (s.efficiency / 100) *
