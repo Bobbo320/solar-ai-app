@@ -1360,7 +1360,13 @@ function getSolarTimeRange(radSlice, timeSlice) {
   let endTime = null;
 
   for (let i = 0; i < 24; i++) {
-  if (radSlice[i] > SOLAR_VISIBLE_THRESHOLD) {
+ // estimate minimal PV instead of relying purely on radiation
+let r = radSlice[i];
+
+// simple low-light estimate (no full model, keep lightweight)
+let estimatedPV = (r / 1000) * 0.8; 
+
+if (estimatedPV > 0.05)
       if (startTime === null) {
         startTime = timeSlice[i];
       }
