@@ -209,8 +209,8 @@
 let RUN_AI_LOCK = false;
 let RUN_AI_TOKEN = 0;
 let LAST_BREAKDOWN = null;
-const SOLAR_THRESHOLD = 10;        // used for real PV calculations
-const SOLAR_VISIBLE_THRESHOLD = 10; // used for solar time window display
+const SOLAR_THRESHOLD = 25;        // used for real PV calculations
+const SOLAR_VISIBLE_THRESHOLD = 25; // used for solar time window display
   const SYSTEM_LOSS = 1; // wiring, inverter, mismatch
 
 const Store = {
@@ -770,22 +770,7 @@ function lowLightFactor(rad) {
   if (rad < 150) return 0.85 + (rad / 150) * 0.15;
   return 1;
 }
-
-function lowLightBoost(poa) {
-
-  // No boost in strong irradiance
-  if (poa >= 500) return 1;
-
-  // Normalised range
-  let x = poa / 500;
-
-  // Smooth curve fitted to real behaviour
-  let boost =
-    1 + 1.2 * Math.pow(1 - x, 1.5);
-
-  return boost;
-}
-  
+   
 function cloudFactorForecast(cloud, rad) {
   let cloudNorm = cloud / 100;
 
@@ -913,17 +898,7 @@ function getCloudThicknessLabel(cloud, rad) {
 }
 
 function inverterLimit(pv, inverter) {
-
-  if (pv <= inverter) return pv;
-
-  // soft clipping curve
-  let excess = pv - inverter;
-
-  let softened =
-    inverter +
-    excess * Math.exp(-excess / 0.6);
-
-  return softened;
+  return Math.min(pv, inverter);
 }
 
 // -------------------- SOLAR GEOMETRY (POA MODEL) --------------------
@@ -996,15 +971,7 @@ function estimatePV(radSlice, cloudSlice, tempSlice, s, dayData) {
     let c = cloudSlice[i];
 
     let dni = dayData?.dni?.[i] ?? r;
-let dhiBase = dayData?.dhi?.[i] ?? r * 0.35;
-
-// boost diffuse in low-light conditions
-let diffuseBoost =
-  r < 400
-    ? 1 + 0.6 * (1 - r / 400)
-    : 1;
-
-let dhi = dhiBase * diffuseBoost;
+let dhi = dayData?.dhi?.[i] ?? r * 0.35;
     
   let date = new Date();
 date.setHours(i);
@@ -1030,12 +997,9 @@ let poa = getPOA(
 // realistic cap
 poa = Math.min(1000, poa);
 
-let boost = lowLightBoost(poa);
-
 let hourPV =
   s.pvSize *
   (poa / 1000) *
-  boost *
   (s.efficiency / 100) *
   SYSTEM_LOSS *
   temperatureEfficiency(t) *
@@ -1063,17 +1027,8 @@ function pvEngine(daySlice, s) {
     let c = daySlice.cloud[i];
     let t = daySlice.temp[i];
 
- let dni = daySlice.dni?.[i] ?? r;
-
-let dhiBase = daySlice?.dhi?.[i] ?? r * 0.3;
-
-// boost diffuse in low-light conditions
-let diffuseBoost =
-  r < 400
-    ? 1 + 0.6 * (1 - r / 400)
-    : 1;
-
-let dhi = dhiBase * diffuseBoost;
+    let dni = daySlice.dni?.[i] ?? r;
+    let dhi = daySlice.dhi?.[i] ?? r * 0.3;
 
   let date = new Date();
 date.setDate(date.getDate() + 0); // current daySlice already aligned
@@ -1093,12 +1048,9 @@ let poa = getPOA(
   dayOfYear   // ✅ CORRECT
 );
 
-let boost = lowLightBoost(poa);
-
-let hourPV =
+  let hourPV =
   s.pvSize *
   (poa / 1000) *
-  boost *
   (s.efficiency / 100) *
   temperatureEfficiency(t) *
   getOrientationFactor(s.orientation) *
