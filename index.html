@@ -211,9 +211,8 @@ let RUN_AI_TOKEN = 0;
 let LAST_BREAKDOWN = null;
 const SOLAR_THRESHOLD = 25;        // used for real PV calculations
 const SOLAR_VISIBLE_THRESHOLD = 25; // used for solar time window display
-const SYSTEM_LOSS = 1; // wiring, inverter, mismatch
-const DEFAULT_LAT = 52.2;
-const DEFAULT_LON = 1.2974;
+  const SYSTEM_LOSS = 1; // wiring, inverter, mismatch
+
 const Store = {
   getPV() {
     return JSON.parse(localStorage.getItem("pvData") || "{}");
@@ -232,19 +231,6 @@ const Store = {
   }
 };
 
-function getLatLon() {
-  const s = Store.getSettings();
-
-  return {
-    lat: s.lat ?? 52.2,
-    lon: s.lon ?? 1.2974
-  };
-}
-
-function getLat() {
-  return getLatLon().lat;
-}
-  
 let GLOBAL_PV_BIAS_LIVE = 1;
 let GLOBAL_PV_BIAS_FORECAST = 1;
 let LIVE_ADJUSTMENT =
@@ -626,19 +612,15 @@ blockSize: +blockSize.value,
   };
 
 Store.setSettings(settings);
-preloadWeather();
+  preloadWeather();
 
-// 🔥 PATCH: resolve postcode → lat/lon and store
-(async () => {
-  try {
-    let coords = await getCoordinates(settings.postcode);
+  alert("Saved");
+  toggleSettings();
 
-    let saved = Store.getSettings();
-    saved.lat = coords.lat;
-    saved.lon = coords.lon;
-    Store.setSettings(saved);
-  } catch {}
-})();
+  if (!localStorage.getItem("firstUseDate")) {
+  localStorage.setItem("firstUseDate", new Date().toISOString().split("T")[0]);
+}
+}
 
 function loadSettingsToUI() {
   let s = getSettings();
@@ -695,25 +677,24 @@ async function getCoordinates(postcode) {
 
     if (cached) return cached;
 
-    let res = await fetch(
-      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(postcode)}&count=1`
-    );
+ let res = await fetch(
+  `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(postcode)}&count=1`
+);
 
-    let geo = await res.json();
+let geo = await res.json();
 
-    if (!geo.results || geo.results.length === 0) throw new Error();
+if (!geo.results || geo.results.length === 0) throw new Error();
 
-    let coords = {
-      lat: geo.results[0].latitude,
-      lon: geo.results[0].longitude
-    };
+let coords = {
+  lat: geo.results[0].latitude,
+  lon: geo.results[0].longitude
+};
 
     setCache(cacheKey, coords);
-
     return coords;
 
   } catch {
-    return { lat: 52.2, lon: 1.2974 };
+    return { lat: 52.6309, lon: 1.2974 };
   }
 }
 
@@ -1030,7 +1011,7 @@ let poa = getPOA(
   dni,
   dhi,
   ghi,
-  getLatLon().lat,
+  52.2, // UK latitude default (or use coords later)
   tilt,
   i,
   dayOfYear
@@ -1038,10 +1019,8 @@ let poa = getPOA(
 
 // realistic cap
 poa = Math.min(1000, poa);
-let decl = solarDeclination(dayOfYear);
-let hAng = hourAngle(i);
-const { lat } = getLatLon();
-let elev = solarElevation(lat, decl, hAng);
+
+let elev = solarElevation(52.2, decl, hAng);
 let rampFactor = 1;
 
 // Apply ONLY in morning ramp zone
@@ -1095,7 +1074,7 @@ let poa = getPOA(
   dni,
   dhi,
   r,
-   getLatLon().lat,
+  52.2,
   getSeasonalTilt(s.tilt),
   i,
   dayOfYear
@@ -1104,9 +1083,9 @@ let poa = getPOA(
 // 🔧 ADD THESE (fix)
 let decl = solarDeclination(dayOfYear);
 let hAng = hourAngle(i);
+
 // elevation-based ramp
-const { lat } = getLatLon();
-let elev = solarElevation(lat, decl, hAng);
+let elev = solarElevation(52.2, decl, hAng);
 
 let rampFactor = 1;
 
@@ -1374,8 +1353,7 @@ function getChargePlanFromWindow(targetEnergy, s) {
   };
 }
   
-function getSolarTimeRange(radSlice, timeSlice, lat) {
-  lat = lat ?? getLatLon().lat;
+function getSolarTimeRange(radSlice, timeSlice, lat = 52.2) {
 
   let startTime = null;
   let endTime = null;
@@ -1419,8 +1397,7 @@ function weatherSummary(c,r,t,h,p){
   `;
 }
 
-function estimateCurrentHourPV(s, weather, hourIndex, lat) {
-  lat = lat ?? getLatLon().lat;
+function estimateCurrentHourPV(s, weather, hourIndex, lat = 52.2) {
 
   let r = weather.hourly.shortwave_radiation[hourIndex];
   let dni = weather.hourly.direct_radiation[hourIndex];
@@ -1537,7 +1514,7 @@ let poaNow = getPOA(
   dni,
   dhi,
   ghi,
-  getLatLon().lat,
+  52.2,
   tilt,
   hour,
   dayOfYear
@@ -2027,11 +2004,11 @@ runAI();
 window.toggleSettings = toggleSettings;
 window.runAI = runAI;
 window.togglePVTab = togglePVTab;
-window.toggleBreakdown = toggleBreakdown;
 
 window.openEditor = openEditor;
 window.saveEdit = saveEdit;
 window.deleteEdit = deleteEdit;
+
 window.saveSettings = saveSettings;
 
 window.onload = () => {
