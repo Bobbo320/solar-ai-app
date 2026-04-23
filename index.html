@@ -1070,25 +1070,31 @@ let poa = getPOA(
   52.2,
   getSeasonalTilt(s.tilt),
   i,
-  dayOfYear   // ✅ CORRECT
+  dayOfYear
 );
 
+// 🔧 ADD THESE (fix)
+let decl = solarDeclination(dayOfYear);
+let hAng = hourAngle(i);
+
+// elevation-based ramp
 let elev = solarElevation(52.2, decl, hAng);
+
 let rampFactor = 1;
 
 if (elev > 0 && elev < 25) {
   rampFactor = morningRampFromElevation(elev);
 }
-    
-  let hourPV =
+
+let hourPV =
   s.pvSize *
   (poa / 1000) *
   (s.efficiency / 100) *
   temperatureEfficiency(t) *
   getOrientationFactor(s.orientation) *
   (s.shading / 100) *
-cloudFactorForecast(c, r) ** 0.3 *
-rampFactor
+  cloudFactorForecast(c, r) ** 0.3 *
+  rampFactor;
 
     hourPV = inverterLimit(hourPV, s.inverter);
 
