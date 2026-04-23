@@ -1691,22 +1691,16 @@ ${confidence < 0.1 ? `
   </div>
 `;
 
- for (let d = 0; d < 3; d++) {
+for (let d = 0; d < 3; d++) {
 
   let start = d * 24;
 
- let dayRad = daylightHours(daySlice.rad);
+  // 1. FIRST: build slice
+  let daySlice = extractDay(weatherData, d);
 
-   // 🔍 DEBUG: inspect early radiation
-  if (d === 0) {
-    console.log(
-      daySlice.rad.map((r, i) => ({
-        hour: i,
-        rad: r
-      }))
-    );
-  }
-   
+  // 2. THEN use it everywhere
+  let dayRad = daylightHours(daySlice.rad);
+
   let avgRad = dayRad.length
     ? dayRad.reduce((a, b) => a + b) / dayRad.length
     : 0;
@@ -1714,23 +1708,23 @@ ${confidence < 0.1 ? `
   let validHours = 0;
   let scoreSum = 0;
 
-for (let i = 0; i < 24; i++) {
-  let rVal = daySlice.rad[i];
+  for (let i = 0; i < 24; i++) {
+    let rVal = daySlice.rad[i];
 
-  if (rVal > SOLAR_VISIBLE_THRESHOLD) {
-    scoreSum += hourlySolarScore(daySlice.cloud[i], rVal);
-    validHours++;
+    if (rVal > SOLAR_VISIBLE_THRESHOLD) {
+      scoreSum += hourlySolarScore(daySlice.cloud[i], rVal);
+      validHours++;
+    }
   }
-}
 
   let avgScore = validHours ? (scoreSum / validHours) : 0;
 
- let timeRange = getSolarTimeRange(
-  daySlice.rad,
-  time.slice(start, start + 24)
-);
- // ✅ use ONLY this
-let split = sunshineSplit(daySlice.rad);
+  let split = sunshineSplit(daySlice.rad);
+
+  let timeRange = getSolarTimeRange(
+    daySlice.rad,
+    time.slice(start, start + 24)
+  );
 
   let midTemp = temp[start + 12] ?? temp[start]; // safety fallback
 
