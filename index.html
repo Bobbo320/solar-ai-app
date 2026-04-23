@@ -766,6 +766,22 @@ function extractDay(weather, dayIndex) {
   };
 }
 
+function morningRampFromElevation(elevationDeg) {
+
+  // No effect below horizon
+  if (elevationDeg <= 0) return 1;
+
+  // Focus only on low-angle region (0–25°)
+  let x = Math.min(1, elevationDeg / 25);
+
+  // Smooth non-linear curve
+  // stronger correction at very low angles
+  let boost = 0.7 + 0.5 * Math.pow(x, 0.7);
+
+  // Hard safety clamp
+  return Math.max(0.7, Math.min(1.2, boost));
+}
+  
 function lowLightFactor(rad) {
   if (rad < 150) return 0.85 + (rad / 150) * 0.15;
   return 1;
@@ -997,6 +1013,14 @@ let poa = getPOA(
 // realistic cap
 poa = Math.min(1000, poa);
 
+let elev = solarElevation(52.2, decl, hAng);
+let rampFactor = 1;
+
+// Apply ONLY in morning ramp zone
+if (elev > 0 && elev < 25) {
+  rampFactor = morningRampFromElevation(elev);
+}
+    
 let hourPV =
   s.pvSize *
   (poa / 1000) *
@@ -1005,7 +1029,8 @@ let hourPV =
   temperatureEfficiency(t) *
   getOrientationFactor(s.orientation) *
   (s.shading / 100) *
-  cloudFactorForecast(c, r);
+   cloudFactorForecast(c, r) *
+  rampFactor;
 
 hourPV = inverterLimit(hourPV, s.inverter);
 
@@ -1048,6 +1073,13 @@ let poa = getPOA(
   dayOfYear   // ✅ CORRECT
 );
 
+let elev = solarElevation(52.2, decl, hAng);
+let rampFactor = 1;
+
+if (elev > 0 && elev < 25) {
+  rampFactor = morningRampFromElevation(elev);
+}
+    
   let hourPV =
   s.pvSize *
   (poa / 1000) *
@@ -1055,7 +1087,8 @@ let poa = getPOA(
   temperatureEfficiency(t) *
   getOrientationFactor(s.orientation) *
   (s.shading / 100) *
-cloudFactorForecast(c, r) ** 0.3
+cloudFactorForecast(c, r) ** 0.3 *
+rampFactor
 
     hourPV = inverterLimit(hourPV, s.inverter);
 
