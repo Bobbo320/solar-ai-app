@@ -1355,36 +1355,60 @@ function getChargePlanFromWindow(targetEnergy, s) {
   };
 }
   
-function getSolarTimeRange(radSlice, timeSlice) {
+function getSolarTimeRange(radSlice, timeSlice, lat = getSettings().lat) {
 
-  let activeHours = [];
+  let startTime = null;
+  let endTime = null;
+
+  let streak = 0;
 
   for (let i = 0; i < 24; i++) {
 
+    let time = new Date(timeSlice[i]);
+
+    let dayOfYear = Math.floor(
+      (time - new Date(time.getFullYear(), 0, 0)) / 86400000
+    );
+
+    let decl = solarDeclination(dayOfYear);
+    let elev = solarElevation(lat, decl, hourAngle(i));
+
     let r = radSlice[i];
-    let t = timeSlice[i];
 
-    if (!t || typeof r !== "number") continue;
+    // 🔥 PHYSICS-FIRST GATE (fixes 07:00 noise)
+    let isRealSun =
+      elev > 3 &&          // sun above horizon (critical fix)
+      r > 30;              // ignore feed noise
 
-    // stricter solar condition (prevents morning/evening noise)
-    if (r > SOLAR_VISIBLE_THRESHOLD && r > 25) {
-      activeHours.push(new Date(t));
+    if (isRealSun) {
+
+      streak++;
+
+      // require persistence to avoid single-hour spikes
+      if (streak >= 2 && startTime === null) {
+        startTime = timeSlice[i - 1] || timeSlice[i];
+      }
+
+      endTime = timeSlice[i];
+
+    } else {
+      streak = 0;
     }
   }
 
-  if (activeHours.length === 0) return "No data";
+  if (!startTime || !endTime) return "No data";
 
-  // smooth edges (prevents 1-hour spikes extending window)
-  let start = activeHours[0];
-  let end = activeHours[activeHours.length - 1];
+  let start = new Date(startTime).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit"
+  });
 
-  start.setMinutes(0, 0, 0);
-  end.setMinutes(0, 0, 0);
+  let end = new Date(endTime).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit"
+  });
 
-  let fmt = d =>
-    d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-
-  return `${fmt(start)} – ${fmt(end)}`;
+  return `${start} – ${end}`;
 }
 
 function weatherSummary(c,r,t,h,p){
