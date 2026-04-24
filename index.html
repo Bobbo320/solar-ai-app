@@ -199,7 +199,7 @@
   <input type="date" id="editDate"><br>
 
   <label>Manual PV (kWh):</label><br>
-  <input type="number" step="0.1" id="editValue" max="60"><br>
+ <input type="number" step="0.1" id="editValue">
 
   <button onclick="saveEdit()">💾 Save</button>
   <button onclick="deleteEdit()">🗑 Delete</button>
@@ -2083,10 +2083,10 @@ if (value !== undefined) {
 
   let s = getSettings();
 
-  let maxPV = Math.max(
-    s.pvSize * 6,
-    s.inverter * 8
-  );
+let maxPV = Math.max(
+  s.pvSize * 10,   // was 6
+  s.inverter * 12  // was 8
+);
 
   if (value < 0 || value > maxPV) {
     alert(`Value must be between 0 and ${maxPV.toFixed(1)} kWh`);
