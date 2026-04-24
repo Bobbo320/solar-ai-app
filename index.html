@@ -1377,24 +1377,31 @@ window.fmtFromTime = function (t) {
 const solarRangeCache = new Map();
 
 function getSolarTimeRange(radSlice, timeSlice, lat = 52.2) {
+  const key = lat + "|" + radSlice.join(",");
+// optional debug toggle
+if (window.DEBUG_SOLAR_RANGE) {
+  console.log("Solar range start", { lat, len: radSlice?.length });
+  console.log("Solar range result", { startHour, endHour });
+}
+  if (solarRangeCache.has(key)) {
+    return solarRangeCache.get(key);
+  }
 
-  let startIdx = null;
-  let endIdx = null;
+  let startHour = null;
+  let endHour = null;
 
-  const baseDate = new Date(timeSlice[0]);
+  const baseDate = new Date();
   const dayOfYear = Math.floor(
     (baseDate - new Date(baseDate.getFullYear(), 0, 0)) / 86400000
   );
 
-  for (let i = 0; i < radSlice.length; i++) {
+  for (let i = 0; i < 24; i++) {
+    const hour = i;
 
-    let t = new Date(timeSlice[i]);
-    let hour = t.getHours();
-
-    let poaProxy = getPOA(
+    const poaProxy = getPOA(
       600,
       200,
-      radSlice[i],
+      300,
       lat,
       30,
       hour,
@@ -1402,15 +1409,23 @@ function getSolarTimeRange(radSlice, timeSlice, lat = 52.2) {
     );
 
     if (poaProxy > 25) {
-      if (startIdx === null) startIdx = i;
-      endIdx = i;
+      if (startHour === null) startHour = hour;
+      endHour = hour;
     }
   }
 
-  return {
-    startIdx,
-    endIdx
+  const result = {
+    startHour,
+    endHour,
+    hours: endHour - startHour,
+    label:
+      startHour === null
+        ? "No usable sunlight"
+        : `${String(startHour).padStart(2, "0")}:00 – ${String(endHour + 1).padStart(2, "0")}:00`
   };
+
+  solarRangeCache.set(key, result);
+  return result;
 }
   
 function fmt(h) {
