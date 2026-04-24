@@ -931,19 +931,20 @@ function hourAngle(hour) {
 // solar elevation
 function solarElevation(lat, decl, hourAngle) {
 
-  const deg2rad = (d) => (d * Math.PI) / 180;
+  const deg2rad = Math.PI / 180;
 
-  const latRad = deg2rad(lat);
-
-  // assume decl + hourAngle already in radians OR degrees → normalize safely
-  const declRad = Math.abs(decl) > 2 * Math.PI ? deg2rad(decl) : decl;
-  const hRad = Math.abs(hourAngle) > 2 * Math.PI ? deg2rad(hourAngle) : hourAngle;
+  // ALWAYS treat inputs as degrees (your system is degree-based elsewhere)
+  const latRad = lat * deg2rad;
+  const declRad = decl * deg2rad;
+  const hRad = hourAngle * deg2rad;
 
   const sinElev =
     Math.sin(latRad) * Math.sin(declRad) +
     Math.cos(latRad) * Math.cos(declRad) * Math.cos(hRad);
 
-  return Math.asin(Math.max(-1, Math.min(1, sinElev))) * (180 / Math.PI);
+  const clamped = Math.max(-1, Math.min(1, sinElev));
+
+  return Math.asin(clamped) / deg2rad;
 }
 
 // incidence angle on tilted panel
