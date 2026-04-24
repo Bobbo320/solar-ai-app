@@ -1407,7 +1407,6 @@ window.fmtFromTime = function (t) {
 
   return {
  time: `${fmtMinutes(chargeStart)} – ${fmtMinutes(chargeEnd)}`
-   let durationHours = (chargeEnd - chargeStart) / 60;
     cost: cost,
     energy: stored,        // actual stored energy (battery)
     gridEnergy: gridUsed,  // what you paid for
