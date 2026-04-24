@@ -690,13 +690,8 @@ async function getCoordinates(postcode) {
 
     if (cached) return cached;
 
-let res = await fetch(
-  `https://api.open-meteo.com/v1/forecast?
-  latitude=${c.lat}&longitude=${c.lon}
-  &hourly=cloudcover,temperature_2m,shortwave_radiation,direct_radiation,diffuse_radiation,relativehumidity_2m,precipitation
-  &daily=sunrise,sunset
-  &forecast_days=3
-  &timezone=auto`
+ let res = await fetch(
+  `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(postcode)}&count=1`
 );
 
 let geo = await res.json();
@@ -716,13 +711,6 @@ let coords = {
   }
 }
 
-function getSunWindow(weatherData, dayIndex = 0) {
-  return {
-    sunrise: weatherData.daily.sunrise[dayIndex],
-    sunset: weatherData.daily.sunset[dayIndex]
-  };
-}
-  
 // -------------------- WEATHER --------------------
 async function getWeather(postcode) {
   try {
@@ -1791,22 +1779,10 @@ ${confidence < 0.1 ? `
   </div>
 `;
 
-for (let d = 0; d < 3; d++) {
+ for (let d = 0; d < 3; d++) {
 
   let start = d * 24;
 
-  // 🌅 SUNRISE / SUNSET (declare FIRST)
-  let sun = getSunWindow(weatherData, d);
-
-  const timeLabel = sun.sunrise && sun.sunset
-    ? `${fmtFromTime(sun.sunrise)} – ${fmtFromTime(sun.sunset)}`
-    : "No sunrise data";
-
-  const durationHours = sun.sunrise && sun.sunset
-    ? (new Date(sun.sunset) - new Date(sun.sunrise)) / 3600000
-    : 0;
-
-  // ☀️ PV daylight filtering
   let dayRad = daylightHours(rad.slice(start, start + 24));
 
   let avgRad = dayRad.length
@@ -1829,17 +1805,37 @@ for (let d = 0; d < 3; d++) {
 
   let split = sunshineSplit(rad, start);
 
-  // ☀️ usable PV hours counter (RENAMED FIX)
-  let usableSunHours = 0;
+let timeRange = getSolarTimeRange(
+  rad.slice(start, start + 24),
+  time.slice(start, start + 24),
+  52.2
+);
 
-  for (let i = 0; i < 24; i++) {
-    let pv = estimateCurrentHourPV(s, weatherData, start + i);
+const startIdx =
+  timeRange.startHour !== null
+    ? start + timeRange.startHour
+    : null;
 
-    let minPV = 0.02 + (s.pvSize * 0.002);
+const endIdx =
+  timeRange.endHour !== null
+    ? Math.min(start + timeRange.endHour + 1, time.length - 1)
+    : null;
 
-    if (pv > minPV) usableSunHours++;
-  }
+const timeLabel =
+  startIdx !== null && endIdx !== null
+    ? `${fmtFromTime(time[startIdx])} – ${fmtFromTime(time[endIdx])}`
+    : "No usable sunlight";
+   
+let sun = 0;
+
+for (let i = 0; i < 24; i++) {
+  let pv = estimateCurrentHourPV(s, weatherData, start + i);
+
+  let minPV = 0.02 + (s.pvSize * 0.002);
+
+  if (pv > minPV) sun++;
 }
+
   let midTemp = temp[start + 12] ?? temp[start]; // safety fallback
 
 let cloudAvg = weightedCloudAverage(cloud, rad, start);
@@ -1983,11 +1979,10 @@ if (d === 1 && tomorrowSOCValue === null) {
         precip[start + 12] ?? precip[start]
       )}
 
-     <br><b>🌅 Sunrise:</b> ${fmtFromTime(sun.sunrise)}
-<br><b>🌇 Sunset:</b> ${fmtFromTime(sun.sunset)}
-<br><b>🌞 Solar Window:</b> ${durationHours.toFixed(1)} hours
-<br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
-<br><b>📊 Confidence:</b> ${confidence.toFixed(0)}%
+      <br><b>🔆 Usable Solar Window:</b> ${sun} hours
+      <br><b>⏱️ Time Range:</b> ${timeLabel}
+      <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
+      <br><b>📊 Confidence:</b> ${confidence.toFixed(0)}%
     </div>
   `;
 }
