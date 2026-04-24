@@ -1406,7 +1406,7 @@ window.fmtFromTime = function (t) {
 };
 
   return {
- time: `${fmtMinutes(chargeStart)} – ${fmtMinutes(chargeEnd)}`
+    time: `${fmt(chargeStart)} – ${fmt(chargeEnd)}`,
     cost: cost,
     energy: stored,        // actual stored energy (battery)
     gridEnergy: gridUsed,  // what you paid for
@@ -1466,13 +1466,6 @@ if (window.DEBUG_SOLAR_RANGE) {
 
   solarRangeCache.set(key, result);
   return result;
-}
-
-function fmtMinutes(mins) {
-  let h = Math.floor(mins / 60) % 24;
-  let m = Math.floor(mins % 60);
-
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
   
 function fmt(h) {
@@ -2012,6 +2005,7 @@ if (d === 1 && tomorrowSOCValue === null) {
       )}
 
       <br><b>🌅 Sunrise–Sunset Solar Window:</b> ${timeLabel}
+      <br><b>🔆 Usable Solar Window:</b> ${sun} hours
       <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
       <br><b>📊 Confidence:</b> ${confidence.toFixed(0)}%
     </div>
