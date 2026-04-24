@@ -1376,27 +1376,56 @@ window.fmtFromTime = function (t) {
   
 const solarRangeCache = new Map();
 
-function getSolarTimeRange(radSlice, timeSlice) {
+function getSolarTimeRange(radSlice, timeSlice, lat = 52.2) {
+  const key = lat + "|" + radSlice.join(",");
+// optional debug toggle
+if (window.DEBUG_SOLAR_RANGE) {
+  console.log("Solar range start", { lat, len: radSlice?.length });
+  console.log("Solar range result", { startHour, endHour });
+}
+  if (solarRangeCache.has(key)) {
+    return solarRangeCache.get(key);
+  }
+
   let startHour = null;
   let endHour = null;
 
-  for (let i = 0; i < radSlice.length; i++) {
-    let r = radSlice[i];
+  const baseDate = new Date();
+  const dayOfYear = Math.floor(
+    (baseDate - new Date(baseDate.getFullYear(), 0, 0)) / 86400000
+  );
 
-    if (r > SOLAR_VISIBLE_THRESHOLD) {
-      if (startHour === null) startHour = i;
-      endHour = i;
+  for (let i = 0; i < 24; i++) {
+    const hour = i;
+
+    const poaProxy = getPOA(
+      600,
+      200,
+      300,
+      lat,
+      30,
+      hour,
+      dayOfYear
+    );
+
+    if (poaProxy > 25) {
+      if (startHour === null) startHour = hour;
+      endHour = hour;
     }
   }
 
-  return {
+  const result = {
     startHour,
     endHour,
-    hours:
-      startHour !== null && endHour !== null
-        ? endHour - startHour + 1
-        : 0
+    hours: endHour - startHour,
+    label:
+      startHour === null
+        ? "No usable sunlight"
+        : `${String(startHour).padStart(2, "0")}:00 – ${String(endHour + 1).padStart(2, "0")}:00`
   };
+
+  solarRangeCache.set(key, result);
+  return result;
 }
   
 function fmt(h) {
@@ -1950,7 +1979,7 @@ if (d === 1 && tomorrowSOCValue === null) {
         precip[start + 12] ?? precip[start]
       )}
 
-     <br><b>🔆 Usable Solar Window:</b> ${timeRange.hours} hours
+      <br><b>🔆 Usable Solar Window:</b> ${sun} hours
       <br><b>⏱️ Time Range:</b> ${timeLabel}
       <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
       <br><b>📊 Confidence:</b> ${confidence.toFixed(0)}%
