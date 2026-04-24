@@ -1348,15 +1348,6 @@ requiredEnergy *= uncertaintyFactor;
     capped: requiredEnergy > maxPossibleCharge
   };
 }
-
-function computeSOC(ctx, pvForecast, confidence) {
-  return calculateChargePlan(
-    pvForecast,
-    ctx.settings,
-    confidence
-  );
-}
-  
 function getLoadEnergyByWindow(s, startHour, endHour) {
   let total = 0;
 
@@ -1541,58 +1532,511 @@ function estimateCurrentHourPV(s, weather, hourIndex, lat = getLat()) {
     rampFactor
   );
 }
-
-function computeLivePV(ctx, weather, hourIndex) {
-
-  const s = ctx.settings;
-
-  let nowPV = estimateCurrentHourPV(
-    s,
-    weather,
-    hourIndex,
-    ctx.lat
-  );
-
-  let { bias, seasonalFactor, confidence } = getCalibrationSystem();
-
-  let calibrationFactor =
-    confidence < 0.1 ? 1 : bias * seasonalFactor;
-
-  return {
-    pv: nowPV * calibrationFactor,
-    confidence
-  };
-}
-  
-function getAIContext() {
-  const s = getSettings();
-
-  return {
-    settings: s,
-    lat: s.lat,
-    lon: s.lon,
-    now: new Date(),
-    weather: preloadedWeather
-  };
-}
-
-  function computeForecastPV(ctx, weather, dayIndex) {
-
-  const s = ctx.settings;
-
-  let daySlice = extractDay(weather, dayIndex);
-
-  let raw = pvEngine(daySlice, s);
-
-  let { bias, seasonalFactor } = getCalibrationSystem();
-
-  let adjusted = raw * bias * seasonalFactor;
-
-  return adjusted;
-}
   
 // -------------------- MAIN --------------------
 async function runAI() {
+if (RUN_AI_LOCK) return;
+RUN_AI_LOCK = true;
+AI_RUNNING = true;
+  const token = ++RUN_AI_TOKEN; // identify this run
+
+  try {
+    preloadedWeather = null;
+
+    const now = new Date();
+    const hour = now.getHours();
+  const location = getSettings();
+  const lat = location.lat;
+  const lon = location.lon;
+    let s = getSettings();
+    loading.innerText = "Loading...";
+  let tomorrowSOCValue = null;   // ✅ ADD THIS LINE HERE
+    let weatherData = await getWeather(s.postcode);
+
+    // If another run started while we were waiting, stop here
+    if (token !== RUN_AI_TOKEN) return;
+
+  let cloud = weatherData.hourly.cloudcover;
+  let rad = weatherData.hourly.shortwave_radiation;
+  let temp = weatherData.hourly.temperature_2m;
+  let hum = weatherData.hourly.relativehumidity_2m;
+  let precip = weatherData.hourly.precipitation;
+  let time = weatherData.hourly.time;
+
+  let html = "";
+  let forecastHtml = "";
+
+  // -------------------- LIVE NOW --------------------
+// Find closest hour index
+let nowIndex = time.findIndex(t => new Date(t) > now);
+if (nowIndex <= 0) nowIndex = 0;
+else nowIndex -= 1;
+
+// Extract current conditions
+let nowRad = rad[nowIndex];
+let nowCloud = cloud[nowIndex];
+let cloudInfo = getCloudThicknessLabel(nowCloud, nowRad); 
+let nowTemp = temp[nowIndex];
+
+// -------------------- LIVE PV ESTIMATE --------------------
+
+
+// 🌤️ Radiation-led model (cloud becomes secondary hint only)
+let cloudWeight = Math.max(0.15, 1 - (nowRad / 600)); 
+// high radiation → cloud has very little influence
+
+let cloudFactorLiveSoft =
+  1 - (nowCloud / 100) * 0.75 * cloudWeight;
+
+cloudFactorLiveSoft = Math.max(0.65, Math.min(1.05, cloudFactorLiveSoft));
+
+  // ☀️ If radiation is strong, override cloud pessimism
+if (nowRad > 250) {
+  cloudFactorLiveSoft = Math.min(cloudFactorLiveSoft, 1.0);
+}
+
+let nowDate = new Date();
+let dayOfYear = Math.floor(
+  (nowDate - new Date(nowDate.getFullYear(), 0, 0)) / 86400000
+);
+
+let tilt = getSeasonalTilt(s.tilt);
+
+let dni = weatherData.hourly.direct_radiation[nowIndex];
+let dhi = weatherData.hourly.diffuse_radiation[nowIndex];
+let ghi = nowRad;
+
+let poaNow = getPOA(
+  dni,
+  dhi,
+  ghi,
+  getLat(),
+  tilt,
+  hour,
+  dayOfYear
+);
+
+poaNow = Math.min(1200, poaNow);
+
+// -------------------- LIVE PV ESTIMATE --------------------
+
+let nowPVBase =
+  s.pvSize *
+  (poaNow / 1000) *
+  (s.efficiency / 100) *
+  temperatureEfficiency(nowTemp) *
+  getOrientationFactor(s.orientation) *
+  (s.shading / 100);
+
+let rawNowPV = nowPVBase;
+
+// calibration system
+let { bias, seasonalFactor, confidence } = getCalibrationSystem();
+
+// calibration (disabled if no history)
+let calibrationFactor =
+  confidence < 0.1 ? 1 : bias * seasonalFactor;
+
+// learning (real-time correction)
+let learningFactor = LIVE_ADJUSTMENT;
+
+// ✅ APPLY BOTH (THIS WAS MISSING)
+rawNowPV = rawNowPV * calibrationFactor * learningFactor;
+
+// other factors (unchanged)
+let orientationFactor = getOrientationFactor(s.orientation);
+let shadingFactor = s.shading / 100;
+let tempFactor = temperatureEfficiency(nowTemp);
+let tiltFactorVal = 1; // POA handles this
+let inverterFactor =
+  nowPVBase > s.inverter
+    ? s.inverter / nowPVBase
+    : 1;
+
+if (LAST_BREAKDOWN_LOCK_ID !== token) {
+
+  LAST_BREAKDOWN = buildBreakdown({
+    basePV: nowPVBase,
+    cloudFactor: cloudFactorLiveSoft,
+    tiltFactor: tiltFactorVal,
+    tempFactor,
+    orientationFactor,
+    shadingFactor,
+    calibrationFactor,
+    inverterFactor,
+    learningFactor
+  });
+
+  LAST_BREAKDOWN_LOCK_ID = token;
+}
+    
+// inverter constraint
+rawNowPV = Math.min(rawNowPV, s.inverter * 0.98);
+
+// final clamp
+rawNowPV = Math.min(rawNowPV, s.pvSize * 1.05);
+
+ let loadKW = getHourlyLoad(s, hour);
+  
+// assign FINAL value ONCE
+const livePV = rawNowPV; // SNAPSHOT (never changes)
+let nowPV = livePV;       // display only
+
+// -------------------- LIVE vs FORECAST RECONCILIATION --------------------
+
+let forecastNowPV =
+  applyCalibration(
+    estimateCurrentHourPV(s, weatherData, nowIndex),
+    "forecast"
+  );
+    
+let liveErrorRatio =
+  forecastNowPV > 0 ? (nowPV / forecastNowPV) : 1;
+
+liveErrorRatio = Math.max(0.7, Math.min(1.3, liveErrorRatio));
+
+let learningRate = nowRad > 200 ? 0.25 : 0.15;
+
+let currentHour = new Date().getHours();
+
+// only learn ONCE per hour
+if (LAST_LEARNING_HOUR !== currentHour) {
+
+  LIVE_ADJUSTMENT =
+    LIVE_ADJUSTMENT * (1 - learningRate) +
+    liveErrorRatio * learningRate;
+
+  LAST_LEARNING_HOUR = currentHour;
+}
+  
+if (nowCloud < 20 && nowRad > 400) {
+  cloudFactorLiveSoft = Math.min(1.18, cloudFactorLiveSoft);
+}
+  
+localStorage.setItem("liveAdjustment", LIVE_ADJUSTMENT);
+
+nowPV = forecastNowPV * LIVE_ADJUSTMENT;
+  
+
+// -------------------- EXPORT (FIXED PHYSICS MODEL) --------------------
+
+// inverter headroom = max possible output minus household load
+let inverterHeadroom = Math.max(0, s.inverter - loadKW);
+
+// actual PV surplus
+let pvSurplus = Math.max(0, nowPV - loadKW);
+
+// export is limited by BOTH PV surplus and inverter headroom
+let exportKW = Math.min(pvSurplus, inverterHeadroom);
+
+// export value
+let exportValue = exportKW * s.exportRate;
+ 
+// NOW compute status using FINAL value
+let status = "";
+
+if (nowRad < 20) {
+  status = "🌙 No solar → discharge or grid use";
+
+} else if (nowPV < 0.3) {
+  status = "🌥️ Very weak → minimal charging";
+
+} else if (nowPV < 1) {
+  status = "⚡ Low solar → partial charging";
+
+} else if (nowPV < 3) {
+  status = "☀️ Moderate solar → charging battery";
+
+} else if (nowPV < s.inverter * 0.8) {
+  status = "🔋 Strong solar → high charging";
+
+} else if (nowPV < s.inverter) {
+  status = "🚀 Near max → optimising export";
+
+} else {
+  status = "⚠️ Clipping zone → inverter limiting output";
+}
+  
+// Format time nicely
+let start = new Date(now);
+start.setMinutes(0, 0, 0);
+
+let end = new Date(start);
+end.setHours(end.getHours() + 1);
+
+let nowTimeStr =
+  start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) +
+  " – " +
+  end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  
+// Build UI card
+html += `
+  <div class="card">
+    <h3>☀️ Live Window (${nowTimeStr})</h3>
+${confidence < 0.1 ? `
+  <div style="color:#facc15; font-size:13px; margin-bottom:6px;">
+    ⚠️ Calibration: Learning phase (no history yet)
+  </div>
+` : ``}
+    <b>Predicted Radiation:</b> ${nowRad.toFixed(0)} W/m²<br>
+    <b>Estimated PV Average:</b> ${nowPV.toFixed(2)} kW<br>
+
+    <b>Estimated Hourly Load:</b> ${loadKW.toFixed(2)} kW<br>
+    <b>Estimated Hourly Export:</b> ${exportKW.toFixed(2)} kW<br>
+    <b>Estimated Hourly Export Income:</b> £${exportValue.toFixed(2)}/hr<br>
+
+    <b>Cloud:</b> ${nowCloud.toFixed(0)}%<br>
+    <b>Cloud Type:</b> ${cloudInfo.label}<br>
+
+    <div class="cloud-bar">
+      <div class="cloud-bar-fill" style="width:${(Math.pow(cloudInfo.intensity, 0.7) * 100).toFixed(0)}%"></div>
+    </div>
+
+    <b>Temp:</b> ${nowTemp.toFixed(1)}°C<br>
+  
+    <br><b>Status:</b> ${status}
+  </div>
+`;
+
+ for (let d = 0; d < 3; d++) {
+
+  let start = d * 24;
+
+  let dayRad = daylightHours(rad.slice(start, start + 24));
+
+  let avgRad = dayRad.length
+    ? dayRad.reduce((a, b) => a + b) / dayRad.length
+    : 0;
+
+  let validHours = 0;
+  let scoreSum = 0;
+
+  for (let i = 0; i < 24; i++) {
+    let rVal = rad[start + i];
+
+    if (rVal > SOLAR_THRESHOLD) {
+      scoreSum += hourlySolarScore(cloud[start + i], rVal);
+      validHours++;
+    }
+  }
+
+  let avgScore = validHours ? (scoreSum / validHours) : 0;
+
+  let split = sunshineSplit(rad, start);
+
+ let sunWindow = getSunriseSunset(weatherData, d);
+
+const timeLabel = sunWindow
+  ? sunWindow.label
+  : "No sunrise/sunset data";  
+   
+let sun = 0;
+
+for (let i = 0; i < 24; i++) {
+  let pv = estimateCurrentHourPV(s, weatherData, start + i);
+
+  let minPV = 0.02 + (s.pvSize * 0.002);
+
+  if (pv > minPV) sun++;
+}
+
+  let midTemp = temp[start + 12] ?? temp[start]; // safety fallback
+
+let cloudAvg = weightedCloudAverage(cloud, rad, start);
+
+// smooth radiation stability (important!)
+let radStd = 0;
+let count = 0;
+let mean = 0;
+
+// quick variance estimate (cheap + stable)
+for (let i = 0; i < 24; i++) {
+  let r = rad[start + i];
+  if (r > SOLAR_THRESHOLD) {
+    mean += r;
+    count++;
+  }
+}
+
+mean = count ? mean / count : 0;
+
+for (let i = 0; i < 24; i++) {
+  let r = rad[start + i];
+  if (r > SOLAR_THRESHOLD) {
+    radStd += Math.pow(r - mean, 2);
+  }
+}
+
+radStd = count ? Math.sqrt(radStd / count) : 0;
+
+// normalize instability (0 = stable, 1 = chaotic)
+let instability = Math.min(1, radStd / 400);
+
+// cloud penalty (soft curve, not linear)
+let cloudPenalty = Math.pow(cloudAvg / 100, 1.4);
+
+// final confidence blend
+let confidence =
+  100 *
+  (0.55 * (1 - cloudPenalty) +
+   0.45 * (1 - instability));
+
+// clamp
+confidence = Math.max(35, Math.min(98, confidence));
+let dayData = extractDay(weatherData, d);
+
+let daySlice = extractDay(weatherData, d);
+
+let basePV = pvEngine(daySlice, s);
+preloadedWeather = null;
+  // calibration
+let rawPV = basePV;
+
+// 🔥 APPLY FULL CALIBRATION HERE (not soft blended)
+let { bias, seasonalFactor } = getCalibrationSystem();
+let calibratedPV =
+  confidence < 0.1
+    ? rawPV
+    : rawPV * bias * seasonalFactor;
+
+// still allow live learning
+let combinedAdjustment =
+  1 + ((bias * seasonalFactor - 1) * 0.6) +
+      ((LIVE_ADJUSTMENT - 1) * 0.4);
+
+calibratedPV = rawPV * combinedAdjustment;
+
+// optional safety clamp
+calibratedPV = Math.max(0, calibratedPV);
+
+// store calibrated value
+storeExpectedPV(d, calibratedPV);
+
+// use same value for UI
+let pv = calibratedPV;
+
+let forecastCalibration = LIVE_ADJUSTMENT;
+
+if (LAST_BREAKDOWN_LOCK_ID !== token) {
+
+  LAST_BREAKDOWN = buildBreakdown({
+    basePV: rawPV,
+    cloudFactor: 1, // already baked into estimatePV
+    tiltFactor: 1,
+    tempFactor: 1,
+    orientationFactor: 1,
+    shadingFactor: 1,
+    calibrationFactor: forecastCalibration,
+    inverterFactor: 1,
+    learningFactor: LIVE_ADJUSTMENT
+  });
+
+  LAST_BREAKDOWN_LOCK_ID = token;
+}
+   
+
+// ensure tomorrow updates if today changes
+if (d === 0) {
+  rebuildExpectedPVForWindow(pv);
+}
+
+// ✅ Store expected PV for today + tomorrow
+let pvData = getPVData();
+
+let date = new Date();
+date.setDate(date.getDate() + d);
+
+let key = getLocalDateKey(date);
+let entry = pvData[key];
+
+
+// CLEAN ENERGY PIPELINE (FIXED)
+
+let chargePlan = calculateChargePlan(pv, s, confidence);
+let soc = chargePlan.soc;
+
+if (d === 1 && tomorrowSOCValue === null) {
+  tomorrowSOCValue = {
+    soc: chargePlan.soc,
+    energy: chargePlan.energy,
+    capped: chargePlan.capped
+  };
+}
+
+  // Label
+  let label = d === 0
+  ? "Today"
+  : d === 1
+    ? "<span style='font-weight:bold'>Tomorrow</span>"
+    : "The day after tomorrow";
+
+  // Render card
+  forecastHtml += `
+    <div class="card">
+      <h3>${label}</h3>
+
+      ${weatherSummary(
+        weightedCloudAverage(cloud, rad, start),
+        avgRad,
+        temp[start + 12] ?? temp[start],
+        hum[start + 12] ?? hum[start],
+        precip[start + 12] ?? precip[start]
+      )}
+
+      <br><b>🌅 Sunrise–Sunset Solar Window:</b> ${timeLabel}
+      <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
+      <br><b>📊 Confidence:</b> ${confidence.toFixed(0)}%
+    </div>
+  `;
+}
+
+function getDeferredMorningLoad(s) {
+  // 4am–6am = catch-up usage
+  const catchUp = s.dailyLoad * 0.06; // 6% rebound load
+  return catchUp;
+}
+  
+// -------------------- RENDER --------------------
+
+loading.innerText = "";
+
+// 1. Add SOC FIRST
+html += `
+  <div class="card">
+    <h3>🔋 Tonight's Grid Charge Target</h3>
+
+    <span style="color:red;font-weight:bold; font-size:18px;">
+     ${
+  tomorrowSOCValue !== null
+    ? `
+      ⚡ ${tomorrowSOCValue.energy.toFixed(1)} kWh charge
+      <br>
+  ${
+(() => {
+  let plan = getChargePlanFromWindow(tomorrowSOCValue.energy, s);
+  return `
+    ⏱️ ${plan.time}
+<br>🔌 ${plan.gridEnergy.toFixed(2)} kWh imported
+<br>💷 £${plan.cost.toFixed(2)}
+    ${plan.capped ? "<br>⚠️ Not enough cheap-rate time" : ""}
+  `;
+})()
+}
+      ${tomorrowSOCValue.capped ? "<br>⚠️ Limited by inverter/battery" : ""}
+    `
+    : "N/A"
+}
+    </span>
+  </div>
+`;
+
+// 2. Then append forecast cards
+html += forecastHtml;
+
+output.innerHTML = html;
+    renderBreakdown();
+} finally {
   RUN_AI_LOCK = false;
   AI_RUNNING = false;
   loading.innerText = "";
