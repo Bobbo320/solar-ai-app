@@ -1791,17 +1791,22 @@ ${confidence < 0.1 ? `
   </div>
 `;
 
- for (let d = 0; d < 3; d++) {
+for (let d = 0; d < 3; d++) {
 
   let start = d * 24;
 
-   let sun = getSunWindow(weatherData, d);
+  // 🌅 SUNRISE / SUNSET (declare FIRST)
+  let sun = getSunWindow(weatherData, d);
 
-let durationHours =
-  sun.sunrise && sun.sunset
+  const timeLabel = sun.sunrise && sun.sunset
+    ? `${fmtFromTime(sun.sunrise)} – ${fmtFromTime(sun.sunset)}`
+    : "No sunrise data";
+
+  const durationHours = sun.sunrise && sun.sunset
     ? (new Date(sun.sunset) - new Date(sun.sunrise)) / 3600000
     : 0;
 
+  // ☀️ PV daylight filtering
   let dayRad = daylightHours(rad.slice(start, start + 24));
 
   let avgRad = dayRad.length
@@ -1824,26 +1829,17 @@ let durationHours =
 
   let split = sunshineSplit(rad, start);
 
-let sun = getSunWindow(weatherData, d);
+  // ☀️ usable PV hours counter (RENAMED FIX)
+  let usableSunHours = 0;
 
-const timeLabel = sun.sunrise && sun.sunset
-  ? `${fmtFromTime(sun.sunrise)} – ${fmtFromTime(sun.sunset)}`
-  : "No sunrise data";
+  for (let i = 0; i < 24; i++) {
+    let pv = estimateCurrentHourPV(s, weatherData, start + i);
 
-   const durationHours = sun.sunrise && sun.sunset
-  ? (new Date(sun.sunset) - new Date(sun.sunrise)) / 3600000
-  : 0;
-   
-let sun = 0;
+    let minPV = 0.02 + (s.pvSize * 0.002);
 
-for (let i = 0; i < 24; i++) {
-  let pv = estimateCurrentHourPV(s, weatherData, start + i);
-
-  let minPV = 0.02 + (s.pvSize * 0.002);
-
-  if (pv > minPV) sun++;
+    if (pv > minPV) usableSunHours++;
+  }
 }
-
   let midTemp = temp[start + 12] ?? temp[start]; // safety fallback
 
 let cloudAvg = weightedCloudAverage(cloud, rad, start);
