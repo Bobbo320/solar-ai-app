@@ -574,8 +574,10 @@ runAI_safe();
 function getSettings() {
   let s = Store.getSettings();
 
-  return {
-    postcode: s.postcode || "Norwich",
+ return {
+  postcode: s.postcode || "Norwich",
+  lat: s.lat ?? 52.6309,
+  lon: s.lon ?? 1.2974,
     pvSize: s.pvSize ?? 6.5,
     inverter: s.inverter ?? 5,
     battery: s.battery ?? 10.64,
@@ -595,9 +597,22 @@ blockSize: s.blockSize ?? 0.5,
   };
 }
 
-function saveSettings() {
+async function saveSettings() {
+
+  // 1. Get postcode first
+  const postcodeValue = getEl("postcode").value;
+
+  // 2. Convert postcode → coordinates
+  let coords = await getCoordinates(postcodeValue);
+
+  // 3. Build settings object WITH LAT/LON INCLUDED
   let settings = {
-    postcode: getEl("postcode").value,
+    postcode: postcodeValue,
+
+    // 🌍 NEW: location awareness
+    lat: coords.lat,
+    lon: coords.lon,
+
     pvSize: +pvSize.value,
     inverter: +inverter.value,
     battery: +battery.value,
@@ -610,9 +625,9 @@ function saveSettings() {
     socLow: +socLow.value,
     socHigh: +socHigh.value,
     cheapStart: cheapStart.value,
-cheapEnd: cheapEnd.value,
-importRate: +importRate.value,
-blockSize: +blockSize.value,
+    cheapEnd: cheapEnd.value,
+    importRate: +importRate.value,
+    blockSize: +blockSize.value,
     exportRate: +exportRate.value,
   };
 
@@ -711,6 +726,13 @@ let coords = {
   } catch {
     return { lat: 52.6309, lon: 1.2974 };
   }
+}
+
+  function getLat() {
+  return getSettings().lat;
+}
+  function safeLat() {
+  return getSettings().lat || 52.6309;
 }
 
 // -------------------- WEATHER --------------------
@@ -1026,6 +1048,10 @@ function getPOA(dni, dhi, ghi, lat, tilt, hour, dayOfYear) {
   
 function estimatePV(radSlice, cloudSlice, tempSlice, s, dayData) {
 
+  const location = getSettings();
+  const lat = location.lat;
+  const lon = location.lon;
+  
   let total = 0;
 
   for (let i = 0; i < 24; i++) {
@@ -1050,7 +1076,7 @@ function estimatePV(radSlice, cloudSlice, tempSlice, s, dayData) {
       dni,
       dhi,
       r,
-      52.2,
+      getLat(),
       tilt,
       i,
       dayOfYear
@@ -1059,7 +1085,7 @@ function estimatePV(radSlice, cloudSlice, tempSlice, s, dayData) {
     // 🌅 FIXED: solar geometry (CORRECT VARIABLES)
     let decl = solarDeclination(dayOfYear);
     let hAng = hourAngle(i);
-    let elev = solarElevation(52.2, decl, hAng);
+    let elev = solarElevation(getLat(), decl, hAng);
 
     // 🌅 EARLY MORNING BOOST (MAIN FIX)
     if (elev > 1 && poa < 120) {
@@ -1098,7 +1124,9 @@ function estimatePV(radSlice, cloudSlice, tempSlice, s, dayData) {
 }
   
 function pvEngine(daySlice, s) {
-
+  const location = getSettings();
+  const lat = location.lat;
+  const lon = location.lon;
   let total = 0;
 
   for (let i = 0; i < 24; i++) {
@@ -1123,7 +1151,7 @@ function pvEngine(daySlice, s) {
       dni,
       dhi,
       r,
-      52.2,
+     getLat(),
       tilt,
       i,
       dayOfYear
@@ -1132,7 +1160,7 @@ function pvEngine(daySlice, s) {
     // 🌅 CORRECT solar geometry
     let decl = solarDeclination(dayOfYear);
     let hAng = hourAngle(i);
-    let elev = solarElevation(52.2, decl, hAng);
+    let elev = solarElevation(getLat(), decl, hAng);
 
     // 🌅 EARLY BOOST
     if (elev > 1 && poa < 120) {
@@ -1444,7 +1472,7 @@ function weatherSummary(c,r,t,h,p){
   `;
 }
 
-function estimateCurrentHourPV(s, weather, hourIndex, lat = 52.2) {
+function estimateCurrentHourPV(s, weather, hourIndex, lat = getLat()) {
 
   let r = weather.hourly.shortwave_radiation[hourIndex];
   let dni = weather.hourly.direct_radiation[hourIndex];
@@ -1517,7 +1545,9 @@ AI_RUNNING = true;
 
     const now = new Date();
     const hour = now.getHours();
-
+  const location = getSettings();
+  const lat = location.lat;
+  const lon = location.lon;
     let s = getSettings();
     loading.innerText = "Loading...";
   let tomorrowSOCValue = null;   // ✅ ADD THIS LINE HERE
@@ -1580,7 +1610,7 @@ let poaNow = getPOA(
   dni,
   dhi,
   ghi,
-  52.2,
+  getLat(),
   tilt,
   hour,
   dayOfYear
