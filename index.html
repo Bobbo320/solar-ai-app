@@ -1358,31 +1358,33 @@ function getChargePlanFromWindow(targetEnergy, s) {
   };
 }
   
-function getSolarTimeRange(radSlice, timeSlice, weather, s, startIndex) {
+function getSolarTimeRange(radSlice, timeSlice, lat = 52.2) {
 
   let startTime = null;
   let endTime = null;
 
   for (let i = 0; i < 24; i++) {
 
-    let pv = estimateCurrentHourPV(s, weather, startIndex + i);
+    let t = new Date(timeSlice[i]);
+    let hour = t.getHours();
 
-    let minPV = 0.02 + (s.pvSize * 0.002);
+    let dayOfYear = Math.floor(
+      (t - new Date(t.getFullYear(), 0, 0)) / 86400000
+    );
 
-    if (pv > minPV) {
-      if (!startTime) startTime = timeSlice[i];
+    let decl = solarDeclination(dayOfYear);
+    let hAng = hourAngle(hour);
+    let elev = solarElevation(lat, decl, hAng);
+
+    let threshold = getSolarVisibilityThreshold(elev);
+
+    if (radSlice[i] > threshold) {
+      if (startTime === null) startTime = timeSlice[i];
       endTime = timeSlice[i];
     }
   }
 
-  if (!startTime || !endTime) return "No data";
-
-  let start = new Date(startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  let end = new Date(endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-  return `${start} – ${end}`;
-}
-
+  // ✅ THIS must be inside the function
   if (!startTime || !endTime) return "No data";
 
   let start = new Date(startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
