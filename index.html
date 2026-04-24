@@ -1763,6 +1763,13 @@ ${confidence < 0.1 ? `
 
   let split = sunshineSplit(rad, start);
 
+let timeRange = getSolarTimeRange(
+  rad.slice(start, start + 24),
+  time.slice(start, start + 24),
+  weatherData,
+  s
+);
+
 let sun = 0;
 
 for (let i = 0; i < 24; i++) {
