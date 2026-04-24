@@ -1406,7 +1406,9 @@ window.fmtFromTime = function (t) {
 };
 
 return {
-  time: `${fmtMinutes(chargeStart)} – ${fmtMinutes(chargeEnd)}`,
+time: `${String(Math.floor(chargeStart / 60)).padStart(2,'0')}:${String(chargeStart % 60).padStart(2,'0')}
+ – 
+${String(Math.floor(chargeEnd / 60) % 24).padStart(2,'0')}:${String(chargeEnd % 60).padStart(2,'0')}`
   cost: cost,
   energy: stored,        // actual stored energy (battery)
   gridEnergy: gridUsed,  // what you paid for
