@@ -1017,12 +1017,20 @@ function estimatePV(radSlice, cloudSlice, tempSlice, s, dayData) {
 let decl = solarDeclination(dayOfYear);
 let hAng = hourAngle(i);
 
-// 🔴 ADD THIS LINE ONLY
-if (!isFinite(decl) || !isFinite(hAng)) {
-  console.log("BROKEN INPUT", { i, dayOfYear, decl, hAng });
+console.log("DEBUG solar inputs:", {
+  i,
+  dayOfYear,
+  decl,
+  hAng
+});
+
+    if (!isFinite(decl) || !isFinite(hAng)) {
+  console.warn("BAD SOLAR INPUTS", { i, dayOfYear, decl, hAng });
+  continue;
 }
 
-let elev = solarElevation(52.2, decl || 0, hAng || 0);
+let elev = solarElevation(52.2, decl, hAng);
+    
     // 🌅 EARLY MORNING BOOST (MAIN FIX)
     if (elev > 1 && poa < 120) {
       let syntheticPOA = 120 + (elev * 15);
@@ -1092,15 +1100,22 @@ function pvEngine(daySlice, s) {
     );
 
     // 🌅 CORRECT solar geometry
- let decl = solarDeclination(dayOfYear);
+let decl = solarDeclination(dayOfYear);
 let hAng = hourAngle(i);
 
-// 🔴 ADD THIS LINE ONLY
-if (!isFinite(decl) || !isFinite(hAng)) {
-  console.log("BROKEN INPUT", { i, dayOfYear, decl, hAng });
-}
+console.log("DEBUG solar inputs:", {
+  i,
+  dayOfYear,
+  decl,
+  hAng
+});
 
-let elev = solarElevation(52.2, decl || 0, hAng || 0);
+if (!isFinite(decl) || !isFinite(hAng)) {
+  console.warn("BAD SOLAR INPUTS", { i, dayOfYear, decl, hAng });
+  continue;
+}
+    
+let elev = solarElevation(52.2, decl, hAng);
 
     // 🌅 EARLY BOOST
     if (elev > 1 && poa < 120) {
