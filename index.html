@@ -1371,6 +1371,9 @@ function getSolarTimeRange(radSlice, timeSlice, lat = 52.2) {
   for (let i = 0; i < 24; i++) {
     let hour = i;
 
+    console.log(`\n--- Hour ${i} ---`);
+    console.log("BEFORE:", { startHour, endHour });
+
     let dayOfYear = Math.floor(
       (baseDate - new Date(baseDate.getFullYear(), 0, 0)) / 86400000
     );
@@ -1388,9 +1391,19 @@ function getSolarTimeRange(radSlice, timeSlice, lat = 52.2) {
       dayOfYear
     );
 
+    console.log("POA proxy:", poaProxy);
+
+    // 🌞 solar threshold
     if (poaProxy > 50) {
-      if (startHour === null) startHour = hour;
+      console.log("✅ Active solar hour:", hour);
+
+      if (startHour === null) {
+        startHour = hour;
+        console.log("👉 startHour SET:", startHour);
+      }
+
       endHour = hour;
+      console.log("👉 endHour UPDATED:", endHour);
     }
   }
 
@@ -1399,12 +1412,32 @@ function getSolarTimeRange(radSlice, timeSlice, lat = 52.2) {
   console.log("FINAL END:", endHour);
 
   if (startHour === null || endHour === null) {
-    return "No usable sunlight";
+    console.log("❌ No usable sunlight detected");
+    return {
+      startHour: null,
+      endHour: null,
+      label: "No usable sunlight",
+      hours: 0
+    };
   }
 
-  return { startHour, endHour };
-}
+  // ⏱️ duration fix (inclusive window)
+  const hours = endHour - startHour + 1;
 
+  const format = (h) =>
+    String(h).padStart(2, "0") + ":00";
+
+  const result = {
+    startHour,
+    endHour,
+    hours,
+    label: `${format(startHour)} – ${format(endHour + 1)}`
+  };
+
+  console.log("📦 FINAL RESULT:", result);
+
+  return result;
+}
 function fmt(h) {
   return String(h).padStart(2, "0") + ":00";
 }
