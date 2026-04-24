@@ -1366,22 +1366,19 @@ function getSolarTimeRange(radSlice, timeSlice, lat = 52.2) {
   let startHour = null;
   let endHour = null;
 
-  let baseDate = new Date();
+  const baseDate = new Date();
+
+  const dayOfYear = Math.floor(
+    (baseDate - new Date(baseDate.getFullYear(), 0, 0)) / 86400000
+  );
+
+  const latValue =
+    typeof lat === "object" ? lat.latitude : lat;
 
   for (let i = 0; i < 24; i++) {
-    let hour = i;
+    const hour = i;
 
-    console.log(`\n--- Hour ${i} ---`);
-    console.log("BEFORE:", { startHour, endHour });
-
-    let dayOfYear = Math.floor(
-      (baseDate - new Date(baseDate.getFullYear(), 0, 0)) / 86400000
-    );
-
-    let latValue =
-      typeof lat === "object" ? lat.latitude : lat;
-
-    let poaProxy = getPOA(
+    const poaProxy = getPOA(
       600,
       200,
       300,
@@ -1391,19 +1388,9 @@ function getSolarTimeRange(radSlice, timeSlice, lat = 52.2) {
       dayOfYear
     );
 
-    console.log("POA proxy:", poaProxy);
-
-    // 🌞 solar threshold
     if (poaProxy > 50) {
-      console.log("✅ Active solar hour:", hour);
-
-      if (startHour === null) {
-        startHour = hour;
-        console.log("👉 startHour SET:", startHour);
-      }
-
+      if (startHour === null) startHour = hour;
       endHour = hour;
-      console.log("👉 endHour UPDATED:", endHour);
     }
   }
 
@@ -1412,32 +1399,21 @@ function getSolarTimeRange(radSlice, timeSlice, lat = 52.2) {
   console.log("FINAL END:", endHour);
 
   if (startHour === null || endHour === null) {
-    console.log("❌ No usable sunlight detected");
-    return {
-      startHour: null,
-      endHour: null,
-      label: "No usable sunlight",
-      hours: 0
-    };
+    return "No usable sunlight";
   }
 
-  // ⏱️ duration fix (inclusive window)
-  const hours = endHour - startHour + 1;
+  const fmt = (h) => String(h).padStart(2, "0") + ":00";
 
-  const format = (h) =>
-    String(h).padStart(2, "0") + ":00";
+  const hours = endHour - startHour; // EXCLUSIVE END
 
-  const result = {
+  return {
     startHour,
     endHour,
     hours,
-    label: `${format(startHour)} – ${format(endHour + 1)}`
+    label: `${fmt(startHour)} – ${fmt(endHour + 1)}`
   };
-
-  console.log("📦 FINAL RESULT:", result);
-
-  return result;
 }
+
 function fmt(h) {
   return String(h).padStart(2, "0") + ":00";
 }
