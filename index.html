@@ -79,10 +79,12 @@
 
 <h2>⚡ Solar SOC AI Pro</h2>
 
-<button onclick="toggleSettings()">⚙️ Settings</button>
-<button onclick="runAI_safe()">Summary</button>
-<button onclick="togglePVTab()">📊 PV Data</button>
-<button onclick="toggleBreakdown()">🧠 Breakdown</button>
+<div style="display:flex; flex-wrap:wrap; justify-content:center; gap:10px; margin-bottom:15px;">
+  <button onclick="toggleSettings()">⚙️ Settings</button>
+  <button onclick="runAI_safe()">⚡ Run Summary</button>
+  <button onclick="togglePVTab()">📊 PV Data</button>
+  <button onclick="toggleBreakdown()">🧠 Breakdown</button>
+</div>
   
 <div id="settingsPanel" class="card hidden">
   <h3>Settings</h3>
@@ -724,9 +726,12 @@ async function getWeather(postcode) {
 
     let c = await getCoordinates(postcode);
 
-    let res = await fetch(
-      `https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}&hourly=cloudcover,temperature_2m,shortwave_radiation,direct_radiation,diffuse_radiation,relativehumidity_2m,precipitation&forecast_days=3&timezone=auto`
-    );
+  let res = await fetch(
+  `https://api.open-meteo.com/v1/forecast?latitude=${c.lat}&longitude=${c.lon}` +
+  `&hourly=cloudcover,temperature_2m,shortwave_radiation,direct_radiation,diffuse_radiation,relativehumidity_2m,precipitation` +
+  `&daily=sunrise,sunset` +
+  `&forecast_days=3&timezone=auto`
+);
 
     let data = await res.json();
 
@@ -809,6 +814,22 @@ function cloudFactorForecast(cloud, rad) {
   }
 
   return Math.max(0.60, Math.min(1.25, base));
+}
+
+  function getSunriseSunset(weatherData, dayIndex) {
+  const sunrise = new Date(weatherData.daily.sunrise[dayIndex]);
+  const sunset = new Date(weatherData.daily.sunset[dayIndex]);
+
+  const durationMs = sunset - sunrise;
+  const hours = durationMs / (1000 * 60 * 60);
+
+  return {
+    sunrise,
+    sunset,
+    hours,
+    label:
+      `${fmtFromTime(sunrise)} – ${fmtFromTime(sunset)} (${hours.toFixed(1)}h)`
+  };
 }
 // -------------------- SEASONAL TILT --------------------
  
@@ -1805,26 +1826,11 @@ ${confidence < 0.1 ? `
 
   let split = sunshineSplit(rad, start);
 
-let timeRange = getSolarTimeRange(
-  rad.slice(start, start + 24),
-  time.slice(start, start + 24),
-  52.2
-);
+ let sunWindow = getSunriseSunset(weatherData, d);
 
-const startIdx =
-  timeRange.startHour !== null
-    ? start + timeRange.startHour
-    : null;
-
-const endIdx =
-  timeRange.endHour !== null
-    ? Math.min(start + timeRange.endHour + 1, time.length - 1)
-    : null;
-
-const timeLabel =
-  startIdx !== null && endIdx !== null
-    ? `${fmtFromTime(time[startIdx])} – ${fmtFromTime(time[endIdx])}`
-    : "No usable sunlight";
+const timeLabel = sunWindow
+  ? sunWindow.label
+  : "No sunrise/sunset data";  
    
 let sun = 0;
 
@@ -1979,8 +1985,8 @@ if (d === 1 && tomorrowSOCValue === null) {
         precip[start + 12] ?? precip[start]
       )}
 
+      <br><b>🌅 Sunrise–Sunset Solar Window:</b> ${timeLabel}
       <br><b>🔆 Usable Solar Window:</b> ${sun} hours
-      <br><b>⏱️ Time Range:</b> ${timeLabel}
       <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
       <br><b>📊 Confidence:</b> ${confidence.toFixed(0)}%
     </div>
