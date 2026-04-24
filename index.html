@@ -929,11 +929,21 @@ function hourAngle(hour) {
 }
 
 // solar elevation
-function solarElevation(lat, decl, hourAng) {
-  return rad2deg(Math.asin(
-    Math.sin(deg2rad(lat)) * Math.sin(deg2rad(decl)) +
-    Math.cos(deg2rad(lat)) * Math.cos(deg2rad(decl)) * Math.cos(deg2rad(hourAng))
-  ));
+function solarElevation(lat, decl, hourAngle) {
+
+  const deg2rad = (d) => (d * Math.PI) / 180;
+
+  const latRad = deg2rad(lat);
+
+  // assume decl + hourAngle already in radians OR degrees → normalize safely
+  const declRad = Math.abs(decl) > 2 * Math.PI ? deg2rad(decl) : decl;
+  const hRad = Math.abs(hourAngle) > 2 * Math.PI ? deg2rad(hourAngle) : hourAngle;
+
+  const sinElev =
+    Math.sin(latRad) * Math.sin(declRad) +
+    Math.cos(latRad) * Math.cos(declRad) * Math.cos(hRad);
+
+  return Math.asin(Math.max(-1, Math.min(1, sinElev))) * (180 / Math.PI);
 }
 
 // incidence angle on tilted panel
@@ -1012,8 +1022,7 @@ if (!isFinite(decl) || !isFinite(hAng)) {
   console.log("BROKEN INPUT", { i, dayOfYear, decl, hAng });
 }
 
-let elev = solarElevation(52.2, decl, hAng);
-
+let elev = solarElevation(52.2, decl || 0, hAng || 0);
     // 🌅 EARLY MORNING BOOST (MAIN FIX)
     if (elev > 1 && poa < 120) {
       let syntheticPOA = 120 + (elev * 15);
@@ -1091,7 +1100,7 @@ if (!isFinite(decl) || !isFinite(hAng)) {
   console.log("BROKEN INPUT", { i, dayOfYear, decl, hAng });
 }
 
-let elev = solarElevation(52.2, decl, hAng);
+let elev = solarElevation(52.2, decl || 0, hAng || 0);
 
     // 🌅 EARLY BOOST
     if (elev > 1 && poa < 120) {
