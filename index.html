@@ -1413,6 +1413,60 @@ return {
   capped: blocksUsed >= totalBlocks
 };
 }
+  
+const solarRangeCache = new Map();
+
+function getSolarTimeRange(radSlice, timeSlice, lat = 52.2) {
+  const key = lat + "|" + radSlice.join(",");
+// optional debug toggle
+if (window.DEBUG_SOLAR_RANGE) {
+  console.log("Solar range start", { lat, len: radSlice?.length });
+  console.log("Solar range result", { startHour, endHour });
+}
+  if (solarRangeCache.has(key)) {
+    return solarRangeCache.get(key);
+  }
+
+  let startHour = null;
+  let endHour = null;
+
+  const baseDate = new Date();
+  const dayOfYear = Math.floor(
+    (baseDate - new Date(baseDate.getFullYear(), 0, 0)) / 86400000
+  );
+
+  for (let i = 0; i < 24; i++) {
+    const hour = i;
+
+    const poaProxy = getPOA(
+      600,
+      200,
+      300,
+      lat,
+      30,
+      hour,
+      dayOfYear
+    );
+
+    if (poaProxy > 25) {
+      if (startHour === null) startHour = hour;
+      endHour = hour;
+    }
+  }
+
+  const result = {
+    startHour,
+    endHour,
+    hours: endHour - startHour,
+    label:
+      startHour === null
+        ? "No usable sunlight"
+        : `${String(startHour).padStart(2, "0")}:00 – ${String(endHour + 1).padStart(2, "0")}:00`
+  };
+
+  solarRangeCache.set(key, result);
+  return result;
+}
 
 function fmtMinutes(mins) {
   let h = Math.floor(mins / 60) % 24;
@@ -1421,6 +1475,9 @@ function fmtMinutes(mins) {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
   
+function fmt(h) {
+  return String(h).padStart(2, "0") + ":00";
+}
 function fmtFromTime(t) {
   if (!t) return "--:--";
 
@@ -1769,52 +1826,99 @@ ${confidence < 0.1 ? `
   </div>
 `;
 
-for (let d = 0; d < 3; d++) {
+ for (let d = 0; d < 3; d++) {
 
   let start = d * 24;
 
-  let cloudAvg = weightedCloudAverage(cloud, rad, start);
+  let dayRad = daylightHours(rad.slice(start, start + 24));
 
-  let radStd = 0;
-  let count = 0;
-  let mean = 0;
+  let avgRad = dayRad.length
+    ? dayRad.reduce((a, b) => a + b) / dayRad.length
+    : 0;
+
+  let validHours = 0;
+  let scoreSum = 0;
 
   for (let i = 0; i < 24; i++) {
-    let r = rad[start + i];
-    if (r > SOLAR_THRESHOLD) {
-      mean += r;
-      count++;
+    let rVal = rad[start + i];
+
+    if (rVal > SOLAR_THRESHOLD) {
+      scoreSum += hourlySolarScore(cloud[start + i], rVal);
+      validHours++;
     }
   }
 
-  mean = count ? mean / count : 0;
+  let avgScore = validHours ? (scoreSum / validHours) : 0;
 
-  for (let i = 0; i < 24; i++) {
-    let r = rad[start + i];
-    if (r > SOLAR_THRESHOLD) {
-      radStd += Math.pow(r - mean, 2);
-    }
-  }
+  let split = sunshineSplit(rad, start);
 
-  radStd = count ? Math.sqrt(radStd / count) : 0;
+ let sunWindow = getSunriseSunset(weatherData, d);
 
-  let instability = Math.min(1, radStd / 400);
+const timeLabel = sunWindow
+  ? sunWindow.label
+  : "No sunrise/sunset data";  
+   
+let sun = 0;
 
-  let confidence =
-    100 *
-    (0.55 * (1 - Math.pow(cloudAvg / 100, 1.4)) +
-     0.45 * (1 - instability));
+for (let i = 0; i < 24; i++) {
+  let pv = estimateCurrentHourPV(s, weatherData, start + i);
 
-  confidence = Math.max(35, Math.min(98, confidence));
+  let minPV = 0.02 + (s.pvSize * 0.002);
 
-  let daySlice = extractDay(weatherData, d);
-  let basePV = pvEngine(daySlice, s);
-
-  let rawPV = basePV;
-
-  let sunWindow = getSunriseSunset(weatherData, d);
-  const timeLabel = sunWindow.label;
+  if (pv > minPV) sun++;
 }
+
+  let midTemp = temp[start + 12] ?? temp[start]; // safety fallback
+
+let cloudAvg = weightedCloudAverage(cloud, rad, start);
+
+// smooth radiation stability (important!)
+let radStd = 0;
+let count = 0;
+let mean = 0;
+
+// quick variance estimate (cheap + stable)
+for (let i = 0; i < 24; i++) {
+  let r = rad[start + i];
+  if (r > SOLAR_THRESHOLD) {
+    mean += r;
+    count++;
+  }
+}
+
+mean = count ? mean / count : 0;
+
+for (let i = 0; i < 24; i++) {
+  let r = rad[start + i];
+  if (r > SOLAR_THRESHOLD) {
+    radStd += Math.pow(r - mean, 2);
+  }
+}
+
+radStd = count ? Math.sqrt(radStd / count) : 0;
+
+// normalize instability (0 = stable, 1 = chaotic)
+let instability = Math.min(1, radStd / 400);
+
+// cloud penalty (soft curve, not linear)
+let cloudPenalty = Math.pow(cloudAvg / 100, 1.4);
+
+// final confidence blend
+let confidence =
+  100 *
+  (0.55 * (1 - cloudPenalty) +
+   0.45 * (1 - instability));
+
+// clamp
+confidence = Math.max(35, Math.min(98, confidence));
+let dayData = extractDay(weatherData, d);
+
+let daySlice = extractDay(weatherData, d);
+
+let basePV = pvEngine(daySlice, s);
+preloadedWeather = null;
+  // calibration
+let rawPV = basePV;
 
 // 🔥 APPLY FULL CALIBRATION HERE (not soft blended)
 let { bias, seasonalFactor } = getCalibrationSystem();
