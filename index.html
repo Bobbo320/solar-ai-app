@@ -1380,15 +1380,20 @@ console.log("🔆 Solar range calc start");
     );
 
     // 🔥 ALIGN WITH PV ENGINE BEHAVIOUR
-    let poaProxy = getPOA(
-      600,   // DNI proxy
-      200,   // DHI proxy
-      300,   // GHI proxy
-      lat,
-      30,
-      hour,
-      dayOfYear
-    );
+ let latValue =
+  typeof lat === "object"
+    ? lat.latitude
+    : lat;
+
+let poaProxy = getPOA(
+  600,
+  200,
+  300,
+  latValue,
+  30,
+  hour,
+  dayOfYear
+);
     console.log("POA proxy:", poaProxy);
 
     if (poaProxy > 50) {
