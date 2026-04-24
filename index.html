@@ -1393,16 +1393,15 @@ if (window.DEBUG_SOLAR_RANGE) {
   for (let i = 0; i < 24; i++) {
     const hour = i;
 
-    const poaProxy = getPOA(
-      600,
-      200,
-      300,
-      lat,
-      30,
-      hour,
-      dayOfYear
-    );
-
+ const poaProxy = getPOA(
+  dni[i] || 0,
+  dhi[i] || 0,
+  radSlice[i],
+  lat,
+  getSeasonalTilt(30),
+  hour,
+  dayOfYear
+);
     if (poaProxy > 50) {
       if (startHour === null) startHour = hour;
       endHour = hour;
