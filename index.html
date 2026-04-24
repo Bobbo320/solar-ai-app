@@ -929,44 +929,23 @@ function hourAngle(hour) {
 }
 
 // solar elevation
-function solarElevation(lat, decl, hourAngle) {
-
-  const deg2rad = (d) => (d * Math.PI) / 180;
-
-  const latRad = deg2rad(lat);
-
-  const declRad = deg2rad(decl);
-  const hRad = deg2rad(hourAngle);
-
-  const sinElev =
-    Math.sin(latRad) * Math.sin(declRad) +
-    Math.cos(latRad) * Math.cos(declRad) * Math.cos(hRad);
-
-  return Math.asin(Math.max(-1, Math.min(1, sinElev))) * (180 / Math.PI);
+function solarElevation(lat, decl, hourAng) {
+  return rad2deg(Math.asin(
+    Math.sin(deg2rad(lat)) * Math.sin(deg2rad(decl)) +
+    Math.cos(deg2rad(lat)) * Math.cos(deg2rad(decl)) * Math.cos(deg2rad(hourAng))
+  ));
 }
 
-function incidenceAngle(lat, decl, hourAngle, tilt) {
-
-  const deg2rad = (d) => (d * Math.PI) / 180;
-
-  const latRad = deg2rad(lat);
-  const declRad = deg2rad(decl);
-  const hRad = deg2rad(hourAngle);
-  const tiltRad = deg2rad(tilt);
-
-  const cosTheta =
-    Math.sin(declRad) * Math.sin(latRad) * Math.cos(tiltRad) -
-    Math.sin(declRad) * Math.cos(latRad) * Math.sin(tiltRad) * Math.cos(0) +
-    Math.cos(declRad) * Math.cos(latRad) * Math.cos(tiltRad) * Math.cos(hRad) +
-    Math.cos(declRad) * Math.sin(latRad) * Math.sin(tiltRad) * Math.cos(hRad);
-
-  return Math.acos(Math.max(-1, Math.min(1, cosTheta))) * (180 / Math.PI);
+// incidence angle on tilted panel
+function incidenceAngle(lat, decl, hourAng, tilt) {
+  return rad2deg(Math.acos(
+    Math.sin(deg2rad(decl)) * Math.sin(deg2rad(lat - tilt)) +
+    Math.cos(deg2rad(decl)) * Math.cos(deg2rad(lat - tilt)) * Math.cos(deg2rad(hourAng))
+  ));
 }
-  
+
 // MAIN: Plane-of-array irradiance
 function getPOA(dni, dhi, ghi, lat, tilt, hour, dayOfYear) {
-
-  const deg2rad = (d) => (d * Math.PI) / 180;
 
   let decl = solarDeclination(dayOfYear);
   let hAng = hourAngle(hour);
@@ -976,24 +955,22 @@ function getPOA(dni, dhi, ghi, lat, tilt, hour, dayOfYear) {
 
   let theta = incidenceAngle(lat, decl, hAng, tilt);
 
-  const cosTheta = Math.max(0, Math.cos(deg2rad(theta)));
-
-  // zenith angle = 90 - elevation
-  const zenith = Math.max(1, 90 - elev);
-  const cosZ = Math.cos(deg2rad(zenith));
+  let cosTheta = Math.max(0, Math.cos(deg2rad(theta)));
+  let cosZ = Math.max(0.01, Math.sin(deg2rad(elev)));
 
   // beam component
-  const beam = dni * (cosTheta / Math.max(cosZ, 0.05));
+  let beam = dni * (cosTheta / cosZ);
 
   // diffuse (isotropic sky model)
-  const diffuse = dhi * (1 + Math.cos(deg2rad(tilt))) / 2;
+  let diffuse = dhi * (1 + Math.cos(deg2rad(tilt))) / 2;
 
   // ground reflected (UK ~0.2 albedo)
-  const albedo = 0.2;
-  const ground = ghi * albedo * (1 - Math.cos(deg2rad(tilt))) / 2;
+  let albedo = 0.2;
+  let ground = ghi * albedo * (1 - Math.cos(deg2rad(tilt))) / 2;
 
   return beam + diffuse + ground;
 }
+  
 function estimatePV(radSlice, cloudSlice, tempSlice, s, dayData) {
 
   let total = 0;
@@ -1027,30 +1004,10 @@ function estimatePV(radSlice, cloudSlice, tempSlice, s, dayData) {
     );
 
     // 🌅 FIXED: solar geometry (CORRECT VARIABLES)
-let decl = solarDeclination(dayOfYear);
-let hAng = hourAngle(i);
+    let decl = solarDeclination(dayOfYear);
+    let hAng = hourAngle(i);
+    let elev = solarElevation(52.2, decl, hAng);
 
-console.log("DEBUG solar inputs:", {
-  i,
-  dayOfYear,
-  decl,
-  hAng
-});
-
-console.log("SOLAR CHECK", {
-  hour: i,
-  decl,
-  hAng: hourAngle(i),
-  lat
-});
-    
-    if (!isFinite(decl) || !isFinite(hAng)) {
-  console.warn("BAD SOLAR INPUTS", { i, dayOfYear, decl, hAng });
-  continue;
-}
-
-let elev = solarElevation(52.2, decl, hAng);
-    
     // 🌅 EARLY MORNING BOOST (MAIN FIX)
     if (elev > 1 && poa < 120) {
       let syntheticPOA = 120 + (elev * 15);
@@ -1120,29 +1077,9 @@ function pvEngine(daySlice, s) {
     );
 
     // 🌅 CORRECT solar geometry
-let decl = solarDeclination(dayOfYear);
-let hAng = hourAngle(i);
-
-console.log("DEBUG solar inputs:", {
-  i,
-  dayOfYear,
-  decl,
-  hAng
-});
-
-console.log("SOLAR CHECK", {
-  hour: i,
-  decl,
-  hAng: hourAngle(i),
-  lat
-});
-    
-if (!isFinite(decl) || !isFinite(hAng)) {
-  console.warn("BAD SOLAR INPUTS", { i, dayOfYear, decl, hAng });
-  continue;
-}
-    
-let elev = solarElevation(52.2, decl, hAng);
+    let decl = solarDeclination(dayOfYear);
+    let hAng = hourAngle(i);
+    let elev = solarElevation(52.2, decl, hAng);
 
     // 🌅 EARLY BOOST
     if (elev > 1 && poa < 120) {
