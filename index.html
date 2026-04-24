@@ -1405,13 +1405,13 @@ window.fmtFromTime = function (t) {
   });
 };
 
-  return {
-    time: `${fmtMinutes(chargeStart)} – ${fmtMinutes(chargeEnd)}`
-    cost: cost,
-    energy: stored,        // actual stored energy (battery)
-    gridEnergy: gridUsed,  // what you paid for
-    capped: blocksUsed >= totalBlocks
-  };
+return {
+  time: `${fmtMinutes(chargeStart)} – ${fmtMinutes(chargeEnd)}`,
+  cost: cost,
+  energy: stored,        // actual stored energy (battery)
+  gridEnergy: gridUsed,  // what you paid for
+  capped: blocksUsed >= totalBlocks
+};
 }
   
 const solarRangeCache = new Map();
