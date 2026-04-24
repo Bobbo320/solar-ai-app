@@ -207,6 +207,7 @@
 
 <script>
 let RUN_AI_LOCK = false;
+let AI_RUNNING = false; 
 let RUN_AI_TOKEN = 0;
 let LAST_BREAKDOWN = null;
 const SOLAR_THRESHOLD = 25;        // used for real PV calculations
@@ -230,7 +231,7 @@ const Store = {
     localStorage.setItem("settings", JSON.stringify(settings));
   }
 };
-
+let runAITimer = null;
 let GLOBAL_PV_BIAS_LIVE = 1;
 let GLOBAL_PV_BIAS_FORECAST = 1;
 let LIVE_ADJUSTMENT =
@@ -562,7 +563,7 @@ refreshExpectedPVAfterManualChange();
 rebuildExpectedPVForWindow();
 
 renderPVTable();
-runAI();
+runAI_safe();
 }
   
 // -------------------- SETTINGS --------------------
@@ -650,6 +651,16 @@ function toggleSettings() {
 
 function getEl(id) {
   return document.getElementById(id);
+}
+
+function runAI_safe() {
+  // cancel previous pending run
+  if (runAITimer) clearTimeout(runAITimer);
+
+  // wait a tiny bit so rapid calls collapse into one
+  runAITimer = setTimeout(() => {
+    runAI();
+  }, 100);
 }
   
 // -------------------- CACHE --------------------
@@ -1356,22 +1367,26 @@ function getChargePlanFromWindow(targetEnergy, s) {
   };
 }
   
+const solarRangeCache = new Map();
+
 function getSolarTimeRange(radSlice, timeSlice, lat = 52.2) {
-  console.log("\n🔆 Solar range calc start");
-  console.log("lat:", lat);
-  console.log("radSlice length:", radSlice?.length);
+  const key = lat + "|" + radSlice.join(",");
+// optional debug toggle
+if (window.DEBUG_SOLAR_RANGE) {
+  console.log("Solar range start", { lat, len: radSlice?.length });
+  console.log("Solar range result", { startHour, endHour });
+}
+  if (solarRangeCache.has(key)) {
+    return solarRangeCache.get(key);
+  }
 
   let startHour = null;
   let endHour = null;
 
   const baseDate = new Date();
-
   const dayOfYear = Math.floor(
     (baseDate - new Date(baseDate.getFullYear(), 0, 0)) / 86400000
   );
-
-  const latValue =
-    typeof lat === "object" ? lat.latitude : lat;
 
   for (let i = 0; i < 24; i++) {
     const hour = i;
@@ -1380,7 +1395,7 @@ function getSolarTimeRange(radSlice, timeSlice, lat = 52.2) {
       600,
       200,
       300,
-      latValue,
+      lat,
       30,
       hour,
       dayOfYear
@@ -1392,26 +1407,20 @@ function getSolarTimeRange(radSlice, timeSlice, lat = 52.2) {
     }
   }
 
-  console.log("\n=== LOOP COMPLETE ===");
-  console.log("FINAL START:", startHour);
-  console.log("FINAL END:", endHour);
-
-  if (startHour === null || endHour === null) {
-    return "No usable sunlight";
-  }
-
-  const fmt = (h) => String(h).padStart(2, "0") + ":00";
-
-  const hours = endHour - startHour; // EXCLUSIVE END
-
-  return {
+  const result = {
     startHour,
     endHour,
-    hours,
-    label: `${fmt(startHour)} – ${fmt(endHour + 1)}`
+    hours: endHour - startHour,
+    label:
+      startHour === null
+        ? "No usable sunlight"
+        : `${String(startHour).padStart(2, "0")}:00 – ${String(endHour + 1).padStart(2, "0")}:00`
   };
-}
 
+  solarRangeCache.set(key, result);
+  return result;
+}
+  
 function fmt(h) {
   return String(h).padStart(2, "0") + ":00";
 }
@@ -1488,8 +1497,10 @@ function estimateCurrentHourPV(s, weather, hourIndex, lat = 52.2) {
   
 // -------------------- MAIN --------------------
 async function runAI() {
-  if (RUN_AI_LOCK) return; // prevent stacking runs
+  if (RUN_AI_LOCK || AI_RUNNING) return;
+
   RUN_AI_LOCK = true;
+  AI_RUNNING = true;
 
   const token = ++RUN_AI_TOKEN; // identify this run
 
@@ -1766,8 +1777,7 @@ ${confidence < 0.1 ? `
 let timeRange = getSolarTimeRange(
   rad.slice(start, start + 24),
   time.slice(start, start + 24),
-  weatherData,
-  s
+  52.2
 );
 
 let sun = 0;
@@ -1972,8 +1982,9 @@ html += forecastHtml;
 
 output.innerHTML = html;
     renderBreakdown();
-  } finally {
+} finally {
   RUN_AI_LOCK = false;
+  AI_RUNNING = false;
   loading.innerText = "";
 }
 };
@@ -2040,7 +2051,7 @@ refreshExpectedPVAfterManualChange();
 
 closeEditor();
 renderPVTable();
-runAI(); // optional but recommended
+runAI_safe(); // optional but recommended
 }
 
 function deleteEdit() {
@@ -2055,7 +2066,7 @@ refreshExpectedPVAfterManualChange();
 
 closeEditor();
 renderPVTable();
-runAI();
+runAI_safe();
 }
 // -------------------- INIT --------------------
 window.toggleSettings = toggleSettings;
