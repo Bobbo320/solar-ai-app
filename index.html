@@ -1348,6 +1348,15 @@ requiredEnergy *= uncertaintyFactor;
     capped: requiredEnergy > maxPossibleCharge
   };
 }
+
+function computeSOC(ctx, pvForecast, confidence) {
+  return calculateChargePlan(
+    pvForecast,
+    ctx.settings,
+    confidence
+  );
+}
+  
 function getLoadEnergyByWindow(s, startHour, endHour) {
   let total = 0;
 
@@ -1531,6 +1540,55 @@ function estimateCurrentHourPV(s, weather, hourIndex, lat = getLat()) {
     cloudFactorForecast(c, r) *
     rampFactor
   );
+}
+
+function computeLivePV(ctx, weather, hourIndex) {
+
+  const s = ctx.settings;
+
+  let nowPV = estimateCurrentHourPV(
+    s,
+    weather,
+    hourIndex,
+    ctx.lat
+  );
+
+  let { bias, seasonalFactor, confidence } = getCalibrationSystem();
+
+  let calibrationFactor =
+    confidence < 0.1 ? 1 : bias * seasonalFactor;
+
+  return {
+    pv: nowPV * calibrationFactor,
+    confidence
+  };
+}
+  
+function getAIContext() {
+  const s = getSettings();
+
+  return {
+    settings: s,
+    lat: s.lat,
+    lon: s.lon,
+    now: new Date(),
+    weather: preloadedWeather
+  };
+}
+
+  function computeForecastPV(ctx, weather, dayIndex) {
+
+  const s = ctx.settings;
+
+  let daySlice = extractDay(weather, dayIndex);
+
+  let raw = pvEngine(daySlice, s);
+
+  let { bias, seasonalFactor } = getCalibrationSystem();
+
+  let adjusted = raw * bias * seasonalFactor;
+
+  return adjusted;
 }
   
 // -------------------- MAIN --------------------
