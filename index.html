@@ -1414,60 +1414,6 @@ return {
 };
 }
   
-const solarRangeCache = new Map();
-
-function getSolarTimeRange(radSlice, timeSlice, lat = 52.2) {
-  const key = lat + "|" + radSlice.join(",");
-// optional debug toggle
-if (window.DEBUG_SOLAR_RANGE) {
-  console.log("Solar range start", { lat, len: radSlice?.length });
-  console.log("Solar range result", { startHour, endHour });
-}
-  if (solarRangeCache.has(key)) {
-    return solarRangeCache.get(key);
-  }
-
-  let startHour = null;
-  let endHour = null;
-
-  const baseDate = new Date();
-  const dayOfYear = Math.floor(
-    (baseDate - new Date(baseDate.getFullYear(), 0, 0)) / 86400000
-  );
-
-  for (let i = 0; i < 24; i++) {
-    const hour = i;
-
-    const poaProxy = getPOA(
-      600,
-      200,
-      300,
-      lat,
-      30,
-      hour,
-      dayOfYear
-    );
-
-    if (poaProxy > 25) {
-      if (startHour === null) startHour = hour;
-      endHour = hour;
-    }
-  }
-
-  const result = {
-    startHour,
-    endHour,
-    hours: endHour - startHour,
-    label:
-      startHour === null
-        ? "No usable sunlight"
-        : `${String(startHour).padStart(2, "0")}:00 – ${String(endHour + 1).padStart(2, "0")}:00`
-  };
-
-  solarRangeCache.set(key, result);
-  return result;
-}
-
 function fmtMinutes(mins) {
   let h = Math.floor(mins / 60) % 24;
   let m = Math.floor(mins % 60);
