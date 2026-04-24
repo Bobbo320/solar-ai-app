@@ -1356,8 +1356,13 @@ function getChargePlanFromWindow(targetEnergy, s) {
   let chargeEnd = endMin;
   let chargeStart = endMin - blocksUsed * blockHours * 60;
 
- function fmt(hour) {
-  return String(hour).padStart(2, "0") + ":00";
+function fmtFromTime(t) {
+  const d = new Date(t);
+
+  return d.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit"
+  });
 }
 
   return {
@@ -1947,7 +1952,8 @@ if (d === 1 && tomorrowSOCValue === null) {
       )}
 
       <br><b>🔆 Usable Solar Window:</b> ${sun} hours
- <br><b>⏱️ Time Range:</b> ${fmt(timeRange.startHour)} – ${fmt(timeRange.endHour + 1)}
+ <br><b>⏱️ Time Range:</b> ${fmtFromTime(time[start + timeRange.startHour])} – 
+${fmtFromTime(time[start + timeRange.endHour + 1])}
 
       <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
 <br><b>📊 Confidence:</b> ${confidence.toFixed(0)}%
