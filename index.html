@@ -931,28 +931,18 @@ function hourAngle(hour) {
 // solar elevation
 function solarElevation(lat, decl, hourAngle) {
 
-  const deg2rad = Math.PI / 180;
+  const deg2rad = (d) => (d * Math.PI) / 180;
 
-  // ALWAYS treat inputs as degrees (your system is degree-based elsewhere)
-  const latRad = lat * deg2rad;
-  const declRad = decl * deg2rad;
-  const hRad = hourAngle * deg2rad;
+  const latRad = deg2rad(lat);
+
+  const declRad = deg2rad(decl);
+  const hRad = deg2rad(hourAngle);
 
   const sinElev =
     Math.sin(latRad) * Math.sin(declRad) +
     Math.cos(latRad) * Math.cos(declRad) * Math.cos(hRad);
 
-  const clamped = Math.max(-1, Math.min(1, sinElev));
-
-  return Math.asin(clamped) / deg2rad;
-}
-
-// incidence angle on tilted panel
-function incidenceAngle(lat, decl, hourAng, tilt) {
-  return rad2deg(Math.acos(
-    Math.sin(deg2rad(decl)) * Math.sin(deg2rad(lat - tilt)) +
-    Math.cos(deg2rad(decl)) * Math.cos(deg2rad(lat - tilt)) * Math.cos(deg2rad(hourAng))
-  ));
+  return Math.asin(Math.max(-1, Math.min(1, sinElev))) * (180 / Math.PI);
 }
 
 // MAIN: Plane-of-array irradiance
@@ -1025,6 +1015,13 @@ console.log("DEBUG solar inputs:", {
   hAng
 });
 
+console.log("SOLAR CHECK", {
+  hour: i,
+  decl,
+  hAng: hourAngle(i),
+  lat
+});
+    
     if (!isFinite(decl) || !isFinite(hAng)) {
   console.warn("BAD SOLAR INPUTS", { i, dayOfYear, decl, hAng });
   continue;
@@ -1111,6 +1108,13 @@ console.log("DEBUG solar inputs:", {
   hAng
 });
 
+console.log("SOLAR CHECK", {
+  hour: i,
+  decl,
+  hAng: hourAngle(i),
+  lat
+});
+    
 if (!isFinite(decl) || !isFinite(hAng)) {
   console.warn("BAD SOLAR INPUTS", { i, dayOfYear, decl, hAng });
   continue;
