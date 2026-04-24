@@ -1359,7 +1359,10 @@ function getChargePlanFromWindow(targetEnergy, s) {
 }
   
 function getSolarTimeRange(radSlice, timeSlice, lat = 52.2) {
-
+console.log("🔆 Solar range calc start");
+  console.log("lat:", lat);
+  console.log("radSlice length:", radSlice?.length);
+  
   let startHour = null;
   let endHour = null;
 
@@ -1369,6 +1372,9 @@ function getSolarTimeRange(radSlice, timeSlice, lat = 52.2) {
 
     let hour = i;
 
+  console.log(`\n--- Hour ${i} ---`);
+  console.log("hour:", hour);
+    
     let dayOfYear = Math.floor(
       (baseDate - new Date(baseDate.getFullYear(), 0, 0)) / 86400000
     );
@@ -1383,14 +1389,19 @@ function getSolarTimeRange(radSlice, timeSlice, lat = 52.2) {
       hour,
       dayOfYear
     );
+    console.log("POA proxy:", poaProxy);
 
     if (poaProxy > 50) {
+        console.log("✅ Solar window active hour:", hour);
+        console.log("FINAL START:", startHour);
+        console.log("FINAL END:", endHour);
       if (startHour === null) startHour = hour;
       endHour = hour;
     }
   }
 
   if (startHour === null || endHour === null) {
+      console.log("❌ No usable sunlight detected");
     return "No usable sunlight";
   }
 
