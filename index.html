@@ -1060,25 +1060,10 @@ function pvEngine(daySlice, s) {
     let date = new Date();
     date.setHours(i);
 
-   let startOfYear = new Date(date.getFullYear(), 0, 0);
-let diff = date - startOfYear;
-let dayOfYear = Math.floor(diff / 86400000);
+    let dayOfYear = Math.floor(
+      (date - new Date(date.getFullYear(), 0, 0)) / 86400000
+    );
 
- console.log({
-    i,
-    dayOfYear,
-    elev_input_check: {
-      decl: solarDeclination(dayOfYear),
-      hourAngle: hourAngle(i)
-    }
-  });
-
-console.log({
-  lat,
-  decl: solarDeclination(dayOfYear),
-  hAng: hourAngle(i)
-});
-    
     let tilt = getSeasonalTilt(s.tilt);
 
     let poa = getPOA(
@@ -1092,15 +1077,9 @@ console.log({
     );
 
     // 🌅 CORRECT solar geometry
-   let decl = solarDeclination(dayOfYear);
-let hAng = hourAngle(i);
-let elev = solarElevation(52.2, decl, hAng);
-
-// 🔥 guard against NaN propagation
-if (!isFinite(elev)) {
-  console.warn("Invalid solar elevation", { i, decl, hAng });
-  elev = 0;
-}
+    let decl = solarDeclination(dayOfYear);
+    let hAng = hourAngle(i);
+    let elev = solarElevation(52.2, decl, hAng);
 
     // 🌅 EARLY BOOST
     if (elev > 1 && poa < 120) {
