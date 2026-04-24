@@ -690,8 +690,13 @@ async function getCoordinates(postcode) {
 
     if (cached) return cached;
 
- let res = await fetch(
-  `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(postcode)}&count=1`
+let res = await fetch(
+  `https://api.open-meteo.com/v1/forecast?
+  latitude=${c.lat}&longitude=${c.lon}
+  &hourly=cloudcover,temperature_2m,shortwave_radiation,direct_radiation,diffuse_radiation,relativehumidity_2m,precipitation
+  &daily=sunrise,sunset
+  &forecast_days=3
+  &timezone=auto`
 );
 
 let geo = await res.json();
@@ -711,6 +716,13 @@ let coords = {
   }
 }
 
+function getSunWindow(weatherData, dayIndex = 0) {
+  return {
+    sunrise: weatherData.daily.sunrise[dayIndex],
+    sunset: weatherData.daily.sunset[dayIndex]
+  };
+}
+  
 // -------------------- WEATHER --------------------
 async function getWeather(postcode) {
   try {
@@ -1783,6 +1795,13 @@ ${confidence < 0.1 ? `
 
   let start = d * 24;
 
+   let sun = getSunWindow(weatherData, d);
+
+let durationHours =
+  sun.sunrise && sun.sunset
+    ? (new Date(sun.sunset) - new Date(sun.sunrise)) / 3600000
+    : 0;
+
   let dayRad = daylightHours(rad.slice(start, start + 24));
 
   let avgRad = dayRad.length
@@ -1805,26 +1824,15 @@ ${confidence < 0.1 ? `
 
   let split = sunshineSplit(rad, start);
 
-let timeRange = getSolarTimeRange(
-  rad.slice(start, start + 24),
-  time.slice(start, start + 24),
-  52.2
-);
+let sun = getSunWindow(weatherData, d);
 
-const startIdx =
-  timeRange.startHour !== null
-    ? start + timeRange.startHour
-    : null;
+const timeLabel = sun.sunrise && sun.sunset
+  ? `${fmtFromTime(sun.sunrise)} – ${fmtFromTime(sun.sunset)}`
+  : "No sunrise data";
 
-const endIdx =
-  timeRange.endHour !== null
-    ? Math.min(start + timeRange.endHour + 1, time.length - 1)
-    : null;
-
-const timeLabel =
-  startIdx !== null && endIdx !== null
-    ? `${fmtFromTime(time[startIdx])} – ${fmtFromTime(time[endIdx])}`
-    : "No usable sunlight";
+   const durationHours = sun.sunrise && sun.sunset
+  ? (new Date(sun.sunset) - new Date(sun.sunrise)) / 3600000
+  : 0;
    
 let sun = 0;
 
@@ -1979,10 +1987,11 @@ if (d === 1 && tomorrowSOCValue === null) {
         precip[start + 12] ?? precip[start]
       )}
 
-      <br><b>🔆 Usable Solar Window:</b> ${sun} hours
-      <br><b>⏱️ Time Range:</b> ${timeLabel}
-      <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
-      <br><b>📊 Confidence:</b> ${confidence.toFixed(0)}%
+     <br><b>🌅 Sunrise:</b> ${fmtFromTime(sun.sunrise)}
+<br><b>🌇 Sunset:</b> ${fmtFromTime(sun.sunset)}
+<br><b>🌞 Solar Window:</b> ${durationHours.toFixed(1)} hours
+<br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
+<br><b>📊 Confidence:</b> ${confidence.toFixed(0)}%
     </div>
   `;
 }
