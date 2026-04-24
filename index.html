@@ -1363,20 +1363,28 @@ function getSolarTimeRange(radSlice, timeSlice, lat = 52.2) {
   let startHour = null;
   let endHour = null;
 
+  let baseDate = new Date();
+
   for (let i = 0; i < 24; i++) {
 
-    let hour = i; // 🔥 DO NOT depend on API time strings
+    let hour = i;
 
-    let baseDate = new Date();
     let dayOfYear = Math.floor(
       (baseDate - new Date(baseDate.getFullYear(), 0, 0)) / 86400000
     );
 
-    let decl = solarDeclination(dayOfYear);
-    let hAng = hourAngle(hour);
-    let elev = solarElevation(lat, decl, hAng);
+    // 🔥 ALIGN WITH PV ENGINE BEHAVIOUR
+    let poaProxy = getPOA(
+      600,   // DNI proxy
+      200,   // DHI proxy
+      300,   // GHI proxy
+      lat,
+      30,
+      hour,
+      dayOfYear
+    );
 
-    if (elev > 2) {
+    if (poaProxy > 50) {
       if (startHour === null) startHour = hour;
       endHour = hour;
     }
