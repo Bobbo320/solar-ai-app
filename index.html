@@ -768,18 +768,14 @@ function extractDay(weather, dayIndex) {
  
 function morningRampFromElevation(elevationDeg) {
 
-  // No effect below horizon
   if (elevationDeg <= 0) return 1;
 
-  // Focus only on low-angle region (0–25°)
-  let x = Math.min(1, elevationDeg / 25);
+  let x = Math.min(1, elevationDeg / 20);
 
-  // Smooth non-linear curve
-  // stronger correction at very low angles
-  let boost = 0.7 + 0.5 * Math.pow(x, 0.7);
+  // 🚀 much stronger early ramp
+  let boost = 0.5 + 0.9 * Math.pow(x, 0.6);
 
-  // Hard safety clamp
-  return Math.max(0.7, Math.min(1.2, boost));
+  return Math.max(0.6, Math.min(1.4, boost));
 }
   
 function lowLightFactor(rad) {
@@ -982,64 +978,72 @@ function estimatePV(radSlice, cloudSlice, tempSlice, s, dayData) {
   for (let i = 0; i < 24; i++) {
 
     let r = radSlice[i];
-    if (r < SOLAR_THRESHOLD) continue;
     let t = tempSlice[i] ?? 15;
     let c = cloudSlice[i];
 
     let dni = dayData?.dni?.[i] ?? r;
-let dhi = dayData?.dhi?.[i] ?? r * 0.35;
-    
-  let date = new Date();
-date.setHours(i);
-let dayOfYear = Math.floor(
-  (date - new Date(date.getFullYear(), 0, 0)) / 86400000
-);
+    let dhi = dayData?.dhi?.[i] ?? r * 0.35;
 
-// dynamic tilt (keeps your seasonal system)
-let tilt = getSeasonalTilt(s.tilt);
+    let date = new Date();
+    date.setHours(i);
 
-let ghi = r;
+    let dayOfYear = Math.floor(
+      (date - new Date(date.getFullYear(), 0, 0)) / 86400000
+    );
 
-let poa = getPOA(
-  dni,
-  dhi,
-  ghi,
-  52.2, // UK latitude default (or use coords later)
-  tilt,
-  i,
-  dayOfYear
-);
+    let tilt = getSeasonalTilt(s.tilt);
 
-// realistic cap
-poa = Math.min(1000, poa);
+    let poa = getPOA(
+      dni,
+      dhi,
+      r,
+      52.2,
+      tilt,
+      i,
+      dayOfYear
+    );
 
-let elev = solarElevation(52.2, decl, hAng);
-let rampFactor = 1;
+    // 🌅 FIXED: solar geometry (CORRECT VARIABLES)
+    let decl = solarDeclination(dayOfYear);
+    let hAng = hourAngle(i);
+    let elev = solarElevation(52.2, decl, hAng);
 
-// Apply ONLY in morning ramp zone
-if (elev > 0 && elev < 25) {
-  rampFactor = morningRampFromElevation(elev);
-}
-    
-let hourPV =
-  s.pvSize *
-  (poa / 1000) *
-  (s.efficiency / 100) *
-  SYSTEM_LOSS *
-  temperatureEfficiency(t) *
-  getOrientationFactor(s.orientation) *
-  (s.shading / 100) *
-   cloudFactorForecast(c, r) *
-  rampFactor;
+    // 🌅 EARLY MORNING BOOST (MAIN FIX)
+    if (elev > 1 && poa < 120) {
+      let syntheticPOA = 120 + (elev * 15);
+      poa = Math.max(poa, syntheticPOA * 0.65);
+    }
 
-hourPV = inverterLimit(hourPV, s.inverter);
+    // 🔥 REMOVE HARD ZEROING (critical)
+    if (poa < 10) continue;
+
+    poa = Math.min(1000, poa);
+
+    let rampFactor = 1;
+
+    if (elev > 0 && elev < 25) {
+      rampFactor = 0.9 + 0.6 * Math.pow(elev / 25, 0.6);
+    }
+
+    let hourPV =
+      s.pvSize *
+      (poa / 1000) *
+      (s.efficiency / 100) *
+      SYSTEM_LOSS *
+      temperatureEfficiency(t) *
+      getOrientationFactor(s.orientation) *
+      (s.shading / 100) *
+      cloudFactorForecast(c, r) *
+      rampFactor;
+
+    hourPV = inverterLimit(hourPV, s.inverter);
 
     total += hourPV;
   }
 
   return total;
 }
-
+  
 function pvEngine(daySlice, s) {
 
   let total = 0;
@@ -1047,59 +1051,70 @@ function pvEngine(daySlice, s) {
   for (let i = 0; i < 24; i++) {
 
     let r = daySlice.rad[i];
-    if (r < SOLAR_THRESHOLD) continue;
-
     let c = daySlice.cloud[i];
     let t = daySlice.temp[i];
 
     let dni = daySlice.dni?.[i] ?? r;
     let dhi = daySlice.dhi?.[i] ?? r * 0.3;
 
-  let date = new Date();
-date.setDate(date.getDate() + 0); // current daySlice already aligned
-date.setHours(i);
+    let date = new Date();
+    date.setHours(i);
 
-let dayOfYear = Math.floor(
-  (date - new Date(date.getFullYear(), 0, 0)) / 86400000
-);
+    let dayOfYear = Math.floor(
+      (date - new Date(date.getFullYear(), 0, 0)) / 86400000
+    );
 
-let poa = getPOA(
-  dni,
-  dhi,
-  r,
-  52.2,
-  getSeasonalTilt(s.tilt),
-  i,
-  dayOfYear
-);
+    let tilt = getSeasonalTilt(s.tilt);
 
-// 🔧 ADD THESE (fix)
-let decl = solarDeclination(dayOfYear);
-let hAng = hourAngle(i);
+    let poa = getPOA(
+      dni,
+      dhi,
+      r,
+      52.2,
+      tilt,
+      i,
+      dayOfYear
+    );
 
-// elevation-based ramp
-let elev = solarElevation(52.2, decl, hAng);
+    // 🌅 CORRECT solar geometry
+    let decl = solarDeclination(dayOfYear);
+    let hAng = hourAngle(i);
+    let elev = solarElevation(52.2, decl, hAng);
 
-let rampFactor = 1;
+    // 🌅 EARLY BOOST
+    if (elev > 1 && poa < 120) {
+      let syntheticPOA = 120 + (elev * 15);
+      poa = Math.max(poa, syntheticPOA * 0.65);
+    }
 
-if (elev > 0 && elev < 25) {
-  rampFactor = morningRampFromElevation(elev);
-}
+    // 🔥 REMOVE radiation cutoff dependency
+    if (poa < 10) continue;
 
-let hourPV =
-  s.pvSize *
-  (poa / 1000) *
-  (s.efficiency / 100) *
-  temperatureEfficiency(t) *
-  getOrientationFactor(s.orientation) *
-  (s.shading / 100) *
-  cloudFactorForecast(c, r) ** 0.3 *
-  rampFactor;
+    poa = Math.min(1000, poa);
+
+    let rampFactor = 1;
+
+    if (elev > 0 && elev < 25) {
+      rampFactor = 0.9 + 0.6 * Math.pow(elev / 25, 0.6);
+    }
+
+    let hourPV =
+      s.pvSize *
+      (poa / 1000) *
+      (s.efficiency / 100) *
+      temperatureEfficiency(t) *
+      getOrientationFactor(s.orientation) *
+      (s.shading / 100) *
+      cloudFactorForecast(c, r) ** 0.3 *
+      rampFactor;
 
     hourPV = inverterLimit(hourPV, s.inverter);
 
     total += hourPV;
   }
+
+  return total;
+}
 
   return total;
 }
@@ -1346,24 +1361,30 @@ function getChargePlanFromWindow(targetEnergy, s) {
   };
 }
   
-function getSolarTimeRange(radSlice, timeSlice, weather, s) {
+function getSolarTimeRange(radSlice, timeSlice, weather, s, startIndex) {
 
   let startTime = null;
   let endTime = null;
 
   for (let i = 0; i < 24; i++) {
 
-    // 🔥 Use REAL PV instead of radiation threshold
-    let pv = estimateCurrentHourPV(s, weather, i);
+    let pv = estimateCurrentHourPV(s, weather, startIndex + i);
 
-    // dynamic low-light threshold (~30–50W depending on system)
     let minPV = 0.02 + (s.pvSize * 0.002);
 
     if (pv > minPV) {
-      if (startTime === null) startTime = timeSlice[i];
+      if (!startTime) startTime = timeSlice[i];
       endTime = timeSlice[i];
     }
   }
+
+  if (!startTime || !endTime) return "No data";
+
+  let start = new Date(startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  let end = new Date(endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  return `${start} – ${end}`;
+}
 
   if (!startTime || !endTime) return "No data";
 
@@ -1391,8 +1412,6 @@ function estimateCurrentHourPV(s, weather, hourIndex, lat = 52.2) {
   let c = weather.hourly.cloudcover[hourIndex];
   let t = weather.hourly.temperature_2m[hourIndex];
 
-  if (r < SOLAR_THRESHOLD) return 0;
-
   let now = new Date(weather.hourly.time[hourIndex]);
   let hour = now.getHours();
 
@@ -1412,7 +1431,27 @@ function estimateCurrentHourPV(s, weather, hourIndex, lat = 52.2) {
     dayOfYear
   );
 
+  // 🌅 solar geometry
+  let decl = solarDeclination(dayOfYear);
+  let hAng = hourAngle(hour);
+  let elev = solarElevation(lat, decl, hAng);
+
+  // 🌅 EARLY BOOST (CRITICAL FOR LIVE)
+  if (elev > 1 && poa < 120) {
+    let syntheticPOA = 120 + (elev * 15);
+    poa = Math.max(poa, syntheticPOA * 0.65);
+  }
+
+  // 🔥 REMOVE zero cutoff
+  if (poa < 10) return 0;
+
   poa = Math.min(1200, poa);
+
+  let rampFactor = 1;
+
+  if (elev > 0 && elev < 25) {
+    rampFactor = 0.9 + 0.6 * Math.pow(elev / 25, 0.6);
+  }
 
   return (
     s.pvSize *
@@ -1421,7 +1460,8 @@ function estimateCurrentHourPV(s, weather, hourIndex, lat = 52.2) {
     temperatureEfficiency(t) *
     getOrientationFactor(s.orientation) *
     (s.shading / 100) *
-    cloudFactorForecast(c, r)
+    cloudFactorForecast(c, r) *
+    rampFactor
   );
 }
   
