@@ -1376,15 +1376,13 @@ function getSolarTimeRange(radSlice, timeSlice, lat = 52.2) {
     let hAng = hourAngle(hour);
     let elev = solarElevation(lat, decl, hAng);
 
-    let threshold = getSolarVisibilityThreshold(elev);
-
-    if (radSlice[i] > threshold) {
+    // ✅ PURE SOLAR GEOMETRY (no API dependency)
+    if (elev > 3) {
       if (startTime === null) startTime = timeSlice[i];
       endTime = timeSlice[i];
     }
   }
 
-  // ✅ THIS must be inside the function
   if (!startTime || !endTime) return "No data";
 
   let start = new Date(startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
