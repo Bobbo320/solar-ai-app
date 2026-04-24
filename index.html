@@ -816,9 +816,29 @@ function cloudFactorForecast(cloud, rad) {
   return Math.max(0.60, Math.min(1.25, base));
 }
 
-  function getSunriseSunset(weatherData, dayIndex) {
-  const sunrise = new Date(weatherData.daily.sunrise[dayIndex]);
-  const sunset = new Date(weatherData.daily.sunset[dayIndex]);
+ function getSunriseSunset(weatherData, dayIndex) {
+  const daily = weatherData?.daily;
+
+  if (!daily || !daily.sunrise || !daily.sunset) {
+    return {
+      sunrise: null,
+      sunset: null,
+      hours: 0,
+      label: "Sun data unavailable"
+    };
+  }
+
+  const sunrise = new Date(daily.sunrise[dayIndex]);
+  const sunset = new Date(daily.sunset[dayIndex]);
+
+  if (isNaN(sunrise) || isNaN(sunset)) {
+    return {
+      sunrise: null,
+      sunset: null,
+      hours: 0,
+      label: "Invalid sun data"
+    };
+  }
 
   const durationMs = sunset - sunrise;
   const hours = durationMs / (1000 * 60 * 60);
@@ -827,8 +847,7 @@ function cloudFactorForecast(cloud, rad) {
     sunrise,
     sunset,
     hours,
-    label:
-      `${fmtFromTime(sunrise)} – ${fmtFromTime(sunset)} (${hours.toFixed(1)}h)`
+    label: `${fmtFromTime(sunrise)} – ${fmtFromTime(sunset)} (${hours.toFixed(1)}h)`
   };
 }
 // -------------------- SEASONAL TILT --------------------
@@ -2136,6 +2155,14 @@ window.deleteEdit = deleteEdit;
 window.saveSettings = saveSettings;
 
 window.onload = () => {
+
+  const WEATHER_CACHE_VERSION = "weather_cache_v2";
+
+  if (!localStorage.getItem(WEATHER_CACHE_VERSION)) {
+    localStorage.removeItem("weather_" + getSettings().postcode);
+    localStorage.setItem(WEATHER_CACHE_VERSION, "true");
+  }
+
   preloadWeather();
   renderPVTable();
 };
