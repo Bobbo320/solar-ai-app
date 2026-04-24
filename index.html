@@ -1356,14 +1356,14 @@ function getChargePlanFromWindow(targetEnergy, s) {
   let chargeEnd = endMin;
   let chargeStart = endMin - blocksUsed * blockHours * 60;
 
-function fmtFromTime(t) {
+window.fmtFromTime = function (t) {
   const d = new Date(t);
 
   return d.toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit"
   });
-}
+};
 
   return {
     time: `${fmt(chargeStart)} – ${fmt(chargeEnd)}`,
@@ -1798,6 +1798,21 @@ let timeRange = getSolarTimeRange(
   52.2
 );
 
+const startIdx =
+  timeRange.startHour !== null
+    ? start + timeRange.startHour
+    : null;
+
+const endIdx =
+  timeRange.endHour !== null
+    ? Math.min(start + timeRange.endHour + 1, time.length - 1)
+    : null;
+
+const timeLabel =
+  startIdx !== null && endIdx !== null
+    ? `${fmtFromTime(time[startIdx])} – ${fmtFromTime(time[endIdx])}`
+    : "No usable sunlight";
+   
 let sun = 0;
 
 for (let i = 0; i < 24; i++) {
@@ -1952,11 +1967,9 @@ if (d === 1 && tomorrowSOCValue === null) {
       )}
 
       <br><b>🔆 Usable Solar Window:</b> ${sun} hours
- <br><b>⏱️ Time Range:</b> ${fmtFromTime(time[start + timeRange.startHour])} – 
-${fmtFromTime(time[start + timeRange.endHour + 1])}
-
+      <br><b>⏱️ Time Range:</b> ${timeLabel}
       <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
-<br><b>📊 Confidence:</b> ${confidence.toFixed(0)}%
+      <br><b>📊 Confidence:</b> ${confidence.toFixed(0)}%
     </div>
   `;
 }
