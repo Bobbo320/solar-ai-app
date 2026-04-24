@@ -1359,57 +1359,78 @@ function getChargePlanFromWindow(targetEnergy, s) {
 }
   
 function getSolarTimeRange(radSlice, timeSlice, lat = 52.2) {
-console.log("🔆 Solar range calc start");
+  console.log("\n🔆 Solar range calc start");
   console.log("lat:", lat);
   console.log("radSlice length:", radSlice?.length);
-  
+
   let startHour = null;
   let endHour = null;
 
   let baseDate = new Date();
 
   for (let i = 0; i < 24; i++) {
-
     let hour = i;
 
-  console.log(`\n--- Hour ${i} ---`);
-  console.log("hour:", hour);
-    
+    console.log("\n--- Hour", i, "---");
+
+    // 🔍 show state BEFORE update
+    console.log("BEFORE:");
+    console.log("startHour:", startHour);
+    console.log("endHour:", endHour);
+
     let dayOfYear = Math.floor(
       (baseDate - new Date(baseDate.getFullYear(), 0, 0)) / 86400000
     );
 
-    // 🔥 ALIGN WITH PV ENGINE BEHAVIOUR
- let latValue =
-  typeof lat === "object"
-    ? lat.latitude
-    : lat;
+    let latValue =
+      typeof lat === "object" ? lat.latitude : lat;
 
-let poaProxy = getPOA(
-  600,
-  200,
-  300,
-  latValue,
-  30,
-  hour,
-  dayOfYear
-);
+    let poaProxy = getPOA(
+      600,
+      200,
+      300,
+      latValue,
+      30,
+      hour,
+      dayOfYear
+    );
+
+    console.log("hour:", hour);
     console.log("POA proxy:", poaProxy);
 
+    // 🔥 decision point
     if (poaProxy > 50) {
-        console.log("✅ Solar window active hour:", hour);
-        console.log("FINAL START:", startHour);
-        console.log("FINAL END:", endHour);
-      if (startHour === null) startHour = hour;
+      console.log("✅ Solar window active hour:", hour);
+
+      console.log("BEFORE UPDATE (inside condition):");
+      console.log("startHour:", startHour);
+      console.log("endHour:", endHour);
+
+      if (startHour === null) {
+        startHour = hour;
+        console.log("👉 startHour SET to:", startHour);
+      }
+
       endHour = hour;
+      console.log("👉 endHour UPDATED to:", endHour);
+
+      console.log("AFTER UPDATE:");
+      console.log("startHour:", startHour);
+      console.log("endHour:", endHour);
     }
   }
 
+  console.log("\n=== LOOP COMPLETE ===");
+  console.log("FINAL START:", startHour);
+  console.log("FINAL END:", endHour);
+
   if (startHour === null || endHour === null) {
-      console.log("❌ No usable sunlight detected");
+    console.log("❌ No usable sunlight detected");
     return "No usable sunlight";
   }
 
+  return { startHour, endHour };
+}
   function fmt(h) {
     return String(h).padStart(2, "0") + ":00";
   }
