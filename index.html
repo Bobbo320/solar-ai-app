@@ -1004,9 +1004,15 @@ function estimatePV(radSlice, cloudSlice, tempSlice, s, dayData) {
     );
 
     // 🌅 FIXED: solar geometry (CORRECT VARIABLES)
-    let decl = solarDeclination(dayOfYear);
-    let hAng = hourAngle(i);
-    let elev = solarElevation(52.2, decl, hAng);
+let decl = solarDeclination(dayOfYear);
+let hAng = hourAngle(i);
+
+// 🔴 ADD THIS LINE ONLY
+if (!isFinite(decl) || !isFinite(hAng)) {
+  console.log("BROKEN INPUT", { i, dayOfYear, decl, hAng });
+}
+
+let elev = solarElevation(52.2, decl, hAng);
 
     // 🌅 EARLY MORNING BOOST (MAIN FIX)
     if (elev > 1 && poa < 120) {
@@ -1077,9 +1083,15 @@ function pvEngine(daySlice, s) {
     );
 
     // 🌅 CORRECT solar geometry
-    let decl = solarDeclination(dayOfYear);
-    let hAng = hourAngle(i);
-    let elev = solarElevation(52.2, decl, hAng);
+ let decl = solarDeclination(dayOfYear);
+let hAng = hourAngle(i);
+
+// 🔴 ADD THIS LINE ONLY
+if (!isFinite(decl) || !isFinite(hAng)) {
+  console.log("BROKEN INPUT", { i, dayOfYear, decl, hAng });
+}
+
+let elev = solarElevation(52.2, decl, hAng);
 
     // 🌅 EARLY BOOST
     if (elev > 1 && poa < 120) {
