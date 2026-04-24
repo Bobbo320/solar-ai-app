@@ -1360,13 +1360,20 @@ function getChargePlanFromWindow(targetEnergy, s) {
   
 function getSolarTimeRange(radSlice, timeSlice, lat = 52.2) {
 
-  let startTime = null;
-  let endTime = null;
+  let startHour = null;
+  let endHour = null;
+
+  // fallback base date
+  let baseDate = new Date();
 
   for (let i = 0; i < 24; i++) {
 
-    let t = new Date(timeSlice[i]);
-    let hour = t.getHours();
+    // ✅ SAFE time handling (critical fix)
+    let t = timeSlice?.[i]
+      ? new Date(timeSlice[i])
+      : new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), i);
+
+    let hour = isNaN(t.getHours()) ? i : t.getHours();
 
     let dayOfYear = Math.floor(
       (t - new Date(t.getFullYear(), 0, 0)) / 86400000
@@ -1376,19 +1383,21 @@ function getSolarTimeRange(radSlice, timeSlice, lat = 52.2) {
     let hAng = hourAngle(hour);
     let elev = solarElevation(lat, decl, hAng);
 
-    // ✅ PURE SOLAR GEOMETRY (no API dependency)
-    if (elev > 3) {
-      if (startTime === null) startTime = timeSlice[i];
-      endTime = timeSlice[i];
+    // ✅ PURE solar geometry (no API dependency)
+    if (elev > 2) {
+      if (startHour === null) startHour = hour;
+      endHour = hour;
     }
   }
 
-  if (!startTime || !endTime) return "No data";
+  if (startHour === null || endHour === null) return "No data";
 
-  let start = new Date(startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  let end = new Date(endTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  // format cleanly
+  function fmt(h) {
+    return String(h).padStart(2, "0") + ":00";
+  }
 
-  return `${start} – ${end}`;
+  return `${fmt(startHour)} – ${fmt(endHour + 1)}`;
 }
 
 function weatherSummary(c,r,t,h,p){
