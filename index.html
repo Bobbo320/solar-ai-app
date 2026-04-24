@@ -1372,15 +1372,6 @@ function getChargePlanFromWindow(targetEnergy, s) {
 const solarRangeCache = new Map();
 
 function getSolarTimeRange(radSlice, timeSlice, lat = 52.2) {
-  const key = lat + "|" + radSlice.join(",");
-// optional debug toggle
-if (window.DEBUG_SOLAR_RANGE) {
-  console.log("Solar range start", { lat, len: radSlice?.length });
-  console.log("Solar range result", { startHour, endHour });
-}
-  if (solarRangeCache.has(key)) {
-    return solarRangeCache.get(key);
-  }
 
   let startHour = null;
   let endHour = null;
@@ -1390,39 +1381,41 @@ if (window.DEBUG_SOLAR_RANGE) {
     (baseDate - new Date(baseDate.getFullYear(), 0, 0)) / 86400000
   );
 
+  let decl = solarDeclination(dayOfYear);
+
   for (let i = 0; i < 24; i++) {
-    const hour = i;
 
-    const poaProxy = getPOA(
-      600,
-      200,
-      300,
-      lat,
-      30,
-      hour,
-      dayOfYear
-    );
+    let hAng = hourAngle(i);
+    let elev = solarElevation(lat, decl, hAng);
 
-    if (poaProxy > 50) {
-      if (startHour === null) startHour = hour;
-      endHour = hour;
+    // ✅ use physical sunlight threshold (not POA guess)
+    if (elev > 3) {
+
+      // optional: require *some* radiation too (filters bad forecasts)
+      if (radSlice[i] > 50) {
+
+        if (startHour === null) startHour = i;
+        endHour = i;
+      }
     }
   }
 
-  const result = {
+  if (startHour === null) {
+    return {
+      startHour: null,
+      endHour: null,
+      hours: 0,
+      label: "No usable sunlight"
+    };
+  }
+
+  return {
     startHour,
     endHour,
-    hours: endHour - startHour,
-    label:
-      startHour === null
-        ? "No usable sunlight"
-        : `${String(startHour).padStart(2, "0")}:00 – ${String(endHour + 1).padStart(2, "0")}:00`
+    hours: endHour - startHour + 1,
+    label: `${fmt(startHour)} – ${fmt(endHour + 1)}`
   };
-
-  solarRangeCache.set(key, result);
-  return result;
 }
-  
 function fmt(h) {
   return String(h).padStart(2, "0") + ":00";
 }
