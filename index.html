@@ -1383,6 +1383,8 @@ function getSolarTimeRange(radSlice, timeSlice, lat = 52.2) {
     let hAng = hourAngle(hour);
     let elev = solarElevation(lat, decl, hAng);
 
+ console.log("hour:", i, "elev:", elev);
+    
     // ✅ PURE solar geometry (no API dependency)
     if (elev > 2) {
       if (startHour === null) startHour = hour;
