@@ -945,8 +945,28 @@ function solarElevation(lat, decl, hourAngle) {
   return Math.asin(Math.max(-1, Math.min(1, sinElev))) * (180 / Math.PI);
 }
 
+function incidenceAngle(lat, decl, hourAngle, tilt) {
+
+  const deg2rad = (d) => (d * Math.PI) / 180;
+
+  const latRad = deg2rad(lat);
+  const declRad = deg2rad(decl);
+  const hRad = deg2rad(hourAngle);
+  const tiltRad = deg2rad(tilt);
+
+  const cosTheta =
+    Math.sin(declRad) * Math.sin(latRad) * Math.cos(tiltRad) -
+    Math.sin(declRad) * Math.cos(latRad) * Math.sin(tiltRad) * Math.cos(0) +
+    Math.cos(declRad) * Math.cos(latRad) * Math.cos(tiltRad) * Math.cos(hRad) +
+    Math.cos(declRad) * Math.sin(latRad) * Math.sin(tiltRad) * Math.cos(hRad);
+
+  return Math.acos(Math.max(-1, Math.min(1, cosTheta))) * (180 / Math.PI);
+}
+  
 // MAIN: Plane-of-array irradiance
 function getPOA(dni, dhi, ghi, lat, tilt, hour, dayOfYear) {
+
+  const deg2rad = (d) => (d * Math.PI) / 180;
 
   let decl = solarDeclination(dayOfYear);
   let hAng = hourAngle(hour);
@@ -956,22 +976,24 @@ function getPOA(dni, dhi, ghi, lat, tilt, hour, dayOfYear) {
 
   let theta = incidenceAngle(lat, decl, hAng, tilt);
 
-  let cosTheta = Math.max(0, Math.cos(deg2rad(theta)));
-  let cosZ = Math.max(0.01, Math.sin(deg2rad(elev)));
+  const cosTheta = Math.max(0, Math.cos(deg2rad(theta)));
+
+  // zenith angle = 90 - elevation
+  const zenith = Math.max(1, 90 - elev);
+  const cosZ = Math.cos(deg2rad(zenith));
 
   // beam component
-  let beam = dni * (cosTheta / cosZ);
+  const beam = dni * (cosTheta / Math.max(cosZ, 0.05));
 
   // diffuse (isotropic sky model)
-  let diffuse = dhi * (1 + Math.cos(deg2rad(tilt))) / 2;
+  const diffuse = dhi * (1 + Math.cos(deg2rad(tilt))) / 2;
 
   // ground reflected (UK ~0.2 albedo)
-  let albedo = 0.2;
-  let ground = ghi * albedo * (1 - Math.cos(deg2rad(tilt))) / 2;
+  const albedo = 0.2;
+  const ground = ghi * albedo * (1 - Math.cos(deg2rad(tilt))) / 2;
 
   return beam + diffuse + ground;
 }
-  
 function estimatePV(radSlice, cloudSlice, tempSlice, s, dayData) {
 
   let total = 0;
