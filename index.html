@@ -80,7 +80,7 @@
 <h2>⚡ Solar SOC AI Pro</h2>
 
 <button onclick="toggleSettings()">⚙️ Settings</button>
-<button onclick="runAI()">Summary</button>
+<button onclick="runAI_safe()">Summary</button>
 <button onclick="togglePVTab()">📊 PV Data</button>
 <button onclick="toggleBreakdown()">🧠 Breakdown</button>
   
@@ -210,6 +210,7 @@ let RUN_AI_LOCK = false;
 let AI_RUNNING = false; 
 let RUN_AI_TOKEN = 0;
 let LAST_BREAKDOWN = null;
+  let LAST_LEARNING_HOUR = null;
 const SOLAR_THRESHOLD = 25;        // used for real PV calculations
 const SOLAR_VISIBLE_THRESHOLD = 25; // used for solar time window display
   const SYSTEM_LOSS = 1; // wiring, inverter, mismatch
@@ -231,6 +232,7 @@ const Store = {
     localStorage.setItem("settings", JSON.stringify(settings));
   }
 };
+  let LAST_BREAKDOWN_LOCK_ID = null;
 let runAITimer = null;
 let GLOBAL_PV_BIAS_LIVE = 1;
 let GLOBAL_PV_BIAS_FORECAST = 1;
@@ -1497,11 +1499,9 @@ function estimateCurrentHourPV(s, weather, hourIndex, lat = 52.2) {
   
 // -------------------- MAIN --------------------
 async function runAI() {
-  if (RUN_AI_LOCK || AI_RUNNING) return;
-
-  RUN_AI_LOCK = true;
-  AI_RUNNING = true;
-
+if (RUN_AI_LOCK) return;
+RUN_AI_LOCK = true;
+AI_RUNNING = true;
   const token = ++RUN_AI_TOKEN; // identify this run
 
   try {
@@ -1615,17 +1615,22 @@ let inverterFactor =
     ? s.inverter / nowPVBase
     : 1;
 
-LAST_BREAKDOWN = buildBreakdown({
-  basePV: nowPVBase,
-  cloudFactor: cloudFactorLiveSoft,
-  tiltFactor: tiltFactorVal,
-  tempFactor,
-  orientationFactor,
-  shadingFactor,
-  calibrationFactor,
-  inverterFactor,
-  learningFactor
-});
+if (LAST_BREAKDOWN_LOCK_ID !== token) {
+
+  LAST_BREAKDOWN = buildBreakdown({
+    basePV: nowPVBase,
+    cloudFactor: cloudFactorLiveSoft,
+    tiltFactor: tiltFactorVal,
+    tempFactor,
+    orientationFactor,
+    shadingFactor,
+    calibrationFactor,
+    inverterFactor,
+    learningFactor
+  });
+
+  LAST_BREAKDOWN_LOCK_ID = token;
+}
     
 // inverter constraint
 rawNowPV = Math.min(rawNowPV, s.inverter * 0.98);
@@ -1654,9 +1659,17 @@ liveErrorRatio = Math.max(0.7, Math.min(1.3, liveErrorRatio));
 
 let learningRate = nowRad > 200 ? 0.25 : 0.15;
 
-LIVE_ADJUSTMENT =
-  LIVE_ADJUSTMENT * (1 - learningRate) +
-  liveErrorRatio * learningRate;
+let currentHour = new Date().getHours();
+
+// only learn ONCE per hour
+if (LAST_LEARNING_HOUR !== currentHour) {
+
+  LIVE_ADJUSTMENT =
+    LIVE_ADJUSTMENT * (1 - learningRate) +
+    liveErrorRatio * learningRate;
+
+  LAST_LEARNING_HOUR = currentHour;
+}
   
 if (nowCloud < 20 && nowRad > 400) {
   cloudFactorLiveSoft = Math.min(1.18, cloudFactorLiveSoft);
@@ -1867,17 +1880,22 @@ let pv = calibratedPV;
 
 let forecastCalibration = LIVE_ADJUSTMENT;
 
-LAST_BREAKDOWN = buildBreakdown({
-  basePV: rawPV,
-  cloudFactor: 1, // already baked into estimatePV
-  tiltFactor: 1,
-  tempFactor: 1,
-  orientationFactor: 1,
-  shadingFactor: 1,
-  calibrationFactor: forecastCalibration,
-  inverterFactor: 1,
-  learningFactor: LIVE_ADJUSTMENT
-});
+if (LAST_BREAKDOWN_LOCK_ID !== token) {
+
+  LAST_BREAKDOWN = buildBreakdown({
+    basePV: rawPV,
+    cloudFactor: 1, // already baked into estimatePV
+    tiltFactor: 1,
+    tempFactor: 1,
+    orientationFactor: 1,
+    shadingFactor: 1,
+    calibrationFactor: forecastCalibration,
+    inverterFactor: 1,
+    learningFactor: LIVE_ADJUSTMENT
+  });
+
+  LAST_BREAKDOWN_LOCK_ID = token;
+}
    
 
 // ensure tomorrow updates if today changes
