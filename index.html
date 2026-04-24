@@ -1371,13 +1371,6 @@ function getSolarTimeRange(radSlice, timeSlice, lat = 52.2) {
   for (let i = 0; i < 24; i++) {
     let hour = i;
 
-    console.log("\n--- Hour", i, "---");
-
-    // 🔍 show state BEFORE update
-    console.log("BEFORE:");
-    console.log("startHour:", startHour);
-    console.log("endHour:", endHour);
-
     let dayOfYear = Math.floor(
       (baseDate - new Date(baseDate.getFullYear(), 0, 0)) / 86400000
     );
@@ -1395,28 +1388,9 @@ function getSolarTimeRange(radSlice, timeSlice, lat = 52.2) {
       dayOfYear
     );
 
-    console.log("hour:", hour);
-    console.log("POA proxy:", poaProxy);
-
-    // 🔥 decision point
     if (poaProxy > 50) {
-      console.log("✅ Solar window active hour:", hour);
-
-      console.log("BEFORE UPDATE (inside condition):");
-      console.log("startHour:", startHour);
-      console.log("endHour:", endHour);
-
-      if (startHour === null) {
-        startHour = hour;
-        console.log("👉 startHour SET to:", startHour);
-      }
-
+      if (startHour === null) startHour = hour;
       endHour = hour;
-      console.log("👉 endHour UPDATED to:", endHour);
-
-      console.log("AFTER UPDATE:");
-      console.log("startHour:", startHour);
-      console.log("endHour:", endHour);
     }
   }
 
@@ -1425,19 +1399,15 @@ function getSolarTimeRange(radSlice, timeSlice, lat = 52.2) {
   console.log("FINAL END:", endHour);
 
   if (startHour === null || endHour === null) {
-    console.log("❌ No usable sunlight detected");
     return "No usable sunlight";
   }
 
   return { startHour, endHour };
 }
-  function fmt(h) {
-    return String(h).padStart(2, "0") + ":00";
-  }
 
-  return `${fmt(startHour)} – ${fmt(endHour + 1)}`;
+function fmt(h) {
+  return String(h).padStart(2, "0") + ":00";
 }
-
 function weatherSummary(c,r,t,h,p){
   return `
     🌤️ Cloud (daylight): ${c.toFixed(0)}%<br>
