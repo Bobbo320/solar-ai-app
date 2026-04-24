@@ -1911,7 +1911,14 @@ if (d === 1 && tomorrowSOCValue === null) {
         precip[start + 12] ?? precip[start]
       )}
 
- <br><b>🔆 Usable Solar Window:</b> ${sun} hours
+<br><b>🔆 Usable Solar Window:</b> ${sun} hours
+
+<br><b>⏱️ Time Range:</b> ${
+  typeof timeRange === "object"
+    ? `${fmt(timeRange.startHour)} – ${fmt(timeRange.endHour + 1)}`
+    : timeRange
+}
+
 <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
 <br><b>📊 Confidence:</b> ${confidence.toFixed(0)}%
     </div>
