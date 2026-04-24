@@ -1373,7 +1373,7 @@ function getSolarTimeRange(radSlice, timeSlice, lat = 52.2) {
       ? new Date(timeSlice[i])
       : new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), i);
 
-    let hour = isNaN(t.getHours()) ? i : t.getHours();
+  let hour = i;
 
     let dayOfYear = Math.floor(
       (t - new Date(t.getFullYear(), 0, 0)) / 86400000
@@ -1386,20 +1386,20 @@ function getSolarTimeRange(radSlice, timeSlice, lat = 52.2) {
  console.log("hour:", i, "elev:", elev);
     
     // ✅ PURE solar geometry (no API dependency)
-    if (elev > 2) {
+ if (elev > 0.5) {
       if (startHour === null) startHour = hour;
       endHour = hour;
     }
   }
 
-  if (startHour === null || endHour === null) return "No data";
+ if (startHour === null || endHour === null) return "No usable sunlight";
 
   // format cleanly
   function fmt(h) {
     return String(h).padStart(2, "0") + ":00";
   }
 
-  return `${fmt(startHour)} – ${fmt(endHour + 1)}`;
+ return `${fmt(startHour)} – ${fmt(endHour)}`;
 }
 
 function weatherSummary(c,r,t,h,p){
