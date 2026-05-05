@@ -823,19 +823,37 @@ function lowLightFactor(rad) {
   return 1;
 }
    
-function cloudFactorForecast(cloud, rad) {
+function cloudFactorForecast(cloud, rad, dni = null) {
+
   let cloudNorm = cloud / 100;
 
-  let radBoost = Math.min(1, rad / 300);
+  // base reduction
+  let base = 1 - cloudNorm * 0.65;
 
-  let base = 1 - cloudNorm * (0.55 - 0.25 * radBoost);
-
-  // 🔥 UK broken-cloud uplift (key fix)
-  if (cloud > 20 && cloud < 80 && rad > 250) {
-    base *= 1.15; // critical missing physics
+  // radiation softening
+  if (rad > 250) {
+    base += 0.1;
   }
 
-  return Math.max(0.60, Math.min(1.25, base));
+  // 🔥 NEW: penalise weak direct sun
+  if (dni !== null && dni < 150 && cloud > 70) {
+    base *= 0.75;
+  }
+
+  // UK broken cloud boost
+  if (cloud > 20 && cloud < 80 && rad > 250) {
+    base *= 1.15;
+  }
+
+  return Math.max(0.5, Math.min(1.2, base));
+}
+
+  function isDeadCloud(dni, dhi, cloud) {
+  return (
+    cloud > 85 &&
+    dni < 120 &&
+    dhi < 120
+  );
 }
 
  function getSunriseSunset(weatherData, dayIndex) {
@@ -1056,12 +1074,19 @@ function estimatePV(radSlice, cloudSlice, tempSlice, s, dayData) {
 
   for (let i = 0; i < 24; i++) {
 
-    let r = radSlice[i];
-    let t = tempSlice[i] ?? 15;
-    let c = cloudSlice[i];
+let r = radSlice[i];
+let t = tempSlice[i] ?? 15;
+let c = cloudSlice[i];
 
-    let dni = dayData?.dni?.[i] ?? r;
-    let dhi = dayData?.dhi?.[i] ?? r * 0.35;
+let dni = dayData?.dni?.[i] ?? r;
+let dhi = dayData?.dhi?.[i] ?? r * 0.35;
+
+// 🔥 PATCH: radiation sanity under heavy cloud
+if (c > 90 && r > 150) {
+  r *= 0.7;
+  dni *= 0.6;
+  dhi *= 0.8;
+}
 
     let date = new Date();
     date.setHours(i);
@@ -1112,7 +1137,7 @@ function estimatePV(radSlice, cloudSlice, tempSlice, s, dayData) {
       temperatureEfficiency(t) *
       getOrientationFactor(s.orientation) *
       (s.shading / 100) *
-      cloudFactorForecast(c, r) *
+      cloudFactorForecast(c, r, dni) *
       rampFactor;
 
     hourPV = inverterLimit(hourPV, s.inverter);
@@ -1138,6 +1163,13 @@ function pvEngine(daySlice, s) {
     let dni = daySlice.dni?.[i] ?? r;
     let dhi = daySlice.dhi?.[i] ?? r * 0.3;
 
+    // 🔥 PATCH: radiation sanity under heavy cloud
+if (c > 90 && r > 150) {
+  r *= 0.7;
+  dni *= 0.6;
+  dhi *= 0.8;
+}
+
     let date = new Date();
     date.setHours(i);
 
@@ -1156,6 +1188,11 @@ function pvEngine(daySlice, s) {
       i,
       dayOfYear
     );
+
+    // 🔥 PATCH: dead cloud suppression (critical fix)
+if (isDeadCloud(dni, dhi, c)) {
+  poa *= 0.45;
+}
 
     // 🌅 CORRECT solar geometry
     let decl = solarDeclination(dayOfYear);
@@ -1186,7 +1223,7 @@ function pvEngine(daySlice, s) {
       temperatureEfficiency(t) *
       getOrientationFactor(s.orientation) *
       (s.shading / 100) *
-      cloudFactorForecast(c, r) ** 0.3 *
+      cloudFactorForecast(c, r, dni) ** 0.3 *
       rampFactor;
 
     hourPV = inverterLimit(hourPV, s.inverter);
@@ -1528,7 +1565,7 @@ function estimateCurrentHourPV(s, weather, hourIndex, lat = getLat()) {
     temperatureEfficiency(t) *
     getOrientationFactor(s.orientation) *
     (s.shading / 100) *
-    cloudFactorForecast(c, r) *
+    cloudFactorForecast(c, r, dni) *
     rampFactor
   );
 }
@@ -1567,16 +1604,23 @@ AI_RUNNING = true;
   let forecastHtml = "";
 
   // -------------------- LIVE NOW --------------------
-// Find closest hour index
-let nowIndex = time.findIndex(t => new Date(t) > now);
-if (nowIndex <= 0) nowIndex = 0;
-else nowIndex -= 1;
-
 // Extract current conditions
 let nowRad = rad[nowIndex];
 let nowCloud = cloud[nowIndex];
-let cloudInfo = getCloudThicknessLabel(nowCloud, nowRad); 
 let nowTemp = temp[nowIndex];
+
+let dni = weatherData.hourly.direct_radiation[nowIndex];
+let dhi = weatherData.hourly.diffuse_radiation[nowIndex];
+
+// 🔥 PATCH 6A: radiation sanity (LIVE)
+if (nowCloud > 90 && nowRad > 150) {
+  nowRad *= 0.7;
+  dni *= 0.6;
+  dhi *= 0.8;
+}
+
+// ✅ NOW compute cloud classification (after correction)
+let cloudInfo = getCloudThicknessLabel(nowCloud, nowRad);
 
 // -------------------- LIVE PV ESTIMATE --------------------
 
@@ -1616,6 +1660,12 @@ let poaNow = getPOA(
   dayOfYear
 );
 
+// 🔥 PATCH 6: dead cloud suppression (LIVE)
+if (isDeadCloud(dni, dhi, nowCloud)) {
+  poaNow *= 0.45;
+}
+
+// clamp AFTER physics adjustment
 poaNow = Math.min(1200, poaNow);
 
 // -------------------- LIVE PV ESTIMATE --------------------
@@ -1881,6 +1931,11 @@ let confidence =
   100 *
   (0.55 * (1 - cloudPenalty) +
    0.45 * (1 - instability));
+
+// 🔥 PATCH: heavy cloud uncertainty penalty
+if (cloudAvg > 90 && avgRad < 220) {
+  confidence *= 0.7;
+}
 
 // clamp
 confidence = Math.max(35, Math.min(98, confidence));
