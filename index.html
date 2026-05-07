@@ -273,17 +273,12 @@ function shouldUpdateExpectedPV() {
   return hour >= 10; // 10am+ improves forecast stability
 }
 function togglePVTab() {
- const panel = document.getElementById("pvPanel");
-const btn = document.getElementById("clearManualBtn");
+  const panel = document.getElementById("pvPanel");
+  if (!panel) return console.error("pvPanel missing");
 
-if (panel && btn) {
-  const visible = !panel.classList.contains("hidden");
-  btn.style.display = visible ? "inline-block" : "none";
-}
-
+  panel.classList.toggle("hidden");
   renderPVTable();
 }
-
 function storeExpectedPV(dayIndex, pvValue) {
   let data = getPVData();
 
@@ -2081,13 +2076,12 @@ let currentEditDate = null;
 
 function openEditor(date) {
   let data = getPVData();
-
   currentEditDate = date;
 
   document.getElementById("editDate").value = date;
   document.getElementById("editValue").value = data[date]?.manual || "";
 
-  pvEditor.classList.remove("hidden");
+  document.getElementById("pvEditor").classList.remove("hidden");
 }
 
 function closeEditor() {
