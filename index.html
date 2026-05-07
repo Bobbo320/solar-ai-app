@@ -274,13 +274,14 @@ function shouldUpdateExpectedPV() {
 }
 function togglePVTab() {
   const panel = document.getElementById("pvPanel");
-  panel.classList.toggle("hidden");
-
-  const isVisible = !panel.classList.contains("hidden");
-
-  // show/hide clear button only when PV tab is open
   const btn = document.getElementById("clearManualBtn");
-  if (btn) btn.style.display = isVisible ? "inline-block" : "none";
+
+  const isVisible = panel.classList.toggle("hidden");
+
+  // only show when PV panel is visible
+  if (btn) {
+    btn.style.display = isVisible ? "inline-block" : "none";
+  }
 
   renderPVTable();
 }
@@ -2188,7 +2189,8 @@ window.deleteEdit = deleteEdit;
 window.saveSettings = saveSettings;
 const btn = document.getElementById("clearManualBtn");
 if (btn) btn.style.display = "none";
-window.onload = () => {
+
+  window.onload = () => {
 
   const WEATHER_CACHE_VERSION = "weather_cache_v2";
 
@@ -2199,6 +2201,15 @@ window.onload = () => {
 
   preloadWeather();
   renderPVTable();
+
+  // ensure PV panel starts hidden state correctly
+  const panel = document.getElementById("pvPanel");
+  const btn = document.getElementById("clearManualBtn");
+
+  if (panel && btn) {
+    const visible = !panel.classList.contains("hidden");
+    btn.style.display = visible ? "inline-block" : "none";
+  }
 };
 
 </script>
