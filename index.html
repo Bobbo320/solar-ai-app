@@ -1628,7 +1628,7 @@ let nowTemp = temp[nowIndex];
 
 
 // 🌤️ Radiation-led model (cloud becomes secondary hint only)
-let cloudWeight = Math.max(0.15, 1 - (nowRad / 600)); 
+let cloudWeight = Math.max(0.45, Math.min(1.05, cloudFactorLiveSoft))
 // high radiation → cloud has very little influence
 
 let cloudFactorLiveSoft =
@@ -1639,21 +1639,30 @@ let cloudFactorLiveSoft =
 // fixes severe overestimation in UK rain systems
 // -------------------------------------------------
 
-if (nowCloud > 90) {
+const denseOvercast =
+  nowCloud > 95 &&
+  nowRad < 140 &&
+  (
+    nowHumidity > 80 ||
+    nowPrecip > 0.1
+  );
 
-  // saturated atmosphere
+// only suppress true dark overcast
+if (denseOvercast) {
+
+  // moisture attenuation
   if (nowHumidity > 80) {
-    cloudFactorLiveSoft *= 0.75;
+    cloudFactorLiveSoft *= 0.88;
   }
 
-  // active rain attenuation
+  // rain attenuation
   if (nowPrecip > 0.1) {
-    cloudFactorLiveSoft *= 0.65;
+    cloudFactorLiveSoft *= 0.82;
   }
 
-  // ultra-dark cloud systems
-  if (nowRad < 140) {
-    cloudFactorLiveSoft *= 0.55;
+  // very dark sky
+  if (nowRad < 100) {
+    cloudFactorLiveSoft *= 0.78;
   }
 }
 
