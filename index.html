@@ -1186,7 +1186,7 @@ function pvEngine(daySlice, s) {
       temperatureEfficiency(t) *
       getOrientationFactor(s.orientation) *
       (s.shading / 100) *
-      cloudFactorForecast(c, r) ** 0.3 *
+      Math.pow(cloudFactorForecast(c, r), 1.6) *
       rampFactor;
 
     hourPV = inverterLimit(hourPV, s.inverter);
