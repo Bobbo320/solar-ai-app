@@ -273,15 +273,13 @@ function shouldUpdateExpectedPV() {
   return hour >= 10; // 10am+ improves forecast stability
 }
 function togglePVTab() {
-  const panel = document.getElementById("pvPanel");
-  const btn = document.getElementById("clearManualBtn");
+ const panel = document.getElementById("pvPanel");
+const btn = document.getElementById("clearManualBtn");
 
-  const isVisible = panel.classList.toggle("hidden");
-
-  // only show when PV panel is visible
-  if (btn) {
-    btn.style.display = isVisible ? "inline-block" : "none";
-  }
+if (panel && btn) {
+  const visible = !panel.classList.contains("hidden");
+  btn.style.display = visible ? "inline-block" : "none";
+}
 
   renderPVTable();
 }
