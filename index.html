@@ -1088,6 +1088,8 @@ function estimatePV(radSlice, cloudSlice, tempSlice, s, dayData) {
 
     let dni = dayData?.dni?.[i] ?? r;
     let dhi = dayData?.dhi?.[i] ?? r * 0.35;
+    let humidity = dayData?.humidity?.[i] ?? 70;
+let precip = dayData?.precip?.[i] ?? 0;
 
     let date = new Date();
     date.setHours(i);
@@ -1925,17 +1927,21 @@ let rawPV = basePV;
 
 // 🔥 APPLY FULL CALIBRATION HERE (not soft blended)
 let { bias, seasonalFactor } = getCalibrationSystem();
-let calibratedPV =
+// historical calibration
+let calibrationMultiplier =
   confidence < 0.1
-    ? rawPV
-    : rawPV * bias * seasonalFactor;
+    ? 1
+    : (bias * seasonalFactor);
 
-// still allow live learning
-let combinedAdjustment =
-  1 + ((bias * seasonalFactor - 1) * 0.6) +
-      ((LIVE_ADJUSTMENT - 1) * 0.4);
+// live short-term adaptation
+let learningMultiplier =
+  1 + ((LIVE_ADJUSTMENT - 1) * 0.4);
 
-calibratedPV = rawPV * combinedAdjustment;
+// final calibrated forecast
+let calibratedPV =
+  rawPV *
+  calibrationMultiplier *
+  learningMultiplier;
 
 // optional safety clamp
 calibratedPV = Math.max(0, calibratedPV);
