@@ -161,6 +161,11 @@
  <div id="pvPanel" class="card hidden">
   <h3>📊 PV Data</h3>
    <label>View:</label>
+   <button id="clearManualBtn"
+  onclick="clearAllManualPVData()"
+  style="background:#ef4444;color:white;">
+  🗑 Clear All Manual PV Data
+</button>
 <select id="pvViewMode" onchange="renderPVTable()">
   <option value="today">Today</option>
   <option value="7days">Last 7 Days</option>
@@ -272,7 +277,15 @@ function shouldUpdateExpectedPV() {
   return hour >= 10; // 10am+ improves forecast stability
 }
 function togglePVTab() {
-  document.getElementById("pvPanel").classList.toggle("hidden");
+  const panel = document.getElementById("pvPanel");
+  panel.classList.toggle("hidden");
+
+  const isVisible = !panel.classList.contains("hidden");
+
+  // show/hide clear button only when PV tab is open
+  const btn = document.getElementById("clearManualBtn");
+  if (btn) btn.style.display = isVisible ? "inline-block" : "none";
+
   renderPVTable();
 }
 
@@ -2177,7 +2190,8 @@ window.saveEdit = saveEdit;
 window.deleteEdit = deleteEdit;
 
 window.saveSettings = saveSettings;
-
+const btn = document.getElementById("clearManualBtn");
+if (btn) btn.style.display = "none";
 window.onload = () => {
 
   const WEATHER_CACHE_VERSION = "weather_cache_v2";
