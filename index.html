@@ -1117,11 +1117,14 @@ let precip = dayData?.precip?.[i] ?? 0;
     let elev = solarElevation(getLat(), decl, hAng);
 
     // 🌅 EARLY MORNING BOOST (MAIN FIX)
-    if (elev > 1 && poa < 120) {
-      let syntheticPOA = 120 + (elev * 15);
-      poa = Math.max(poa, syntheticPOA * 0.65);
-    }
+  // gentle low-sun assistance only
+if (elev > 2 && elev < 15 && poa < 80 && r > 80) {
 
+  let boost =
+    1 + ((elev / 15) * 0.15);
+
+  poa *= boost;
+}
     // 🔥 REMOVE HARD ZEROING (critical)
     if (poa < 10) continue;
 
@@ -1140,7 +1143,6 @@ let precip = dayData?.precip?.[i] ?? 0;
   temperatureEfficiency(t) *
   getOrientationFactor(s.orientation) *
   (s.shading / 100) *
-  cloudFactorForecast(c, r) *
   rainPenalty(precip, humidity) *
   rampFactor;
 
@@ -1218,7 +1220,6 @@ let precip = daySlice.precip?.[i] ?? 0;
       temperatureEfficiency(t) *
       getOrientationFactor(s.orientation) *
       (s.shading / 100) *
-      cloudFactorForecast(c, r) *
       rampFactor;
 
     hourPV = inverterLimit(hourPV, s.inverter);
@@ -1560,7 +1561,6 @@ function estimateCurrentHourPV(s, weather, hourIndex, lat = getLat()) {
     temperatureEfficiency(t) *
     getOrientationFactor(s.orientation) *
     (s.shading / 100) *
-    cloudFactorForecast(c, r) *
     rampFactor
   );
 }
