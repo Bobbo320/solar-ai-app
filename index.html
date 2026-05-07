@@ -274,11 +274,18 @@ function shouldUpdateExpectedPV() {
 }
 function togglePVTab() {
   const panel = document.getElementById("pvPanel");
-  if (!panel) return console.error("pvPanel missing");
+  const btn = document.getElementById("clearManualBtn");
+
+  if (!panel) return;
 
   panel.classList.toggle("hidden");
+
+  const visible = !panel.classList.contains("hidden");
+  if (btn) btn.style.display = visible ? "inline-block" : "none";
+
   renderPVTable();
 }
+  
 function storeExpectedPV(dayIndex, pvValue) {
   let data = getPVData();
 
@@ -2143,9 +2150,7 @@ function clearAllManualPVData() {
   let data = getPVData();
 
   Object.keys(data).forEach(date => {
-    if (data[date].manual !== undefined) {
-      delete data[date].manual;
-    }
+    delete data[date].manual;
   });
 
   savePVData(data);
@@ -2196,12 +2201,6 @@ if (btn) btn.style.display = "none";
 
   // ensure PV panel starts hidden state correctly
   const panel = document.getElementById("pvPanel");
-  const btn = document.getElementById("clearManualBtn");
-
-  if (panel && btn) {
-    const visible = !panel.classList.contains("hidden");
-    btn.style.display = visible ? "inline-block" : "none";
-  }
 };
 
 </script>
