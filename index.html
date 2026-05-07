@@ -1650,8 +1650,6 @@ let cloudAdjustment = 1 + (cloudFactorLiveSoft - 1) * 0.4;
 
 let rawNowPV = nowPVBase * cloudAdjustment;
 
-let rawNowPV = nowPVBase;
-
 // calibration system
 let { bias, seasonalFactor, confidence } = getCalibrationSystem();
 
