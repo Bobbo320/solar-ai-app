@@ -823,19 +823,44 @@ function lowLightFactor(rad) {
   return 1;
 }
    
-function cloudFactorForecast(cloud, rad) {
-  let cloudNorm = cloud / 100;
+function cloudFactorForecast(cloud, rad, humidity = 70, precip = 0) {
 
-  let radBoost = Math.min(1, rad / 300);
-
-  let base = 1 - cloudNorm * (0.55 - 0.25 * radBoost);
-
-  // 🔥 UK broken-cloud uplift (key fix)
-  if (cloud > 20 && cloud < 80 && rad > 250) {
-    base *= 1.15; // critical missing physics
+  // clear sky
+  if (cloud < 15) {
+    return 1.02;
   }
 
-  return Math.max(0.60, Math.min(1.25, base));
+  // broken cloud enhancement
+  if (cloud >= 15 && cloud <= 60 && rad > 250) {
+    return 1.05 + ((rad - 250) / 1000);
+  }
+
+  // normal overcast
+  let factor =
+    1 - Math.pow(cloud / 100, 1.35) * 0.72;
+
+  // dense cloud suppression
+  if (cloud > 85) {
+
+    factor *= 0.82;
+
+    // humidity suppression
+    if (humidity > 80) {
+      factor *= 0.78;
+    }
+
+    // rain suppression
+    if (precip > 0.1) {
+      factor *= 0.65;
+    }
+
+    // ultra-dark storm systems
+    if (rad < 140) {
+      factor *= 0.55;
+    }
+  }
+
+  return Math.max(0.18, Math.min(1.10, factor));
 }
 
  function getSunriseSunset(weatherData, dayIndex) {
@@ -1037,7 +1062,15 @@ function getPOA(dni, dhi, ghi, lat, tilt, hour, dayOfYear) {
   let beam = dni * (cosTheta / cosZ);
 
   // diffuse (isotropic sky model)
-  let diffuse = dhi * (1 + Math.cos(deg2rad(tilt))) / 2;
+  let diffuseFactor =
+  ghi < 180 ? 0.55 :
+  ghi < 300 ? 0.72 :
+  1.0;
+
+let diffuse =
+  dhi *
+  diffuseFactor *
+  (1 + Math.cos(deg2rad(tilt))) / 2;
 
   // ground reflected (UK ~0.2 albedo)
   let albedo = 0.2;
@@ -1088,10 +1121,14 @@ function estimatePV(radSlice, cloudSlice, tempSlice, s, dayData) {
     let elev = solarElevation(getLat(), decl, hAng);
 
     // 🌅 EARLY MORNING BOOST (MAIN FIX)
-    if (elev > 1 && poa < 120) {
-      let syntheticPOA = 120 + (elev * 15);
-      poa = Math.max(poa, syntheticPOA * 0.65);
-    }
+  if (
+  elev > 1 &&
+  poa < 120 &&
+  r > 140
+) {
+  let syntheticPOA = 120 + (elev * 15);
+  poa = Math.max(poa, syntheticPOA * 0.45);
+}
 
     // 🔥 REMOVE HARD ZEROING (critical)
     if (poa < 10) continue;
@@ -1186,7 +1223,7 @@ function pvEngine(daySlice, s) {
       temperatureEfficiency(t) *
       getOrientationFactor(s.orientation) *
       (s.shading / 100) *
-      cloudFactorForecast(c, r) ** 0.3 *
+      cloudFactorForecast(c, r) *
       rampFactor;
 
     hourPV = inverterLimit(hourPV, s.inverter);
@@ -1575,7 +1612,16 @@ else nowIndex -= 1;
 // Extract current conditions
 let nowRad = rad[nowIndex];
 let nowCloud = cloud[nowIndex];
-let cloudInfo = getCloudThicknessLabel(nowCloud, nowRad); 
+
+let nowHumidity =
+  hum[nowIndex] ?? 70;
+
+let nowPrecip =
+  precip[nowIndex] ?? 0;
+
+let cloudInfo =
+  getCloudThicknessLabel(nowCloud, nowRad);
+
 let nowTemp = temp[nowIndex];
 
 // -------------------- LIVE PV ESTIMATE --------------------
@@ -1588,7 +1634,32 @@ let cloudWeight = Math.max(0.15, 1 - (nowRad / 600));
 let cloudFactorLiveSoft =
   1 - (nowCloud / 100) * 0.75 * cloudWeight;
 
-cloudFactorLiveSoft = Math.max(0.65, Math.min(1.05, cloudFactorLiveSoft));
+// -------------------------------------------------
+// DENSE OVERCAST / RAIN SUPPRESSION
+// fixes severe overestimation in UK rain systems
+// -------------------------------------------------
+
+if (nowCloud > 90) {
+
+  // saturated atmosphere
+  if (nowHumidity > 80) {
+    cloudFactorLiveSoft *= 0.75;
+  }
+
+  // active rain attenuation
+  if (nowPrecip > 0.1) {
+    cloudFactorLiveSoft *= 0.65;
+  }
+
+  // ultra-dark cloud systems
+  if (nowRad < 140) {
+    cloudFactorLiveSoft *= 0.55;
+  }
+}
+
+// safety clamp
+cloudFactorLiveSoft =
+  Math.max(0.15, Math.min(1.05, cloudFactorLiveSoft));
 
   // ☀️ If radiation is strong, override cloud pessimism
 if (nowRad > 250) {
@@ -1629,6 +1700,7 @@ let nowPVBase =
   (s.shading / 100);
 
 let rawNowPV = nowPVBase;
+    rawNowPV *= cloudFactorLiveSoft;
 
 // calibration system
 let { bias, seasonalFactor, confidence } = getCalibrationSystem();
