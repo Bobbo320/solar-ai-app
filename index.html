@@ -798,16 +798,12 @@ function extractDay(weather, dayIndex) {
   const start = dayIndex * 24;
 
   return {
-  rad: weather.hourly.shortwave_radiation.slice(start, start + 24),
-  cloud: weather.hourly.cloudcover.slice(start, start + 24),
-  temp: weather.hourly.temperature_2m.slice(start, start + 24),
-
-  humidity: weather.hourly.relativehumidity_2m.slice(start, start + 24),
-  precip: weather.hourly.precipitation.slice(start, start + 24),
-
-  dni: weather.hourly.direct_radiation.slice(start, start + 24),
-  dhi: weather.hourly.diffuse_radiation.slice(start, start + 24)
-};
+    rad: weather.hourly.shortwave_radiation.slice(start, start + 24),
+    cloud: weather.hourly.cloudcover.slice(start, start + 24),
+    temp: weather.hourly.temperature_2m.slice(start, start + 24),
+    dni: weather.hourly.direct_radiation.slice(start, start + 24),
+    dhi: weather.hourly.diffuse_radiation.slice(start, start + 24)
+  };
 }
  
 function morningRampFromElevation(elevationDeg) {
@@ -828,24 +824,18 @@ function lowLightFactor(rad) {
 }
    
 function cloudFactorForecast(cloud, rad) {
+  let cloudNorm = cloud / 100;
 
-  // Normalised inputs
-  let r = Math.min(1, rad / 800);
-  let c = cloud / 100;
+  let radBoost = Math.min(1, rad / 300);
 
-  // --- HEAVY CLOUD / RAIN ---
-  if (rad < 150) {
-    return 0.35 + (rad / 150) * 0.25;
-    // ~0.35 → 0.60
+  let base = 1 - cloudNorm * (0.55 - 0.25 * radBoost);
+
+  // 🔥 UK broken-cloud uplift (key fix)
+  if (cloud > 20 && cloud < 80 && rad > 250) {
+    base *= 1.15; // critical missing physics
   }
 
-  // --- MID CLOUD ---
-  if (rad < 350) {
-    return 0.55 + r * 0.35;
-  }
-
-  // --- HIGH RADIATION ---
-  return 0.85 + r * 0.2;
+  return Math.max(0.60, Math.min(1.25, base));
 }
 
  function getSunriseSunset(weatherData, dayIndex) {
@@ -998,21 +988,6 @@ function inverterLimit(pv, inverter) {
   return Math.min(pv, inverter);
 }
 
-function rainPenalty(precip, humidity) {
-
-  // Active rain
-  if (precip > 0.2) {
-    return 0.75;
-  }
-
-  // Saturated atmosphere
-  if (humidity > 85) {
-    return 0.85;
-  }
-
-  return 1;
-}
-
 // -------------------- SOLAR GEOMETRY (POA MODEL) --------------------
 
 function deg2rad(d) { return d * Math.PI / 180; }
@@ -1062,8 +1037,7 @@ function getPOA(dni, dhi, ghi, lat, tilt, hour, dayOfYear) {
   let beam = dni * (cosTheta / cosZ);
 
   // diffuse (isotropic sky model)
-  let diffuseFactor = dni < 50 ? 0.65 : 1;
-let diffuse = dhi * diffuseFactor * (1 + Math.cos(deg2rad(tilt))) / 2;
+  let diffuse = dhi * (1 + Math.cos(deg2rad(tilt))) / 2;
 
   // ground reflected (UK ~0.2 albedo)
   let albedo = 0.2;
@@ -1088,8 +1062,6 @@ function estimatePV(radSlice, cloudSlice, tempSlice, s, dayData) {
 
     let dni = dayData?.dni?.[i] ?? r;
     let dhi = dayData?.dhi?.[i] ?? r * 0.35;
-    let humidity = dayData?.humidity?.[i] ?? 70;
-let precip = dayData?.precip?.[i] ?? 0;
 
     let date = new Date();
     date.setHours(i);
@@ -1110,21 +1082,17 @@ let precip = dayData?.precip?.[i] ?? 0;
       dayOfYear
     );
 
-    
     // 🌅 FIXED: solar geometry (CORRECT VARIABLES)
     let decl = solarDeclination(dayOfYear);
     let hAng = hourAngle(i);
     let elev = solarElevation(getLat(), decl, hAng);
 
     // 🌅 EARLY MORNING BOOST (MAIN FIX)
-  // gentle low-sun assistance only
-if (elev > 2 && elev < 15 && poa < 80 && r > 80) {
+    if (elev > 1 && poa < 120) {
+      let syntheticPOA = 120 + (elev * 15);
+      poa = Math.max(poa, syntheticPOA * 0.65);
+    }
 
-  let boost =
-    1 + ((elev / 15) * 0.15);
-
-  poa *= boost;
-}
     // 🔥 REMOVE HARD ZEROING (critical)
     if (poa < 10) continue;
 
@@ -1136,15 +1104,16 @@ if (elev > 2 && elev < 15 && poa < 80 && r > 80) {
       rampFactor = 0.9 + 0.6 * Math.pow(elev / 25, 0.6);
     }
 
- let hourPV =
-  s.pvSize *
-  (poa / 1000) *
-  (s.efficiency / 100) *
-  temperatureEfficiency(t) *
-  getOrientationFactor(s.orientation) *
-  (s.shading / 100) *
-  rainPenalty(precip, humidity) *
-  rampFactor;
+    let hourPV =
+      s.pvSize *
+      (poa / 1000) *
+      (s.efficiency / 100) *
+      SYSTEM_LOSS *
+      temperatureEfficiency(t) *
+      getOrientationFactor(s.orientation) *
+      (s.shading / 100) *
+      cloudFactorForecast(c, r) *
+      rampFactor;
 
     hourPV = inverterLimit(hourPV, s.inverter);
 
@@ -1165,9 +1134,6 @@ function pvEngine(daySlice, s) {
     let r = daySlice.rad[i];
     let c = daySlice.cloud[i];
     let t = daySlice.temp[i];
-
-    let humidity = daySlice.humidity?.[i] ?? 70;
-let precip = daySlice.precip?.[i] ?? 0;
 
     let dni = daySlice.dni?.[i] ?? r;
     let dhi = daySlice.dhi?.[i] ?? r * 0.3;
@@ -1220,6 +1186,7 @@ let precip = daySlice.precip?.[i] ?? 0;
       temperatureEfficiency(t) *
       getOrientationFactor(s.orientation) *
       (s.shading / 100) *
+      cloudFactorForecast(c, r) ** 0.3 *
       rampFactor;
 
     hourPV = inverterLimit(hourPV, s.inverter);
@@ -1561,6 +1528,7 @@ function estimateCurrentHourPV(s, weather, hourIndex, lat = getLat()) {
     temperatureEfficiency(t) *
     getOrientationFactor(s.orientation) *
     (s.shading / 100) *
+    cloudFactorForecast(c, r) *
     rampFactor
   );
 }
@@ -1927,21 +1895,17 @@ let rawPV = basePV;
 
 // 🔥 APPLY FULL CALIBRATION HERE (not soft blended)
 let { bias, seasonalFactor } = getCalibrationSystem();
-// historical calibration
-let calibrationMultiplier =
-  confidence < 0.1
-    ? 1
-    : (bias * seasonalFactor);
-
-// live short-term adaptation
-let learningMultiplier =
-  1 + ((LIVE_ADJUSTMENT - 1) * 0.4);
-
-// final calibrated forecast
 let calibratedPV =
-  rawPV *
-  calibrationMultiplier *
-  learningMultiplier;
+  confidence < 0.1
+    ? rawPV
+    : rawPV * bias * seasonalFactor;
+
+// still allow live learning
+let combinedAdjustment =
+  1 + ((bias * seasonalFactor - 1) * 0.6) +
+      ((LIVE_ADJUSTMENT - 1) * 0.4);
+
+calibratedPV = rawPV * combinedAdjustment;
 
 // optional safety clamp
 calibratedPV = Math.max(0, calibratedPV);
