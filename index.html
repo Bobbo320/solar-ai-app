@@ -1626,14 +1626,13 @@ let nowTemp = temp[nowIndex];
 
 // -------------------- LIVE PV ESTIMATE --------------------
 
+let baseCloudFactor =
+  1 - (nowCloud / 100) * 0.75;
 
-// 🌤️ Radiation-led model (cloud becomes secondary hint only)
-let cloudWeight = Math.max(0.45, Math.min(1.05, cloudFactorLiveSoft))
-// high radiation → cloud has very little influence
+let radWeight = Math.max(0.45, Math.min(1.05, nowRad / 300));
 
 let cloudFactorLiveSoft =
-  1 - (nowCloud / 100) * 0.75 * cloudWeight;
-
+  baseCloudFactor * radWeight;
 // -------------------------------------------------
 // DENSE OVERCAST / RAIN SUPPRESSION
 // fixes severe overestimation in UK rain systems
