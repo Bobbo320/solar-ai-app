@@ -185,6 +185,10 @@
   </table>
 </div>
 
+<button onclick="clearAllManualPVData()" style="background:#ef4444;color:white;">
+  🗑 Clear All Manual PV Data
+</button>
+  
 <div id="breakdownPanel" class="card hidden">
   <h3>🧠 Model Breakdown</h3>
   <div id="breakdownTitle"></div>
@@ -2131,6 +2135,24 @@ renderPVTable();
 runAI_safe(); // optional but recommended
 }
 
+function clearAllManualPVData() {
+  if (!confirm("Delete ALL manual PV entries? This cannot be undone.")) return;
+
+  let data = getPVData();
+
+  Object.keys(data).forEach(date => {
+    if (data[date].manual !== undefined) {
+      delete data[date].manual;
+    }
+  });
+
+  savePVData(data);
+
+  refreshExpectedPVAfterManualChange();
+  renderPVTable();
+  runAI_safe();
+}
+  
 function deleteEdit() {
   if (!currentEditDate) return;
 
