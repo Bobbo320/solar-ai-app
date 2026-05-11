@@ -1068,168 +1068,214 @@ function getPOA(dni, dhi, ghi, lat, tilt, hour, dayOfYear) {
 
   return beam + diffuse + ground;
 }
-  
-function estimatePV(radSlice, cloudSlice, tempSlice, s, dayData) {
 
-  const location = getSettings();
-  const lat = location.lat;
-  const lon = location.lon;
-  
+function computePVHour({
+  radiation,
+  dni,
+  dhi,
+  cloud,
+  temp,
+  hour,
+  forecastDate,
+  settings,
+  applyCloudModel = true,
+  clipInverter = true
+}) {
+
+  // -----------------------------
+  // SAFETY
+  // -----------------------------
+  radiation = Number.isFinite(radiation) ? radiation : 0;
+  dni = Number.isFinite(dni) ? dni : radiation;
+  dhi = Number.isFinite(dhi) ? dhi : radiation * 0.35;
+  cloud = Number.isFinite(cloud) ? cloud : 50;
+  temp = Number.isFinite(temp) ? temp : 15;
+
+  // -----------------------------
+  // DATE + SOLAR GEOMETRY
+  // -----------------------------
+  let date = new Date(forecastDate);
+  date.setHours(hour, 0, 0, 0);
+
+  let dayOfYear = Math.floor(
+    (date - new Date(date.getFullYear(), 0, 0)) / 86400000
+  );
+
+  let tilt = getSeasonalTilt(settings.tilt);
+
+  // -----------------------------
+  // POA
+  // -----------------------------
+  let poa = getPOA(
+    dni,
+    dhi,
+    radiation,
+    getLat(),
+    tilt,
+    hour,
+    dayOfYear
+  );
+
+  // -----------------------------
+  // SOLAR ELEVATION
+  // -----------------------------
+  let decl = solarDeclination(dayOfYear);
+  let hAng = hourAngle(hour);
+
+  let elev = solarElevation(
+    getLat(),
+    decl,
+    hAng
+  );
+
+  // -----------------------------
+  // EARLY MORNING BOOST
+  // -----------------------------
+  if (elev > 1 && poa < 120) {
+
+    let syntheticPOA =
+      120 + (elev * 15);
+
+    poa = Math.max(
+      poa,
+      syntheticPOA * 0.65
+    );
+  }
+
+  // -----------------------------
+  // NIGHT FILTER
+  // -----------------------------
+  if (poa < 10) return {
+    pv: 0,
+    poa,
+    elev,
+    clipped: false
+  };
+
+  poa = Math.min(1200, poa);
+
+  // -----------------------------
+  // RAMPING
+  // -----------------------------
+  let rampFactor = 1;
+
+  if (elev > 0 && elev < 25) {
+    rampFactor =
+      0.9 +
+      0.6 * Math.pow(elev / 25, 0.6);
+  }
+
+  // -----------------------------
+  // CLOUD MODEL
+  // -----------------------------
+  let cloudFactor = 1;
+
+  if (applyCloudModel) {
+
+    cloudFactor =
+      Math.pow(
+        cloudFactorForecast(cloud, radiation),
+        1.6
+      );
+
+    // heavy overcast correction
+    if (cloud > 75 && radiation < 150) {
+      cloudFactor =
+        Math.pow(cloudFactor, 2.2);
+    }
+  }
+
+  // -----------------------------
+  // CORE PV
+  // -----------------------------
+  let pv =
+    settings.pvSize *
+    (poa / 1000) *
+    (settings.efficiency / 100) *
+    temperatureEfficiency(temp) *
+    getOrientationFactor(settings.orientation) *
+    (settings.shading / 100) *
+    cloudFactor *
+    rampFactor;
+
+  // -----------------------------
+  // INVERTER CLIP
+  // -----------------------------
+  let unclippedPV = pv;
+  let clipped = false;
+
+  if (clipInverter) {
+
+    if (pv > settings.inverter) {
+      clipped = true;
+    }
+
+    pv = inverterLimit(
+      pv,
+      settings.inverter
+    );
+  }
+
+  return {
+    pv,
+    unclippedPV,
+    clippingLoss: unclippedPV - pv,
+    poa,
+    elev,
+    cloudFactor,
+    rampFactor,
+    clipped
+  };
+}
+    
+function pvEngine(daySlice, s, dayOffset = 0) {
+
   let total = 0;
+  let clippingLoss = 0;
+
+  let baseDate = new Date();
+  baseDate.setDate(
+    baseDate.getDate() + dayOffset
+  );
 
   for (let i = 0; i < 24; i++) {
 
-    let r = radSlice[i];
-    let t = tempSlice[i] ?? 15;
-    let c = cloudSlice[i];
+    let result = computePVHour({
 
-    let dni = dayData?.dni?.[i] ?? r;
-    let dhi = dayData?.dhi?.[i] ?? r * 0.35;
+      radiation: daySlice.rad[i],
 
-    let date = new Date();
-    date.setHours(i);
+      dni:
+        daySlice.dni?.[i] ??
+        daySlice.rad[i],
 
-    let dayOfYear = Math.floor(
-      (date - new Date(date.getFullYear(), 0, 0)) / 86400000
-    );
+      dhi:
+        daySlice.dhi?.[i] ??
+        daySlice.rad[i] * 0.35,
 
-    let tilt = getSeasonalTilt(s.tilt);
+      cloud: daySlice.cloud[i],
 
-    let poa = getPOA(
-      dni,
-      dhi,
-      r,
-      getLat(),
-      tilt,
-      i,
-      dayOfYear
-    );
+      temp:
+        daySlice.temp[i] ?? 15,
 
-    // 🌅 FIXED: solar geometry (CORRECT VARIABLES)
-    let decl = solarDeclination(dayOfYear);
-    let hAng = hourAngle(i);
-    let elev = solarElevation(getLat(), decl, hAng);
+      hour: i,
 
-    // 🌅 EARLY MORNING BOOST (MAIN FIX)
-    if (elev > 1 && poa < 120) {
-      let syntheticPOA = 120 + (elev * 15);
-      poa = Math.max(poa, syntheticPOA * 0.65);
-    }
+      forecastDate: baseDate,
 
-    // 🔥 REMOVE HARD ZEROING (critical)
-    if (poa < 10) continue;
+      settings: s,
 
-    poa = Math.min(1000, poa);
+      applyCloudModel: true,
+      clipInverter: true
+    });
 
-    let rampFactor = 1;
-
-    if (elev > 0 && elev < 25) {
-      rampFactor = 0.9 + 0.6 * Math.pow(elev / 25, 0.6);
-    }
-
-    let hourPV =
-      s.pvSize *
-      (poa / 1000) *
-      (s.efficiency / 100) *
-      SYSTEM_LOSS *
-      temperatureEfficiency(t) *
-      (s.shading / 100) *
-      cloudFactorForecast(c, r) *
-      rampFactor;
-
-    hourPV = inverterLimit(hourPV, s.inverter);
-
-    total += hourPV;
+    total += result.pv;
+    clippingLoss += result.clippingLoss;
   }
 
-  return total;
+  return {
+    totalPV: total,
+    clippingLoss
+  };
 }
-  
-function pvEngine(daySlice, s) {
-  const location = getSettings();
-  const lat = location.lat;
-  const lon = location.lon;
-  let total = 0;
-
-  for (let i = 0; i < 24; i++) {
-
-    let r = daySlice.rad[i];
-    let c = daySlice.cloud[i];
-    let t = daySlice.temp[i];
-
-    let dni = daySlice.dni?.[i] ?? r;
-   let cloudNorm = c / 100;
-
-// diffuse collapses harder in heavy cloud than linear assumption
-let dhiFactor = 0.4 + 0.6 * (1 - cloudNorm);
-
-let dhi = daySlice.dhi?.[i] ?? r * dhiFactor;
-
-    let date = new Date();
-    date.setHours(i);
-
-    let dayOfYear = Math.floor(
-      (date - new Date(date.getFullYear(), 0, 0)) / 86400000
-    );
-
-    let tilt = getSeasonalTilt(s.tilt);
-
-    let poa = getPOA(
-      dni,
-      dhi,
-      r,
-     getLat(),
-      tilt,
-      i,
-      dayOfYear
-    );
-
-    // 🌅 CORRECT solar geometry
-    let decl = solarDeclination(dayOfYear);
-    let hAng = hourAngle(i);
-    let elev = solarElevation(getLat(), decl, hAng);
-
-    // 🌅 EARLY BOOST
-    if (elev > 1 && poa < 120) {
-      let syntheticPOA = 120 + (elev * 15);
-      poa = Math.max(poa, syntheticPOA * 0.65);
-    }
-
-    // 🔥 REMOVE radiation cutoff dependency
-    if (poa < 10) continue;
-
-    poa = Math.min(1000, poa);
-
-    let rampFactor = 1;
-
-    if (elev > 0 && elev < 25) {
-      rampFactor = 0.9 + 0.6 * Math.pow(elev / 25, 0.6);
-    }
-
-   let cloudFactor = Math.pow(cloudFactorForecast(c, r), 1.6);
-
-// heavy cloud correction
-if (c > 75 && r < 150) {
-  cloudFactor = Math.pow(cloudFactor, 2.2);
-}
-
-let hourPV =
-  s.pvSize *
-  (poa / 1000) *
-  (s.efficiency / 100) *
-  temperatureEfficiency(t) *
-  (s.shading / 100) *
-  cloudFactor *
-  rampFactor;
-
-    hourPV = inverterLimit(hourPV, s.inverter);
-
-    total += hourPV;
-  }
-
-  return total;
-}
-
 function getNightLoadProfile(s) {
   const total = s.dailyLoad;
 
@@ -1505,66 +1551,46 @@ function weatherSummary(c,r,t,h,p){
   `;
 }
 
-function estimateCurrentHourPV(s, weather, hourIndex, lat = getLat()) {
+ function estimateCurrentHourPV(
+  s,
+  weather,
+  hourIndex,
+  lat = getLat()
+) {
 
-  let r = weather.hourly.shortwave_radiation[hourIndex];
-  let dni = weather.hourly.direct_radiation[hourIndex];
-  let dhi = weather.hourly.diffuse_radiation[hourIndex];
-  let c = weather.hourly.cloudcover[hourIndex];
-  let t = weather.hourly.temperature_2m[hourIndex];
+  let timeStr =
+    weather.hourly.time[hourIndex];
 
-  let now = new Date(weather.hourly.time[hourIndex]);
-  let hour = now.getHours();
+  let forecastDate = new Date(timeStr);
 
-  let dayOfYear = Math.floor(
-    (now - new Date(now.getFullYear(), 0, 0)) / 86400000
-  );
+  return computePVHour({
+    radiation:
+      weather.hourly.shortwave_radiation[hourIndex],
 
-  let tilt = getSeasonalTilt(s.tilt);
+    dni:
+      weather.hourly.direct_radiation[hourIndex],
 
-  let poa = getPOA(
-    dni,
-    dhi,
-    r,
-    lat,
-    tilt,
-    hour,
-    dayOfYear
-  );
+    dhi:
+      weather.hourly.diffuse_radiation[hourIndex],
 
-  // 🌅 solar geometry
-  let decl = solarDeclination(dayOfYear);
-  let hAng = hourAngle(hour);
-  let elev = solarElevation(lat, decl, hAng);
+    cloud:
+      weather.hourly.cloudcover[hourIndex],
 
-  // 🌅 EARLY BOOST (CRITICAL FOR LIVE)
-  if (elev > 1 && poa < 120) {
-    let syntheticPOA = 120 + (elev * 15);
-    poa = Math.max(poa, syntheticPOA * 0.65);
-  }
+    temp:
+      weather.hourly.temperature_2m[hourIndex],
 
-  // 🔥 REMOVE zero cutoff
-  if (poa < 10) return 0;
+    hour: forecastDate.getHours(),
 
-  poa = Math.min(1200, poa);
+    forecastDate,
 
-  let rampFactor = 1;
+    settings: s,
 
-  if (elev > 0 && elev < 25) {
-    rampFactor = 0.9 + 0.6 * Math.pow(elev / 25, 0.6);
-  }
+    applyCloudModel: true,
+    clipInverter: true
 
-  return (
-    s.pvSize *
-    (poa / 1000) *
-    (s.efficiency / 100) *
-    temperatureEfficiency(t) *
-    (s.shading / 100) *
-    Math.pow(cloudFactorForecast(c, r), 1.6) *
-    rampFactor
-  );
-}
-  
+  }).pv;
+} 
+ 
 // -------------------- MAIN --------------------
 async function runAI() {
 if (RUN_AI_LOCK) return;
@@ -1938,7 +1964,14 @@ let dayData = extractDay(weatherData, d);
 
 let daySlice = extractDay(weatherData, d);
 
-let basePV = pvEngine(daySlice, s);
+let pvResult =
+  pvEngine(daySlice, s, d);
+
+let basePV =
+  pvResult.totalPV;
+
+let clippingLoss =
+  pvResult.clippingLoss;
 preloadedWeather = null;
   // calibration
 let rawPV = basePV;
@@ -2035,7 +2068,13 @@ if (d === 1 && tomorrowSOCValue === null) {
       )}
 
       <br><b>🌅 Sunrise–Sunset Solar Window:</b> ${timeLabel}
-      <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
+     <br><b>⚡ Estimated PV:</b> ${pv.toFixed(1)} kWh
+
+${
+  clippingLoss > 0.1
+    ? `<br><b>⚠️ Clipping Loss:</b> ${clippingLoss.toFixed(1)} kWh`
+    : ""
+}
       <br><b>📊 Confidence:</b> ${confidence.toFixed(0)}%
     </div>
   `;
