@@ -555,8 +555,8 @@ function renderPVTable() {
 
       tr.innerHTML = `
         <td>${date}</td>
-        <td>${row.expected ? row.expected.toFixed(1) : "-"}</td>
-        <td>${row.manual ? row.manual.toFixed(1) : "-"}</td>
+       <td>${row.expected !== undefined ? row.expected.toFixed(1) : "-"}</td>
+     <td>${row.manual !== undefined ? row.manual.toFixed(1) : "-"}</td>
         <td>
           <button onclick="openEditor('${date}')">Edit</button>
           <button onclick="deletePVRow('${date}')">Delete</button>
@@ -2107,13 +2107,21 @@ if (isNaN(value)) value = undefined;
 
   // move entry if date changed
   if (currentEditDate !== newDate) {
-    if (data[newDate]) {
-      alert("Date already exists");
-      return;
-    }
-    data[newDate] = data[currentEditDate] || {};
-    delete data[currentEditDate];
+
+  // only block if a MANUAL entry already exists
+  if (data[newDate]?.manual !== undefined) {
+    alert("Manual PV data already exists for this date");
+    return;
   }
+
+  // preserve expected data if present
+  data[newDate] = {
+    ...(data[newDate] || {}),
+    ...(data[currentEditDate] || {})
+  };
+
+  delete data[currentEditDate];
+}
 
 if (value !== undefined) {
 
