@@ -366,26 +366,35 @@ function rebuildExpectedPVForWindow(pvToday) {
 
   savePVData(data);
 }
-  function buildBreakdown({
+function buildBreakdown({
   basePV,
-  cloudFactor,
-  tiltFactor,
-  tempFactor,
-  orientationFactor,
-  shadingFactor,
-  calibrationFactor,
-  inverterFactor,
+  cloudFactor = 1,
+  tempFactor = 1,
+  shadingFactor = 1,
+  calibrationFactor = 1,
+  inverterFactor = 1,
   learningFactor = 1
 }) {
+
   return {
-    cloud: (cloudFactor - 1) * basePV,
-    tilt: (tiltFactor - 1) * basePV,
-    temperature: (tempFactor - 1) * basePV,
-    orientation: (orientationFactor - 1) * basePV,
-    shading: (shadingFactor - 1) * basePV,
-    calibration: (calibrationFactor - 1) * basePV,
-    inverter: (inverterFactor - 1) * basePV,
-    learning: (learningFactor - 1) * basePV
+
+    cloud:
+      (cloudFactor - 1) * basePV,
+
+    temperature:
+      (tempFactor - 1) * basePV,
+
+    shading:
+      (shadingFactor - 1) * basePV,
+
+    calibration:
+      (calibrationFactor - 1) * basePV,
+
+    inverter:
+      (inverterFactor - 1) * basePV,
+
+    learning:
+      (learningFactor - 1) * basePV
   };
 }
 
@@ -407,7 +416,7 @@ function renderBreakdown() {
     return `
       <div class="bar-row ${neg ? "bar-negative" : ""}">
         <div class="bar-label">
-          ${key} : ${value.toFixed(2)} kW
+        ${key} : ${value.toFixed(2)}
         </div>
         <div class="bar">
           <div class="bar-fill" style="width:${percent}%"></div>
@@ -1124,7 +1133,6 @@ function estimatePV(radSlice, cloudSlice, tempSlice, s, dayData) {
       (s.efficiency / 100) *
       SYSTEM_LOSS *
       temperatureEfficiency(t) *
-      getOrientationFactor(s.orientation) *
       (s.shading / 100) *
       cloudFactorForecast(c, r) *
       rampFactor;
@@ -1210,7 +1218,6 @@ let hourPV =
   (poa / 1000) *
   (s.efficiency / 100) *
   temperatureEfficiency(t) *
-  getOrientationFactor(s.orientation) *
   (s.shading / 100) *
   cloudFactor *
   rampFactor;
@@ -1552,7 +1559,6 @@ function estimateCurrentHourPV(s, weather, hourIndex, lat = getLat()) {
     (poa / 1000) *
     (s.efficiency / 100) *
     temperatureEfficiency(t) *
-    getOrientationFactor(s.orientation) *
     (s.shading / 100) *
     Math.pow(cloudFactorForecast(c, r), 1.6) *
     rampFactor
@@ -1682,27 +1688,34 @@ let orientationFactor = getOrientationFactor(s.orientation);
 let shadingFactor = s.shading / 100;
 let tempFactor = temperatureEfficiency(nowTemp);
 let tiltFactorVal = 1; // POA handles this
+let preClipPV =
+  nowPVBase *
+  calibrationFactor *
+  learningFactor;
+
 let inverterFactor =
-  nowPVBase > s.inverter
-    ? s.inverter / nowPVBase
+  preClipPV > s.inverter
+    ? (s.inverter / preClipPV)
     : 1;
 
-if (LAST_BREAKDOWN_LOCK_ID !== token) {
+LAST_BREAKDOWN = buildBreakdown({
+  basePV: nowPVBase,
 
-  LAST_BREAKDOWN = buildBreakdown({
-    basePV: nowPVBase,
-    cloudFactor: cloudFactorLiveSoft,
-    tiltFactor: tiltFactorVal,
-    tempFactor,
-    orientationFactor,
-    shadingFactor,
-    calibrationFactor,
-    inverterFactor,
-    learningFactor
-  });
+  // use REAL applied cloud adjustment
+  cloudFactor: cloudAdjustment,
 
-  LAST_BREAKDOWN_LOCK_ID = token;
-}
+  tempFactor,
+  shadingFactor,
+
+  calibrationFactor,
+  inverterFactor,
+
+  // clamp visual learning effect
+  learningFactor: Math.max(
+    0.9,
+    Math.min(1.1, learningFactor)
+  )
+});
     
 // inverter constraint
 rawNowPV = Math.min(rawNowPV, s.inverter * 0.98);
