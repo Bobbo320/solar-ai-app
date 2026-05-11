@@ -260,13 +260,7 @@ function getLocalDateKey(d = new Date()) {
   
 // -------------------- PV DATA + AUTO TUNING --------------------
 
-function safeNum(v, fallback = 0) {
-  return Number.isFinite(v)
-    ? v
-    : fallback;
-}
-  
-  function getPVData() {
+function getPVData() {
   return Store.getPV();
 }
 function savePVData(data) {
@@ -784,7 +778,15 @@ async function getWeather(postcode) {
 );
 
     let data = await res.json();
-    data = normalizeWeather(data);
+
+    if (!data.hourly.direct_radiation) {
+      data.hourly.direct_radiation = data.hourly.shortwave_radiation;
+    }
+
+    if (!data.hourly.diffuse_radiation) {
+      data.hourly.diffuse_radiation =
+        data.hourly.shortwave_radiation.map(v => v * 0.3);
+    }
 
     setCache(cacheKey, { timestamp: now, data });
     return data;
@@ -805,153 +807,6 @@ async function getWeather(postcode) {
   }
 }
 
- function normalizeWeather(weather) {
-
-  if (!weather?.hourly) {
-    throw new Error("Invalid weather structure");
-  }
-
-  const h = weather.hourly;
-
-  const len =
-    h.time?.length ||
-    h.shortwave_radiation?.length ||
-    72;
-
-  const normalized = {
-
-    hourly: {
-      time: [],
-      radiation: [],
-      dni: [],
-      dhi: [],
-      cloud: [],
-      temp: [],
-      humidity: [],
-      precip: []
-    },
-
-    daily: weather.daily || {}
-  };
-
-  for (let i = 0; i < len; i++) {
-
-    // -----------------------------
-    // RAW VALUES
-    // -----------------------------
-    let radiation =
-      safeNum(
-        h.shortwave_radiation?.[i],
-        0
-      );
-
-    let cloud =
-      safeNum(
-        h.cloudcover?.[i],
-        50
-      );
-
-    let temp =
-      safeNum(
-        h.temperature_2m?.[i],
-        15
-      );
-
-    let humidity =
-      safeNum(
-        h.relativehumidity_2m?.[i],
-        70
-      );
-
-    let precip =
-      safeNum(
-        h.precipitation?.[i],
-        0
-      );
-
-    // -----------------------------
-    // DNI
-    // -----------------------------
-    let dni =
-      safeNum(
-        h.direct_radiation?.[i],
-        radiation
-      );
-
-    // clamp impossible values
-    dni = Math.max(
-      0,
-      Math.min(1400, dni)
-    );
-
-    // -----------------------------
-    // DHI SYNTHESIS
-    // -----------------------------
-    let cloudNorm = cloud / 100;
-
-    let estimatedDHI =
-      radiation *
-      (0.35 + (cloudNorm * 0.45));
-
-    let dhi =
-      safeNum(
-        h.diffuse_radiation?.[i],
-        estimatedDHI
-      );
-
-    dhi = Math.max(
-      0,
-      Math.min(1200, dhi)
-    );
-
-    // -----------------------------
-    // RADIATION CLAMP
-    // -----------------------------
-    radiation = Math.max(
-      0,
-      Math.min(1400, radiation)
-    );
-
-    // -----------------------------
-    // CLOUD CLAMP
-    // -----------------------------
-    cloud = Math.max(
-      0,
-      Math.min(100, cloud)
-    );
-
-    // -----------------------------
-    // STORE
-    // -----------------------------
-    normalized.hourly.time[i] =
-      h.time?.[i] ||
-      new Date().toISOString();
-
-    normalized.hourly.radiation[i] =
-      radiation;
-
-    normalized.hourly.dni[i] =
-      dni;
-
-    normalized.hourly.dhi[i] =
-      dhi;
-
-    normalized.hourly.cloud[i] =
-      cloud;
-
-    normalized.hourly.temp[i] =
-      temp;
-
-    normalized.hourly.humidity[i] =
-      humidity;
-
-    normalized.hourly.precip[i] =
-      precip;
-  }
-
-  return normalized;
-} 
-
 // -------------------- SOLAR --------------------
 function getOrientationFactor(o) {
   if (o==="south") return 1;
@@ -962,24 +817,14 @@ function getOrientationFactor(o) {
 }
 
 function extractDay(weather, dayIndex) {
-
   const start = dayIndex * 24;
 
   return {
-    rad:
-      weather.hourly.radiation.slice(start, start + 24),
-
-    cloud:
-      weather.hourly.cloud.slice(start, start + 24),
-
-    temp:
-      weather.hourly.temp.slice(start, start + 24),
-
-    dni:
-      weather.hourly.dni.slice(start, start + 24),
-
-    dhi:
-      weather.hourly.dhi.slice(start, start + 24)
+    rad: weather.hourly.shortwave_radiation.slice(start, start + 24),
+    cloud: weather.hourly.cloudcover.slice(start, start + 24),
+    temp: weather.hourly.temperature_2m.slice(start, start + 24),
+    dni: weather.hourly.direct_radiation.slice(start, start + 24),
+    dhi: weather.hourly.diffuse_radiation.slice(start, start + 24)
   };
 }
  
@@ -1725,13 +1570,13 @@ function weatherSummary(c,r,t,h,p){
       weather.hourly.direct_radiation[hourIndex],
 
     dhi:
-      weather.hourly.dhi[hourIndex],
+      weather.hourly.diffuse_radiation[hourIndex],
 
     cloud:
-      weather.hourly.cloud[hourIndex],
+      weather.hourly.cloudcover[hourIndex],
 
     temp:
-      weather.hourly.temp[hourIndex],
+      weather.hourly.temperature_2m[hourIndex],
 
     hour: forecastDate.getHours(),
 
