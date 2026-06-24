@@ -916,7 +916,18 @@ function getSeasonalTilt(baseTilt) {
   return summerTilt * (1 - seasonalFactor) + winterTilt * seasonalFactor;
 }
   
-function temperature
+function temperatureEfficiency(t) {
+
+  // no penalty below 25°C
+  if (t <= 25) return 1;
+
+  // 1% loss per °C above 25°C
+  let f = 1 - ((t - 25) * 0.01);
+
+  // prevent unrealistic collapse
+  return Math.max(0.70, f);
+}
+
 function daylightHours(radSlice) {
   return radSlice.filter(r => r > SOLAR_THRESHOLD);
 }
