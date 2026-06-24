@@ -916,11 +916,7 @@ function getSeasonalTilt(baseTilt) {
   return summerTilt * (1 - seasonalFactor) + winterTilt * seasonalFactor;
 }
   
-function temperatureEfficiency(t) {
-  let f = 1 + ((t - 25) * -0.004);
-  return Math.min(1.05, Math.max(0.8, f));
-}
-
+function temperature
 function daylightHours(radSlice) {
   return radSlice.filter(r => r > SOLAR_THRESHOLD);
 }
